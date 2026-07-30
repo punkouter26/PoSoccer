@@ -88,6 +88,46 @@ namespace PoSoccer
             StepCount++;
             if (rewards != null && StepCount >= rewards.maxEnvironmentSteps)
                 OnStalemate();
+            else if (AnythingOutOfBounds())
+                OnOutOfBounds();
+        }
+
+        // Containment watchdog: high-speed boost collisions can depenetrate bodies
+        // through walls; a match stuck outside the pitch would otherwise freeze
+        // forever and poison training/eval episodes.
+        bool AnythingOutOfBounds()
+        {
+            const float margin = 1.5f;
+            Vector2 center = transform.position;
+            bool Out(Vector2 p) =>
+                Mathf.Abs(p.x - center.x) > pitchHalfExtents.x + margin ||
+                Mathf.Abs(p.y - center.y) > pitchHalfExtents.y + margin;
+
+            if (ball != null && Out(ball.position)) return true;
+            foreach (var agent in agents)
+                if (agent != null && Out(agent.Body.position)) return true;
+            return false;
+        }
+
+        void OnOutOfBounds()
+        {
+            if (_episodeEnding) return;
+            _episodeEnding = true;
+
+            Debug.LogWarning("[Env] Out-of-bounds detected - resetting pitch (no rewards applied).");
+            EpisodeEnded?.Invoke(null);   // counts as a drawn episode for eval stats
+
+            if (_blueGroup != null)
+            {
+                _blueGroup.GroupEpisodeInterrupted();
+                _redGroup.GroupEpisodeInterrupted();
+            }
+            else
+            {
+                foreach (var agent in agents) agent.EpisodeInterrupted();
+            }
+
+            ResetPitch();
         }
 
         // ── Goal / touch bookkeeping ────────────────────────────────────────

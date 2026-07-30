@@ -66,6 +66,20 @@ namespace PoSoccer.Tests
         }
 
         [UnityTest]
+        public IEnumerator HeuristicBots_ActuallyMove()
+        {
+            var red = _env.agents.First(a => a.team == Agent_Soccer.Team.Red);
+            Vector2 start = red.Body.position;
+
+            for (int i = 0; i < 300; i++)          // 3 simulated seconds @ 100 Hz
+                yield return new WaitForFixedUpdate();
+
+            Assert.Greater(Vector2.Distance(red.Body.position, start), 0.5f,
+                "the bot-driven red agent should displace within 3s of kickoff " +
+                "(decision pipeline or actuation is broken if it does not)");
+        }
+
+        [UnityTest]
         public IEnumerator Boost_WithZeroStamina_DoesNotActivate()
         {
             var blue = _env.agents.First(a => a.team == Agent_Soccer.Team.Blue);
