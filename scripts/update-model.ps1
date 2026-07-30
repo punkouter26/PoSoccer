@@ -1,10 +1,15 @@
 # Model pipeline (UNITY_RULES): overwrite the tracked .onnx IN PLACE so the .meta
 # GUID reference on the agent prefab never changes; Unity hot-reloads the weights.
-param([Parameter(Mandatory = $true)][string]$RunId)
+param(
+    [Parameter(Mandatory = $true)][string]$RunId,
+    [string]$Behavior = "STANDARD"
+)
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
-$source = Join-Path $root "results\$RunId\SoccerAgent.onnx"
+$source = Join-Path $root "results\$RunId\$Behavior.onnx"
+# Legacy runs (pre-rename) exported under the old behavior name.
+if (-not (Test-Path $source)) { $source = Join-Path $root "results\$RunId\SoccerAgent.onnx" }
 $target = Join-Path $root "Assets\Agents\SoccerAgent_v01\SoccerAgent_v01.onnx"
 
 if (-not (Test-Path $source)) {

@@ -3,7 +3,7 @@
 # BC strong-but-decaying steers early exploration; GAIL stays weak so the
 # extrinsic game reward (strength 1.0) remains the true objective.
 behaviors:
-  SoccerAgent:
+  STANDARD:
     trainer_type: ppo
     hyperparameters:
       batch_size: 2048
@@ -49,7 +49,7 @@ environment_parameters:
       - name: Lesson0_WideNet
         completion_criteria:
           measure: reward
-          behavior: SoccerAgent
+          behavior: STANDARD
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.35
@@ -57,7 +57,7 @@ environment_parameters:
       - name: Lesson1_MidNet
         completion_criteria:
           measure: reward
-          behavior: SoccerAgent
+          behavior: STANDARD
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.55

@@ -20,6 +20,9 @@ namespace PoSoccer
 
         [Header("Identity")]
         public Team team = Team.Blue;
+        [Tooltip("ML behavior / brain name. STANDARD is the base brain; personality " +
+                 "brains (MATT, KIM, NICK) get their own name + reward profile + policy.")]
+        public string brainName = "STANDARD";
 
         [Header("Actuation")]
         [Tooltip("Continuous force along the +Y eye axis at action = 1.")]
@@ -57,7 +60,7 @@ namespace PoSoccer
             _behavior = GetComponent<BehaviorParameters>();
             if (_behavior != null)
             {
-                _behavior.BehaviorName = "SoccerAgent";
+                _behavior.BehaviorName = string.IsNullOrEmpty(brainName) ? "STANDARD" : brainName;
                 _behavior.TeamId = (int)team;
                 _behavior.BrainParameters.VectorObservationSize =
                     BaseObservationSize + 4 * teammateSlots;

@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: af179823a658aab41bd1d23c428ab770, type: 3}
+  m_Name: Reward_MATT
+  m_EditorClassIdentifier:
+  playerName: MATT
+  personalityNotes: 'PLACEHOLDER - personality not designed yet. Intended direction:
+    aggressive striker. Tune goalScorer up, goalConceded down, boost ballToGoalVelocityScale;
+    train as behavior "MATT".'
+  goalScorer: 0.7
+  assist: 0.3
+  teamBaselineVictory: 0.2
+  goalConceded: -1
+  stalemateTimeout: -0.1
+  stepPenalty: -0.0001
+  ballProximityScale: 0.0004
+  facingAlignmentScale: 0.0002
+  ballToGoalVelocityScale: 0.001
+  ballContact: 0.05
+  maxEnvironmentSteps: 5000

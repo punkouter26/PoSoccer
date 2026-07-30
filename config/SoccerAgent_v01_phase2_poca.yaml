@@ -2,7 +2,7 @@
 # Both teams run the "SoccerAgent" behavior with distinct TeamIds (Blue=0, Red=1);
 # Agent_EnvController registers SimpleMultiAgentGroups when a side has >1 player.
 behaviors:
-  SoccerAgent:
+  STANDARD:
     trainer_type: poca
     hyperparameters:
       batch_size: 2048
@@ -41,7 +41,7 @@ environment_parameters:
       - name: Lesson0_WideNet
         completion_criteria:
           measure: Elo
-          behavior: SoccerAgent
+          behavior: STANDARD
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 1250.0
@@ -49,7 +49,7 @@ environment_parameters:
       - name: Lesson1_MidNet
         completion_criteria:
           measure: Elo
-          behavior: SoccerAgent
+          behavior: STANDARD
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 1350.0

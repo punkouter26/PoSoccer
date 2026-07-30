@@ -1,7 +1,7 @@
 # Phase 1c — pure RL retry with the ball-to-goal velocity shaping reward and a
 # longer budget, warm-started from soccer_p1_00 via --initialize-from.
 behaviors:
-  SoccerAgent:
+  STANDARD:
     trainer_type: ppo
     hyperparameters:
       batch_size: 2048
@@ -33,7 +33,7 @@ environment_parameters:
       - name: Lesson0_WideNet
         completion_criteria:
           measure: reward
-          behavior: SoccerAgent
+          behavior: STANDARD
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.35
@@ -41,7 +41,7 @@ environment_parameters:
       - name: Lesson1_MidNet
         completion_criteria:
           measure: reward
-          behavior: SoccerAgent
+          behavior: STANDARD
           signal_smoothing: true
           min_lesson_length: 100
           threshold: 0.55

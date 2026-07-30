@@ -9,6 +9,13 @@ namespace PoSoccer
     [CreateAssetMenu(fileName = "Reward_Settings", menuName = "PoSoccer/Reward Settings")]
     public sealed class Reward_Settings : ScriptableObject
     {
+        [Header("Personality")]
+        [Tooltip("Player this profile belongs to (STANDARD / MATT / KIM / NICK ...).")]
+        public string playerName = "STANDARD";
+        [TextArea]
+        [Tooltip("Design notes: how this personality attacks, scores, defends.")]
+        public string personalityNotes;
+
         [Header("Terminal rewards")]
         public float goalScorer = 0.7f;
         public float assist = 0.3f;
