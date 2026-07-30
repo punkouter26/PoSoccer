@@ -7,6 +7,7 @@ param(
     [int]$NumEnvs = 4,
     [int]$BasePort = 5005,
     [string]$Config = "SoccerAgent_v01_phase1_ppo.yaml",
+    [string]$InitFrom = "",
     [switch]$Resume,
     [switch]$Force
 )
@@ -18,6 +19,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $mlArgs = @("$root\config\$Config",
           "--run-id=$RunId", "--base-port=$BasePort", "--results-dir=$root\results")
 if ($EnvPath) { $mlArgs += @("--env=$root\$EnvPath", "--no-graphics", "--num-envs=$NumEnvs") }
+if ($InitFrom) { $mlArgs += "--initialize-from=$InitFrom" }
 if ($Resume)  { $mlArgs += "--resume" }
 if ($Force)   { $mlArgs += "--force" }
 

@@ -20,6 +20,8 @@ namespace PoSoccer
         public float stepPenalty = -0.0001f;
         public float ballProximityScale = 0.0004f;
         public float facingAlignmentScale = 0.0002f;
+        [Tooltip("Reward per step for ball velocity toward the opponent goal (the 'shoot goalward' gradient).")]
+        public float ballToGoalVelocityScale = 0.001f;
 
         [Header("Sparse rewards")]
         public float ballContact = 0.05f;

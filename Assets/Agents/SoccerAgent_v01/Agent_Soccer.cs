@@ -196,6 +196,13 @@ namespace PoSoccer
 
             float align = Vector2.Dot(transform.up, toBall.normalized);
             AddReward(rewards.facingAlignmentScale * align);
+
+            // The "shoot goalward" gradient: reward ball velocity toward the opponent
+            // net (signed - shooting at your own net costs the same amount).
+            Vector2 ballToOppGoal =
+                (env.GetGoalPosition(Opponent(team)) - env.Ball.position).normalized;
+            float progress = Vector2.Dot(env.Ball.linearVelocity, ballToOppGoal);
+            AddReward(rewards.ballToGoalVelocityScale * Mathf.Clamp(progress * 0.1f, -1f, 1f));
         }
 
         public override void Heuristic(in ActionBuffers actionsOut)
