@@ -1,0 +1,30 @@
+# Unity — force LF-insensitive text normalization and YAML merge driver
+* text=auto
+
+# Unity YAML files — use unityyamlmerge if configured
+*.unity merge=unityyamlmerge eol=lf
+*.prefab merge=unityyamlmerge eol=lf
+*.asset merge=unityyamlmerge eol=lf
+*.meta merge=unityyamlmerge eol=lf
+*.controller merge=unityyamlmerge eol=lf
+*.anim merge=unityyamlmerge eol=lf
+*.physicsMaterial2D merge=unityyamlmerge eol=lf
+
+# Source
+*.cs text diff=csharp
+*.shader text
+*.uss text
+*.uxml text
+*.json text
+*.yaml text
+*.md text
+
+# Binary assets via Git LFS (enable `git lfs install` to activate)
+*.onnx filter=lfs diff=lfs merge=lfs -text
+*.psd filter=lfs diff=lfs merge=lfs -text
+*.png filter=lfs diff=lfs merge=lfs -text
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.wav filter=lfs diff=lfs merge=lfs -text
+*.mp3 filter=lfs diff=lfs merge=lfs -text
+*.fbx filter=lfs diff=lfs merge=lfs -text
+*.ttf filter=lfs diff=lfs merge=lfs -text
