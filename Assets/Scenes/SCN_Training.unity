@@ -1624,7 +1624,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 0}
+  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
   m_InferenceDevice: 0
   m_BehaviorType: 0
   m_BehaviorName: My Behavior
@@ -1799,6 +1799,8 @@ MonoBehaviour:
   driveAngleDeg: 25
   controlDistance: 1.5
   boostAggression: 0.5
+  interiorHalfExtents: {x: 5.4, y: 8.4}
+  unstickAfter: 1.25
 --- !u!1 &1593781668
 GameObject:
   m_ObjectHideFlags: 0
@@ -1856,6 +1858,8 @@ MonoBehaviour:
   driveAngleDeg: 25
   controlDistance: 1.5
   boostAggression: 0.5
+  interiorHalfExtents: {x: 5.4, y: 8.4}
+  unstickAfter: 1.25
 --- !u!114 &1593781671
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1944,7 +1948,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 0}
+  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
   m_InferenceDevice: 0
   m_BehaviorType: 1
   m_BehaviorName: My Behavior
