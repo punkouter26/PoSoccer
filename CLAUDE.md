@@ -56,7 +56,7 @@ Quirks that will bite you:
 
 **Episode flow.** `Reward_GoalTrigger` (net trigger) → `Agent_EnvController.OnGoalScored/OnStalemate` → terminal rewards (+0.7 scorer via last-touch tracking, +0.3 assist, −1.0 conceding, −0.1 stalemate at 5000 steps) → fires `EpisodeEnded` **before** `EndEpisode`/reset (subscribers can still read cumulative rewards) → `ResetPitch` re-reads the `goal_width` curriculum parameter (6.0→4.0→2.5m).
 
-**Personalities = reward profiles.** A "player" is a brain name + a `Reward_Settings` asset (`Assets/Agents/<Name>_v01/Reward_<NAME>.asset`); the reward mix is the personality, expressed via training. Roster and how to activate a placeholder (MATT/KIM/NICK): `docs/players.md`. Shared engine code stays in `Assets/Agents/SoccerAgent_v01/`; all bodies identical by design so brains are interchangeable.
+**Personalities = reward profiles.** A "player" is a brain name + a `Reward_Settings` asset (`Assets/Agents/<Name>_v01/Reward_<NAME>.asset`); the reward mix is the personality, expressed via training. Roster and how to activate a placeholder (MATT/KIM/NICK): `docs/players.md`. All shared code lives in `Assets/Scripts/`; the tracked model slot is `Assets/Agents/Standard_v01/STANDARD.onnx`. All bodies identical by design so brains are interchangeable.
 
 **Assemblies.** Game code is `PoSoccer.Runtime` (`Assets/PoSoccer.Runtime.asmdef`) referencing `Unity.ML-Agents` (hyphen!), `Unity.InferenceEngine`, `Unity.InputSystem`.
 

@@ -10,7 +10,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $source = Join-Path $root "results\$RunId\$Behavior.onnx"
 # Legacy runs (pre-rename) exported under the old behavior name.
 if (-not (Test-Path $source)) { $source = Join-Path $root "results\$RunId\SoccerAgent.onnx" }
-$target = Join-Path $root "Assets\Agents\SoccerAgent_v01\SoccerAgent_v01.onnx"
+$target = Join-Path $root "Assets\Agents\Standard_v01\STANDARD.onnx"
 
 if (-not (Test-Path $source)) {
     Write-Warning "No exported model at $source - nothing to assign."
@@ -18,4 +18,4 @@ if (-not (Test-Path $source)) {
 }
 
 Copy-Item $source $target -Force
-Write-Host "OK: $RunId -> Assets/Agents/SoccerAgent_v01/SoccerAgent_v01.onnx (GUID preserved)"
+Write-Host "OK: $RunId -> Assets/Agents/Standard_v01/STANDARD.onnx (GUID preserved)"

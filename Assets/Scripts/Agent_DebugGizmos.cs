@@ -10,16 +10,13 @@ namespace PoSoccer
     public sealed class Agent_DebugGizmos : MonoBehaviour
     {
         public bool drawVisionArc = true;
-        public bool drawStamina = true;
         public bool drawFacing = true;
 
         Agent_Soccer _agent;
-        Agent_Stamina _stamina;
 
         void OnDrawGizmos()
         {
             if (_agent == null) _agent = GetComponent<Agent_Soccer>();
-            if (_stamina == null) _stamina = GetComponent<Agent_Stamina>();
 
             Vector3 pos = transform.position;
             Vector3 fwd = transform.up;
@@ -29,12 +26,6 @@ namespace PoSoccer
                 Gizmos.color = _agent.team == Agent_Soccer.Team.Blue ? Color.cyan : Color.red;
                 Gizmos.DrawLine(pos, pos + fwd * 1.2f);
                 Gizmos.DrawSphere(pos + fwd * 1.2f, 0.07f);
-            }
-
-            if (drawStamina && _stamina != null && Application.isPlaying)
-            {
-                Gizmos.color = Color.Lerp(Color.red, Color.green, _stamina.Ratio);
-                Gizmos.DrawWireSphere(pos, 0.55f + 0.25f * _stamina.Ratio);
             }
 
             if (drawVisionArc)

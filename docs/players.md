@@ -11,8 +11,8 @@ profile** (`Reward_Settings` asset — the personality DNA) in a versioned folde
 | **KIM** | Placeholder — defender direction | `Assets/Agents/Kim_v01/` | `Reward_KIM.asset` | `KIM` (untrained) |
 | **NICK** | Placeholder — midfielder direction | `Assets/Agents/Nick_v01/` | `Reward_NICK.asset` | `NICK` (untrained) |
 
-Shared engine code (scripts, physics materials, tracked model slot) lives in
-`Assets/Agents/SoccerAgent_v01/`.
+Shared engine code lives in `Assets/Scripts/`; the tracked model slot and
+physics materials live in `Assets/Agents/Standard_v01/`.
 
 ## Giving a placeholder a real personality
 

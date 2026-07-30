@@ -34,10 +34,6 @@ namespace PoSoccer
         [Tooltip("Boost action activation threshold (PRD: 0.1).")]
         public float boostThreshold = 0.1f;
 
-        [Header("Observation")]
-        [Tooltip("Fixed teammate observation slots (0 for 1v1, 1 for 2v2, 2 for 3v3). Obs size = 14 + 4 * slots.")]
-        [Range(0, 2)] public int teammateSlots = 0;
-
         [Header("Wiring (set by env controller at runtime)")]
         public Agent_EnvController env;
         public Reward_Settings rewards;
@@ -50,7 +46,7 @@ namespace PoSoccer
         Agent_HeuristicBot _bot;
         BehaviorParameters _behavior;
 
-        /// <summary>Base observation count without teammate slots.</summary>
+        /// <summary>Vector observation count (teammate slots return with 2v2 in v2).</summary>
         public const int BaseObservationSize = 14;
 
         void Awake()
@@ -62,8 +58,7 @@ namespace PoSoccer
             {
                 _behavior.BehaviorName = string.IsNullOrEmpty(brainName) ? "STANDARD" : brainName;
                 _behavior.TeamId = (int)team;
-                _behavior.BrainParameters.VectorObservationSize =
-                    BaseObservationSize + 4 * teammateSlots;
+                _behavior.BrainParameters.VectorObservationSize = BaseObservationSize;
                 _behavior.BrainParameters.NumStackedVectorObservations = 1;
                 _behavior.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(3);
                 ApplyEvalMode();
@@ -153,22 +148,6 @@ namespace PoSoccer
             sensor.AddObservation(relOpp);
             sensor.AddObservation(relOwn);
             sensor.AddObservation(distToOppGoal);
-
-            // Teammates (4 per slot, zero-padded so obs size stays fixed across rosters)
-            for (int i = 0; i < teammateSlots; i++)
-            {
-                Agent_Soccer mate = env != null ? env.GetTeammate(this, i) : null;
-                if (mate != null)
-                {
-                    sensor.AddObservation((mate.Body.position - Body.position) * invMax);
-                    sensor.AddObservation(mate.Body.linearVelocity * 0.1f);
-                }
-                else
-                {
-                    sensor.AddObservation(Vector2.zero);
-                    sensor.AddObservation(Vector2.zero);
-                }
-            }
         }
 
         public override void OnActionReceived(ActionBuffers actions)

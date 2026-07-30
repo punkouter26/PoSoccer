@@ -1513,7 +1513,6 @@ GameObject:
   - component: {fileID: 1579506618}
   - component: {fileID: 1579506617}
   - component: {fileID: 1579506626}
-  - component: {fileID: 1579506627}
   m_Layer: 0
   m_Name: AgentBlue
   m_TagString: Agent
@@ -1550,7 +1549,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Agent_DebugGizmos
   drawVisionArc: 1
-  drawStamina: 1
   drawFacing: 1
 --- !u!114 &1579506618
 MonoBehaviour:
@@ -1601,7 +1599,6 @@ MonoBehaviour:
   turnTorque: 7
   boostMultiplier: 2.2
   boostThreshold: 0.1
-  teammateSlots: 0
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
 --- !u!114 &1579506621
@@ -1803,22 +1800,6 @@ MonoBehaviour:
   boostAggression: 0.5
   interiorHalfExtents: {x: 5.4, y: 8.4}
   unstickAfter: 1.25
---- !u!114 &1579506627
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1579506615}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f2902496c0120472b90269f94a0aec7e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.ML-Agents::Unity.MLAgents.Demonstrations.DemonstrationRecorder
-  Record: 0
-  NumStepsToRecord: 0
-  DemonstrationName: human_soccer
-  DemonstrationDirectory: Assets/Demos
 --- !u!1 &1593781668
 GameObject:
   m_ObjectHideFlags: 0
@@ -1891,7 +1872,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Agent_DebugGizmos
   drawVisionArc: 1
-  drawStamina: 1
   drawFacing: 1
 --- !u!114 &1593781672
 MonoBehaviour:
@@ -1942,7 +1922,6 @@ MonoBehaviour:
   turnTorque: 7
   boostMultiplier: 2.2
   boostThreshold: 0.1
-  teammateSlots: 0
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
 --- !u!114 &1593781675

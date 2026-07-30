@@ -15,14 +15,26 @@ Get-CimInstance Win32_Process |
          ($_.Name -match "^python" -and $_.CommandLine -match "tensorboard")) } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -Confirm:$false }
 
-# 2. Prune stale runs: no .onnx export, no checkpoint, or no event files -> dead weight.
+# 2. Prune stale runs (no events and no model = dead weight) and archive old ones:
+#    only the newest $KeepRuns stay visible in TensorBoard; older move to _archive/.
+$KeepRuns = 3
 if (Test-Path $results) {
-    Get-ChildItem $results -Directory | Where-Object { $_.Name -ne "eval" } | ForEach-Object {
-        $hasEvents = Get-ChildItem $_.FullName -Recurse -Filter "events.out.tfevents.*" | Select-Object -First 1
-        $hasModel = Get-ChildItem $_.FullName -Recurse -Include "*.onnx", "*.pt" | Select-Object -First 1
+    $runs = Get-ChildItem $results -Directory | Where-Object { $_.Name -notin @("eval", "_archive") }
+    foreach ($run in $runs) {
+        $hasEvents = Get-ChildItem $run.FullName -Recurse -Filter "events.out.tfevents.*" | Select-Object -First 1
+        $hasModel = Get-ChildItem $run.FullName -Recurse -Include "*.onnx", "*.pt" | Select-Object -First 1
         if (-not $hasEvents -and -not $hasModel) {
-            Write-Host "Pruning stale run: $($_.Name)"
-            Remove-Item $_.FullName -Recurse -Force
+            Write-Host "Pruning stale run: $($run.Name)"
+            Remove-Item $run.FullName -Recurse -Force
+        }
+    }
+    $live = Get-ChildItem $results -Directory | Where-Object { $_.Name -notin @("eval", "_archive") } |
+        Sort-Object LastWriteTime -Descending
+    if ($live.Count -gt $KeepRuns) {
+        New-Item -ItemType Directory -Force (Join-Path $results "_archive") | Out-Null
+        $live | Select-Object -Skip $KeepRuns | ForEach-Object {
+            Write-Host "Archiving old run: $($_.Name)"
+            Move-Item $_.FullName (Join-Path $results "_archive\$($_.Name)") -Force
         }
     }
 }

@@ -6,7 +6,7 @@ param(
     [string]$EnvPath = "",
     [int]$NumEnvs = 4,
     [int]$BasePort = 5005,
-    [string]$Config = "SoccerAgent_v01_phase1_ppo.yaml",
+    [string]$Config = "STANDARD_phase1_ppo.yaml",
     [string]$InitFrom = "",
     [switch]$Resume,
     [switch]$Force

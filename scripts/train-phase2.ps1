@@ -16,7 +16,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 & "$root\.venv\Scripts\Activate.ps1"
 
-$mlArgs = @("$root\config\SoccerAgent_v01_phase2_poca.yaml",
+$mlArgs = @("$root\config\STANDARD_phase2_poca.yaml",
           "--run-id=$RunId", "--base-port=$BasePort", "--results-dir=$root\results")
 if ($EnvPath)  { $mlArgs += @("--env=$root\$EnvPath", "--no-graphics", "--num-envs=$NumEnvs") }
 if ($InitFrom) { $mlArgs += "--initialize-from=$InitFrom" }

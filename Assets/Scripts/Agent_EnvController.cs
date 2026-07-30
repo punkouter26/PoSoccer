@@ -220,18 +220,6 @@ namespace PoSoccer
         public Transform GetGoalTransform(Agent_Soccer.Team ownerTeam) =>
             ownerTeam == Agent_Soccer.Team.Blue ? blueGoal : redGoal;
 
-        public Agent_Soccer GetTeammate(Agent_Soccer self, int index)
-        {
-            int seen = 0;
-            foreach (var agent in agents)
-            {
-                if (agent == self || agent.team != self.team) continue;
-                if (seen == index) return agent;
-                seen++;
-            }
-            return null;
-        }
-
         int TeamSize(Agent_Soccer.Team t)
         {
             int n = 0;
