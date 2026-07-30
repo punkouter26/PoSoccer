@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "project": "PoSoccer",
+  "conventions": {
+    "language": "csharp",
+    "runtime": "Unity 6000.5.4f1 (2D URP, mobile portrait)",
+    "packageManager": "UPM (Packages/manifest.json) + uv/.venv for Python mlagents",
+    "testRunner": "Unity Test Framework (EditMode/PlayMode) via MCP tests-run",
+    "buildSystem": "Unity CLI -buildWindows64Player (scripts/build-headless.ps1)",
+    "directories": {
+      "agents": "Assets/Agents/<AgentName>_v<NN>/",
+      "scripts": "Assets/Scripts/",
+      "scenes": "Assets/Scenes/ (SCN_ prefix)",
+      "trainingConfigs": "config/",
+      "opsScripts": "scripts/"
+    },
+    "rules": "UNITY_RULES: folder depth <=2 under Assets/, script prefixes Agent_/Sensor_/Reward_, UI Toolkit only, scene setup via MCP only (no editor tools), version parity C#<->Python ML-Agents"
+  },
+  "preferences": {
+    "specDir": "docs/plans",
+    "outputStyle": "concise",
+    "autonomy": "high",
+    "tdd": "pragmatic",
+    "autoCommit": false
+  }
+}
