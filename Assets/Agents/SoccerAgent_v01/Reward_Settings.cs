@@ -1,0 +1,31 @@
+using UnityEngine;
+
+namespace PoSoccer
+{
+    /// <summary>
+    /// Central reward constants for SoccerAgent_v01 (PRD §Reward Engineering).
+    /// One asset instance is shared by every pitch so training tweaks happen in one place.
+    /// </summary>
+    [CreateAssetMenu(fileName = "Reward_Settings", menuName = "PoSoccer/Reward Settings")]
+    public sealed class Reward_Settings : ScriptableObject
+    {
+        [Header("Terminal rewards")]
+        public float goalScorer = 0.7f;
+        public float assist = 0.3f;
+        public float teamBaselineVictory = 0.2f;
+        public float goalConceded = -1.0f;
+        public float stalemateTimeout = -0.10f;
+
+        [Header("Dense rewards (per decision step)")]
+        public float stepPenalty = -0.0001f;
+        public float ballProximityScale = 0.0004f;
+        public float facingAlignmentScale = 0.0002f;
+
+        [Header("Sparse rewards")]
+        public float ballContact = 0.05f;
+
+        [Header("Episode limits")]
+        [Tooltip("Env steps before stalemate timeout is applied.")]
+        public int maxEnvironmentSteps = 5000;
+    }
+}

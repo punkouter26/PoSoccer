@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "UnityMCP": {
+      "command": "c:/Users/punko/Downloads/PoSoccer/Library/mcp-server/win-x64/gamedev-mcp-server.exe",
+      "args": ["port=8080", "client-transport=stdio"],
+      "comment": "IvanMurzak Unity-MCP — binary is built into Library/mcp-server by the Unity plugin on first editor load"
+    },
+    "MCPForUnity": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "c:/Users/punko/Downloads/PoSoccer/.tooling/coplay-unity-mcp/Server",
+        "mcp-for-unity"
+      ],
+      "comment": "CoplayDev MCP for Unity — Python FastMCP server; Unity-side bridge ships in com.coplaydev.unity-mcp package"
+    }
+  }
+}

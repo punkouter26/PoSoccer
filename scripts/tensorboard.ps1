@@ -1,0 +1,30 @@
+# Observability (UNITY_RULES): restart TensorBoard, cleaning unused items first.
+# "Unused" = result dirs with no checkpoints/events, plus any already-running TB session.
+param([int]$Port = 6006)
+
+$ErrorActionPreference = "SilentlyContinue"
+$root = Split-Path $PSScriptRoot -Parent
+$results = Join-Path $root "results"
+
+# 1. Kill existing TensorBoard sessions (always restart clean).
+Get-CimInstance Win32_Process |
+    Where-Object { $_.CommandLine -match "tensorboard" } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+
+# 2. Prune stale runs: no .onnx export, no checkpoint, or no event files -> dead weight.
+if (Test-Path $results) {
+    Get-ChildItem $results -Directory | ForEach-Object {
+        $hasEvents = Get-ChildItem $_.FullName -Recurse -Filter "events.out.tfevents.*" | Select-Object -First 1
+        $hasModel = Get-ChildItem $_.FullName -Recurse -Include "*.onnx", "*.pt" | Select-Object -First 1
+        if (-not $hasEvents -and -not $hasModel) {
+            Write-Host "Pruning stale run: $($_.Name)"
+            Remove-Item $_.FullName -Recurse -Force
+        }
+    }
+}
+
+# 3. Relaunch.
+$ErrorActionPreference = "Stop"
+& "$root\.venv\Scripts\Activate.ps1"
+Write-Host "TensorBoard -> http://localhost:$Port (reward convergence / policy entropy / value loss)"
+tensorboard --logdir $results --port $Port
