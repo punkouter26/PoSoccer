@@ -55,7 +55,6 @@
     "com.unity.modules.wind": "1.0.0",
     "com.unity.modules.xr": "1.0.0",
     "com.ivanmurzak.unity.mcp": "0.86.3",
-    "com.unity.ml-agents": "file:../ml-agents/com.unity.ml-agents",
     "com.coplaydev.unity-mcp": "https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity#main",
     "com.besty.unity-skills": "https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity#main",
     "com.unity.cinemachine": "3.1.7",
