@@ -6,6 +6,7 @@ param(
     [string]$EnvPath = "",
     [int]$NumEnvs = 4,
     [int]$BasePort = 5005,
+    [string]$Config = "SoccerAgent_v01_phase1_ppo.yaml",
     [switch]$Resume,
     [switch]$Force
 )
@@ -14,14 +15,14 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 & "$root\.venv\Scripts\Activate.ps1"
 
-$args = @("$root\config\SoccerAgent_v01_phase1_ppo.yaml",
+$mlArgs = @("$root\config\$Config",
           "--run-id=$RunId", "--base-port=$BasePort", "--results-dir=$root\results")
-if ($EnvPath) { $args += @("--env=$root\$EnvPath", "--no-graphics", "--num-envs=$NumEnvs") }
-if ($Resume)  { $args += "--resume" }
-if ($Force)   { $args += "--force" }
+if ($EnvPath) { $mlArgs += @("--env=$root\$EnvPath", "--no-graphics", "--num-envs=$NumEnvs") }
+if ($Resume)  { $mlArgs += "--resume" }
+if ($Force)   { $mlArgs += "--force" }
 
 try {
-    mlagents-learn @args
+    mlagents-learn @mlArgs
 }
 finally {
     # Lifecycle guardrail: no orphaned trainer/env processes after a run.

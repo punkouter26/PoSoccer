@@ -16,15 +16,15 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 & "$root\.venv\Scripts\Activate.ps1"
 
-$args = @("$root\config\SoccerAgent_v01_phase2_poca.yaml",
+$mlArgs = @("$root\config\SoccerAgent_v01_phase2_poca.yaml",
           "--run-id=$RunId", "--base-port=$BasePort", "--results-dir=$root\results")
-if ($EnvPath)  { $args += @("--env=$root\$EnvPath", "--no-graphics", "--num-envs=$NumEnvs") }
-if ($InitFrom) { $args += "--initialize-from=$InitFrom" }
-if ($Resume)   { $args += "--resume" }
-if ($Force)    { $args += "--force" }
+if ($EnvPath)  { $mlArgs += @("--env=$root\$EnvPath", "--no-graphics", "--num-envs=$NumEnvs") }
+if ($InitFrom) { $mlArgs += "--initialize-from=$InitFrom" }
+if ($Resume)   { $mlArgs += "--resume" }
+if ($Force)    { $mlArgs += "--force" }
 
 try {
-    mlagents-learn @args
+    mlagents-learn @mlArgs
 }
 finally {
     & "$root\scripts\cleanup-training.ps1"
