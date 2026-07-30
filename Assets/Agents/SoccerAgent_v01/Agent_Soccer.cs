@@ -63,6 +63,38 @@ namespace PoSoccer
                     BaseObservationSize + 4 * teammateSlots;
                 _behavior.BrainParameters.NumStackedVectorObservations = 1;
                 _behavior.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(3);
+                ApplyEvalMode();
+            }
+        }
+
+        // Evaluation switch (v1 spec): env vars are set by scripts/evaluate.ps1 before
+        // launch and read here, before Agent.OnEnable initializes the policy.
+        void ApplyEvalMode()
+        {
+            if (!Agent_EvalStats.EvalMode) return;
+
+            if (Agent_EvalStats.BaselineMode)
+            {
+                _behavior.BehaviorType = BehaviorType.HeuristicOnly;
+            }
+            else if (team == Team.Blue)
+            {
+                if (_behavior.Model != null)
+                {
+                    _behavior.BehaviorType = BehaviorType.InferenceOnly;
+                }
+                else
+                {
+                    Debug.LogError("[Agent_Soccer] Eval mode but no model assigned - " +
+                                   "run scripts/update-model.ps1 and assign the .onnx. " +
+                                   "Falling back to heuristic; run marked invalid.");
+                    Agent_EvalStats.MarkInvalid();
+                    _behavior.BehaviorType = BehaviorType.HeuristicOnly;
+                }
+            }
+            else
+            {
+                _behavior.BehaviorType = BehaviorType.HeuristicOnly;
             }
         }
 
@@ -170,7 +202,8 @@ namespace PoSoccer
         {
             var continuous = actionsOut.ContinuousActions;
 
-            if (_bot != null && env != null && env.Ball != null)
+            // Disable the bot component to reclaim keyboard control for play-testing.
+            if (_bot != null && _bot.enabled && env != null && env.Ball != null)
             {
                 Vector3 a = _bot.ComputeActions(Body, env.Ball, env.GetGoalTransform(Opponent(team)));
                 continuous[0] = a.x;

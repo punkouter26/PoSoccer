@@ -35,6 +35,13 @@ namespace PoSoccer
         public int StepCount { get; private set; }
         public float CurrentGoalWidth { get; private set; }
 
+        /// <summary>
+        /// Fires once per episode after terminal rewards are applied but BEFORE
+        /// EndEpisode/ResetPitch, so subscribers can still sample
+        /// agent.GetCumulativeReward() and StepCount. Winning team, null = stalemate.
+        /// </summary>
+        public event System.Action<Agent_Soccer.Team?> EpisodeEnded;
+
         SimpleMultiAgentGroup _blueGroup;
         SimpleMultiAgentGroup _redGroup;
         Agent_Soccer _lastToucher;
@@ -122,6 +129,8 @@ namespace PoSoccer
                 }
             }
 
+            EpisodeEnded?.Invoke(scoringTeam);
+
             // Group-level signal for MA-POCA credit assignment (2v2 / 3v3)
             if (_blueGroup != null)
             {
@@ -146,6 +155,8 @@ namespace PoSoccer
             _episodeEnding = true;
 
             foreach (var agent in agents) agent.AddReward(rewards.stalemateTimeout);
+
+            EpisodeEnded?.Invoke(null);
 
             if (_blueGroup != null)
             {

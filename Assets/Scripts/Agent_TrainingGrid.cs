@@ -22,7 +22,9 @@ namespace PoSoccer
         void Awake()
         {
             if (pitchRoot == null || instances <= 1) return;
-            if (onlyWhenTraining && !Unity.MLAgents.Academy.Instance.IsCommunicatorOn) return;
+            // Clone for training (trainer connected) and for headless evaluation runs.
+            if (onlyWhenTraining && !Unity.MLAgents.Academy.Instance.IsCommunicatorOn
+                && !Agent_EvalStats.EvalMode) return;
 
             for (int i = 1; i < instances; i++)
             {
