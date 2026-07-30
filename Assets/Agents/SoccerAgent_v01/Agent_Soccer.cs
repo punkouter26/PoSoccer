@@ -212,13 +212,13 @@ namespace PoSoccer
                 return;
             }
 
-            // Keyboard fallback for human play-testing (W/S move, A/D turn, Shift boost).
-            // Input System package only — legacy Input is disabled in this project.
+            // Keyboard fallback for human play-testing (W/S move, A/D turn,
+            // K boost - Shift also works). Input System package only.
             var kb = UnityEngine.InputSystem.Keyboard.current;
             if (kb == null) return;
             continuous[0] = (kb.wKey.isPressed ? 1f : 0f) + (kb.sKey.isPressed ? -1f : 0f);
             continuous[1] = (kb.aKey.isPressed ? 1f : 0f) + (kb.dKey.isPressed ? -1f : 0f);
-            continuous[2] = kb.leftShiftKey.isPressed ? 1f : 0f;
+            continuous[2] = kb.kKey.isPressed || kb.leftShiftKey.isPressed ? 1f : 0f;
         }
 
         void OnCollisionEnter2D(Collision2D collision)
