@@ -58,8 +58,9 @@ namespace PoSoccer
         /// <summary>Vector observation count (teammate slots return with 2v2 in v2).</summary>
         public const int BaseObservationSize = 14;
 
-        void Awake()
+        protected override void Awake()
         {
+            base.Awake();
             // Configure the policy contract in code (runs before Agent.OnEnable
             // initializes the policy) so scene serialization can never drift from it.
             _behavior = GetComponent<BehaviorParameters>();

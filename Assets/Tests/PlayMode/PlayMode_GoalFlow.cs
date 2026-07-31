@@ -19,7 +19,7 @@ namespace PoSoccer.Tests
             yield return null;              // scene Awake/OnEnable
             yield return null;              // Start (env self-discovers agents)
 
-            _env = Object.FindFirstObjectByType<Agent_EnvController>();
+            _env = Object.FindAnyObjectByType<Agent_EnvController>();
             Assert.IsNotNull(_env, "Pitch env controller not found in SCN_Training");
             Assert.IsTrue(_env.agents.Count >= 2, "env did not discover its agents");
         }
