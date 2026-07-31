@@ -52,6 +52,7 @@ namespace PoSoccer
 
         Agent_HeuristicBot _bot;
         BehaviorParameters _behavior;
+        Transform _label;                              // identity letter, kept upright
         float _drive;                                  // slew-limited applied force (N)
         readonly float[] _prevActions = new float[3];  // for the jitter penalty
 
@@ -146,7 +147,7 @@ namespace PoSoccer
                 text.text = rewards.playerName.Substring(0, 1);
                 text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
                 text.fontSize = 96;
-                text.characterSize = 0.14f;
+                text.characterSize = 0.085f;
                 text.anchor = TextAnchor.MiddleCenter;
                 text.alignment = TextAlignment.Center;
                 text.fontStyle = FontStyle.Bold;
@@ -155,7 +156,14 @@ namespace PoSoccer
                 var renderer = labelGo.GetComponent<MeshRenderer>();
                 renderer.sharedMaterial = text.font.material;
                 renderer.sortingOrder = 5;
+                _label = labelGo.transform;
             }
+        }
+
+        void Update()
+        {
+            // Letters stay readable no matter which way the body faces.
+            if (_label != null) _label.rotation = Quaternion.identity;
         }
 
         public override void OnEpisodeBegin()
