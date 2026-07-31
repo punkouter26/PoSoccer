@@ -24,15 +24,22 @@ namespace PoSoccer
                  "brains (MATT, KIM, NICK) get their own name + reward profile + policy.")]
         public string brainName = "STANDARD";
 
-        [Header("Actuation")]
-        [Tooltip("Continuous force along the +Y eye axis at action = 1.")]
-        public float moveForce = 9f;
-        [Tooltip("Torque applied at turn action = 1.")]
-        public float turnTorque = 7f;
-        [Tooltip("Force multiplier while boosting with stamina available (PRD: 2.2x).")]
+        [Header("Actuation (SI units - 75 kg body)")]
+        [Tooltip("Drive force (N) along the +Y eye axis at action = 1. ~700 N on a 75 kg body with drag 2 gives a ~4.7 m/s jog.")]
+        public float moveForce = 700f;
+        [Tooltip("Turn torque (N*m) at action = 1.")]
+        public float turnTorque = 250f;
+        [Tooltip("Force multiplier while boosting with stamina available (PRD: 2.2x -> ~10 m/s sprint).")]
         public float boostMultiplier = 2.2f;
         [Tooltip("Boost action activation threshold (PRD: 0.1).")]
         public float boostThreshold = 0.1f;
+        [Tooltip("Human rotation limit (deg/s). Athletes cannot spin faster than ~a full turn per second.")]
+        public float maxAngularVelocityDeg = 360f;
+        [Tooltip("How fast the applied drive force can change (N/s). Full power takes ~0.3s; reversals are not instant.")]
+        public float forceSlewRate = 2300f;
+        [Range(0.3f, 1f)]
+        [Tooltip("Power fraction remaining at zero stamina (exhausted agents visibly slow).")]
+        public float tiredPowerFloor = 0.6f;
 
         [Header("Wiring (set by env controller at runtime)")]
         public Agent_EnvController env;
@@ -45,6 +52,8 @@ namespace PoSoccer
 
         Agent_HeuristicBot _bot;
         BehaviorParameters _behavior;
+        float _drive;                                  // slew-limited applied force (N)
+        readonly float[] _prevActions = new float[3];  // for the jitter penalty
 
         /// <summary>Vector observation count (teammate slots return with 2v2 in v2).</summary>
         public const int BaseObservationSize = 14;
@@ -59,7 +68,9 @@ namespace PoSoccer
                 _behavior.BehaviorName = string.IsNullOrEmpty(brainName) ? "STANDARD" : brainName;
                 _behavior.TeamId = (int)team;
                 _behavior.BrainParameters.VectorObservationSize = BaseObservationSize;
-                _behavior.BrainParameters.NumStackedVectorObservations = 1;
+                // 2 stacked frames give the policy velocity/trend context at the
+                // slower decision cadence (period 8).
+                _behavior.BrainParameters.NumStackedVectorObservations = 2;
                 _behavior.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(3);
                 ApplyEvalMode();
             }
@@ -107,6 +118,8 @@ namespace PoSoccer
         {
             TouchedBallThisEpisode = false;
             IsBoosting = false;
+            _drive = 0f;
+            System.Array.Clear(_prevActions, 0, _prevActions.Length);
             Stamina.ResetForEpisode();
             Body.linearVelocity = Vector2.zero;
             Body.angularVelocity = 0f;
@@ -157,16 +170,23 @@ namespace PoSoccer
             float boost = Mathf.Clamp01(actions.ContinuousActions[2]);
 
             IsBoosting = boost > boostThreshold && Stamina.HasStamina;
-            float force = moveForce * (IsBoosting ? boostMultiplier : 1f);
 
-            Body.AddForce((Vector2)transform.up * (move * force));
+            // Exhaustion scales available power; drive force slews rather than
+            // stepping, so direction reversals take human-like time.
+            float staminaPower = tiredPowerFloor + (1f - tiredPowerFloor) * Stamina.Ratio;
+            float targetDrive = move * moveForce * (IsBoosting ? boostMultiplier : 1f) * staminaPower;
+            _drive = Mathf.MoveTowards(_drive, targetDrive, forceSlewRate * Time.fixedDeltaTime);
+
+            Body.AddForce((Vector2)transform.up * _drive);
             Body.AddTorque(turn * turnTorque);
+            Body.angularVelocity = Mathf.Clamp(
+                Body.angularVelocity, -maxAngularVelocityDeg, maxAngularVelocityDeg);
             Stamina.Tick(IsBoosting, Time.fixedDeltaTime);
 
-            ApplyDenseRewards();
+            ApplyDenseRewards(move, turn, boost);
         }
 
-        void ApplyDenseRewards()
+        void ApplyDenseRewards(float move, float turn, float boost)
         {
             if (rewards == null || env == null || env.Ball == null) return;
 
@@ -185,6 +205,21 @@ namespace PoSoccer
                 (env.GetGoalPosition(Opponent(team)) - env.Ball.position).normalized;
             float progress = Vector2.Dot(env.Ball.linearVelocity, ballToOppGoal);
             AddReward(rewards.ballToGoalVelocityScale * Mathf.Clamp(progress * 0.1f, -1f, 1f));
+
+            // Anti-twitch: penalize per-step action change so learned movement is smooth.
+            float jitter = (Mathf.Abs(move - _prevActions[0])
+                          + Mathf.Abs(turn - _prevActions[1])
+                          + Mathf.Abs(boost - _prevActions[2])) / 3f;
+            AddReward(-rewards.actionJitterScale * jitter);
+            _prevActions[0] = move; _prevActions[1] = turn; _prevActions[2] = boost;
+
+            // Wall aversion: standing in the boundary band produced wall-hug play.
+            Vector2 local = Body.position - (Vector2)env.transform.position;
+            float wallDist = Mathf.Min(
+                env.PitchHalfExtents.x - Mathf.Abs(local.x),
+                env.PitchHalfExtents.y - Mathf.Abs(local.y));
+            if (wallDist < 0.8f)
+                AddReward(-rewards.wallProximityPenalty * (0.8f - wallDist) / 0.8f);
         }
 
         public override void Heuristic(in ActionBuffers actionsOut)
@@ -217,6 +252,11 @@ namespace PoSoccer
             if (!TouchedBallThisEpisode && rewards != null)
                 AddReward(rewards.ballContact);
             TouchedBallThisEpisode = true;
+
+            // Spin transfer: body rotation at contact puts curl on the ball
+            // (paired with the Magnus force in Agent_EnvController).
+            if (env != null && env.Ball != null)
+                env.Ball.angularVelocity += Body.angularVelocity * 0.3f;
 
             env?.NotifyBallTouch(this);
         }

@@ -41,11 +41,15 @@ namespace PoSoccer.Tests
                 ended = true;
             };
 
+            // Spawns are domain-randomized - park both agents far from the shooting
+            // lane so a 75 kg body cannot block the test shot.
+            blue.Body.position = new Vector2(-5f, -2f);
+            red.Body.position = new Vector2(-5f, 2f);
+
             // Without a registered last touch the scorer path pays only +0.2.
             _env.NotifyBallTouch(red);
 
-            // Shoot the ball into the blue net from an open lane (x=2.5 avoids the
-            // blue agent at x~0; goal mouth spans +/-3 at the default 6m width).
+            // Shoot the ball into the blue net (goal mouth spans +/-3 at 6m width).
             var ball = _env.Ball;
             ball.position = new Vector2(2.5f, 0f);
             ball.linearVelocity = new Vector2(0f, -30f);

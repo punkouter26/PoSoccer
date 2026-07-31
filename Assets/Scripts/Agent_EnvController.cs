@@ -30,6 +30,16 @@ namespace PoSoccer
         [Tooltip("Fallback goal width when no trainer curriculum is driving 'goal_width'.")]
         public float defaultGoalWidth = 6.0f;
 
+        [Header("Ball physics")]
+        [Tooltip("Magnus-lite: curl force = scale * spin * perpendicular(velocity). Gives swerving shots.")]
+        public float magnusScale = 0.0005f;
+        [Tooltip("Ball rolling drag randomized per episode (domain randomization for robust policies).")]
+        public Vector2 ballDampingRange = new(0.08f, 0.15f);
+
+        [Header("Domain randomization")]
+        [Tooltip("Agents respawn anywhere in their own half within these margins instead of fixed spots.")]
+        public bool randomizeSpawns = true;
+
         public Rigidbody2D Ball => ball;
         public Vector2 PitchHalfExtents => pitchHalfExtents;
         public int StepCount { get; private set; }
@@ -90,6 +100,14 @@ namespace PoSoccer
                 OnStalemate();
             else if (AnythingOutOfBounds())
                 OnOutOfBounds();
+
+            // Magnus-lite: spinning balls curve. angularVelocity is deg/s in 2D.
+            if (ball != null && magnusScale > 0f)
+            {
+                Vector2 v = ball.linearVelocity;
+                float spin = ball.angularVelocity * Mathf.Deg2Rad;
+                ball.AddForce(magnusScale * spin * new Vector2(-v.y, v.x));
+            }
         }
 
         // Containment watchdog: high-speed boost collisions can depenetrate bodies
@@ -230,13 +248,26 @@ namespace PoSoccer
                 ball.transform.position = _ballSpawn + (Vector3)jitter;
                 ball.linearVelocity = Vector2.zero;
                 ball.angularVelocity = 0f;
+                // Domain randomization: pitch conditions vary slightly every episode.
+                ball.linearDamping = Random.Range(ballDampingRange.x, ballDampingRange.y);
             }
 
             foreach (var agent in agents)
             {
-                Vector3 basePos = _spawnPositions[agent];
-                Vector2 jitter = Random.insideUnitCircle * 0.75f;
-                agent.transform.position = basePos + (Vector3)jitter;
+                if (randomizeSpawns)
+                {
+                    // Anywhere in the agent's own half, clear of walls and center line.
+                    float sign = agent.team == Agent_Soccer.Team.Blue ? -1f : 1f;
+                    Vector2 local = new(
+                        Random.Range(-pitchHalfExtents.x + 1.5f, pitchHalfExtents.x - 1.5f),
+                        sign * Random.Range(1.5f, pitchHalfExtents.y - 1.5f));
+                    agent.transform.position = transform.position + (Vector3)local;
+                }
+                else
+                {
+                    Vector3 basePos = _spawnPositions[agent];
+                    agent.transform.position = basePos + (Vector3)(Random.insideUnitCircle * 0.75f);
+                }
                 agent.transform.rotation = _spawnRotations[agent]
                     * Quaternion.Euler(0f, 0f, Random.Range(-20f, 20f));
             }

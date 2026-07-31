@@ -21,5 +21,7 @@ MonoBehaviour:
   ballProximityScale: 0.0004
   facingAlignmentScale: 0.0002
   ballToGoalVelocityScale: 0.001
+  actionJitterScale: 0.001
+  wallProximityPenalty: 0.0005
   ballContact: 0.05
   maxEnvironmentSteps: 5000

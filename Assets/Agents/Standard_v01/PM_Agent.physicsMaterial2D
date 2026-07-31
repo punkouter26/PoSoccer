@@ -8,7 +8,7 @@ PhysicsMaterial2D:
   m_PrefabAsset: {fileID: 0}
   m_Name: PM_Agent
   serializedVersion: 2
-  m_Friction: 0.1
-  m_Bounciness: 0.2
+  m_Friction: 0.3
+  m_Bounciness: 0.05
   m_FrictionCombine: 0
   m_BounceCombine: 0
