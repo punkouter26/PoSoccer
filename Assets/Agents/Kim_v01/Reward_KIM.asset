@@ -14,6 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   playerName: KIM
   playerColor: {r: 0.16, g: 0.75, b: 0.85, a: 1}
+  bodyScale: 0.9
+  bodyMass: 66
   personalityNotes: 'THE WALL. Deepest conceding fear on the roster; screening the
     lane between ball and own goal pays continuously (defensivePositionScale, her
     signature trait). Patient - a draw barely stings, does not swarm, comfortable

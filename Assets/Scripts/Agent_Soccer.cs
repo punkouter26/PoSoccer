@@ -134,6 +134,17 @@ namespace PoSoccer
         {
             if (rewards == null) return;
 
+            // Physique: size and mass from the profile. Drive force and drag are
+            // shared, so mass trades acceleration/top speed for shove resistance
+            // while top-speed momentum stays identical across the roster.
+            if (rewards.bodyScale > 0f && !Mathf.Approximately(rewards.bodyScale, 1f))
+            {
+                Vector3 s = transform.localScale;
+                transform.localScale = new Vector3(
+                    s.x * rewards.bodyScale, s.y * rewards.bodyScale, s.z);
+            }
+            if (rewards.bodyMass > 0f && Body != null) Body.mass = rewards.bodyMass;
+
             // Body wears the personality color; the eye shows the team.
             var body = GetComponent<SpriteRenderer>();
             if (body != null && rewards.playerColor.a > 0f)

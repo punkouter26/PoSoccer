@@ -19,6 +19,12 @@ possessionScale`) = **0.0016** — allocated differently per personality. Moveme
 penalties (`stepPenalty`, `actionJitterScale`, `wallProximityPenalty`) are style
 flavor, not budget. Keep both sums invariant when tuning a personality.
 
+**Physique (also balanced):** `bodyScale`/`bodyMass` in the profile. Drive force
+and drag are shared, so top-speed momentum (mass × max speed) is identical for
+every mass — big bodies trade speed for shove power, small bodies the reverse.
+MATT 1.25×/95 kg (big, slow bulldozer), STANDARD 1.0×/75 kg, KIM 0.9×/66 kg,
+NICK 0.85×/60 kg (small, quick). Applied in `Agent_Soccer.Start`.
+
 Custom look: drop a per-player square texture into their folder (e.g.
 `Matt_v01/MATT_square.png`) and assign it to the agent's SpriteRenderer sprite;
 the team tint is just the SpriteRenderer color and can be removed per player.

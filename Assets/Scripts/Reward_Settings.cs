@@ -20,6 +20,14 @@ namespace PoSoccer
         [Tooltip("This player's trained brain. Null = plays with the rule-based bot until trained.")]
         public Unity.InferenceEngine.ModelAsset brainModel;
 
+        [Header("Physique")]
+        [Tooltip("Body size multiplier on the scene's base scale. Big bodies block and shield more of the pitch.")]
+        public float bodyScale = 1f;
+        [Tooltip("Body mass (kg). Drive force is shared, so heavier = slower but harder to shove; " +
+                 "top-speed momentum (mass x max speed) is identical for every mass - big-slow and " +
+                 "small-fast are equally strong, just different.")]
+        public float bodyMass = 75f;
+
         [Header("Terminal rewards")]
         public float goalScorer = 0.7f;
         public float assist = 0.3f;
