@@ -17,10 +17,14 @@ namespace PoSoccer
             void OnCollisionEnter2D(Collision2D collision) => Hit?.Invoke(collision);
         }
 
+        [Tooltip("Round sprite used for boost exhaust particles (e.g. the ball sprite).")]
+        public Sprite particleSprite;
+
         Agent_EnvController _env;
         Camera _camera;
         Transform _ballVisual;
         Coroutine _squash;
+        readonly System.Collections.Generic.List<(Agent_Soccer agent, ParticleSystem ps)> _boost = new();
 
         void Start()
         {
@@ -36,6 +40,10 @@ namespace PoSoccer
                 BuildTrail(_env.Ball.transform);
                 _ballVisual = _env.Ball.transform.Find("BallVisual");
             }
+
+            foreach (var agent in _env.agents)
+                if (agent != null)
+                    _boost.Add((agent, BuildBoostExhaust(agent)));
         }
 
         void OnDestroy()
@@ -59,11 +67,65 @@ namespace PoSoccer
             trail.sortingOrder = 1;
         }
 
+        ParticleSystem BuildBoostExhaust(Agent_Soccer agent)
+        {
+            var go = new GameObject("BoostExhaust");
+            go.transform.SetParent(agent.transform, false);
+            go.transform.localPosition = new Vector3(0f, -0.55f, 0f);
+            go.transform.localRotation = Quaternion.Euler(0f, 0f, 180f);
+
+            var ps = go.AddComponent<ParticleSystem>();
+            var main = ps.main;
+            main.startLifetime = 0.25f;
+            main.startSpeed = 2.2f;
+            main.startSize = 0.11f;
+            main.startColor = agent.rewards != null ? agent.rewards.playerColor : Color.white;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            var emission = ps.emission;
+            emission.rateOverTime = 0f;
+            var shape = ps.shape;
+            shape.shapeType = ParticleSystemShapeType.Cone;
+            shape.angle = 10f;
+            // Thrust look: shrink and fade over life instead of popping out.
+            var sizeOverLife = ps.sizeOverLifetime;
+            sizeOverLife.enabled = true;
+            sizeOverLife.size = new ParticleSystem.MinMaxCurve(
+                1f, AnimationCurve.Linear(0f, 1f, 1f, 0.1f));
+            var colorOverLife = ps.colorOverLifetime;
+            colorOverLife.enabled = true;
+            var gradient = new Gradient();
+            gradient.SetKeys(
+                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                new[] { new GradientAlphaKey(0.9f, 0f), new GradientAlphaKey(0f, 1f) });
+            colorOverLife.color = gradient;
+
+            var renderer = ps.GetComponent<ParticleSystemRenderer>();
+            var shader = Shader.Find("Sprites/Default");
+            if (shader != null)
+            {
+                renderer.material = new Material(shader);
+                if (particleSprite != null)
+                    renderer.material.mainTexture = particleSprite.texture;
+            }
+            renderer.sortingOrder = 1;
+            return ps;
+        }
+
         void OnEpisodeEnded(Agent_Soccer.Team? winner)
         {
             if (winner == null) return;
             Agent_Stadium.Instance?.PulseGoal();
             if (_camera != null) StartCoroutine(Shake(0.35f, 0.22f));
+        }
+
+        void Update()
+        {
+            foreach (var (agent, ps) in _boost)
+            {
+                if (agent == null || ps == null) continue;
+                var emission = ps.emission;
+                emission.rateOverTime = agent.IsBoosting ? 45f : 0f;
+            }
         }
 
         void OnBallHit(Collision2D collision)
