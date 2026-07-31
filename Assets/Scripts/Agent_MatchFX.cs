@@ -4,9 +4,8 @@ using UnityEngine;
 namespace PoSoccer
 {
     /// <summary>
-    /// Match juice, all built at runtime: ball speed trail, boost exhaust
-    /// particles per agent, goal celebration burst in the winning team's color,
-    /// camera shake, and a ball squash on hard contacts. Sits on the Pitch root.
+    /// Match juice, all built at runtime: ball speed trail, camera shake on
+    /// goals, and a ball squash on hard contacts. Sits on the Pitch root.
     /// </summary>
     [RequireComponent(typeof(Agent_EnvController))]
     public sealed class Agent_MatchFX : MonoBehaviour
@@ -20,8 +19,6 @@ namespace PoSoccer
 
         Agent_EnvController _env;
         Camera _camera;
-        ParticleSystem _goalBurst;
-        readonly System.Collections.Generic.List<(Agent_Soccer agent, ParticleSystem ps)> _boost = new();
         Transform _ballVisual;
         Coroutine _squash;
 
@@ -39,12 +36,6 @@ namespace PoSoccer
                 BuildTrail(_env.Ball.transform);
                 _ballVisual = _env.Ball.transform.Find("BallVisual");
             }
-
-            foreach (var agent in _env.agents)
-                if (agent != null)
-                    _boost.Add((agent, BuildBoostExhaust(agent)));
-
-            _goalBurst = BuildBurst();
         }
 
         void OnDestroy()
@@ -52,8 +43,6 @@ namespace PoSoccer
             if (_env != null) _env.EpisodeEnded -= OnEpisodeEnded;
             BallContact.Hit -= OnBallHit;
         }
-
-        // ── Builders ────────────────────────────────────────────────────────
 
         static void BuildTrail(Transform ball)
         {
@@ -70,71 +59,9 @@ namespace PoSoccer
             trail.sortingOrder = 1;
         }
 
-        static ParticleSystem BuildBoostExhaust(Agent_Soccer agent)
-        {
-            var go = new GameObject("BoostExhaust");
-            go.transform.SetParent(agent.transform, false);
-            go.transform.localPosition = new Vector3(0f, -0.55f, 0f);
-            go.transform.localRotation = Quaternion.Euler(0f, 0f, 180f);
-
-            var ps = go.AddComponent<ParticleSystem>();
-            var main = ps.main;
-            main.startLifetime = 0.3f;
-            main.startSpeed = 2.5f;
-            main.startSize = 0.14f;
-            main.startColor = agent.rewards != null ? agent.rewards.playerColor : Color.white;
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
-            var emission = ps.emission;
-            emission.rateOverTime = 0f;
-            var shape = ps.shape;
-            shape.shapeType = ParticleSystemShapeType.Cone;
-            shape.angle = 12f;
-            var renderer = ps.GetComponent<ParticleSystemRenderer>();
-            var shader = Shader.Find("Sprites/Default");
-            if (shader != null) renderer.material = new Material(shader);
-            renderer.sortingOrder = 1;
-            return ps;
-        }
-
-        ParticleSystem BuildBurst()
-        {
-            var go = new GameObject("GoalBurst");
-            go.transform.SetParent(transform, false);
-            var ps = go.AddComponent<ParticleSystem>();
-            var main = ps.main;
-            main.startLifetime = 0.9f;
-            main.startSpeed = 7f;
-            main.startSize = 0.22f;
-            main.gravityModifier = 0f;
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
-            var emission = ps.emission;
-            emission.rateOverTime = 0f;
-            var shape = ps.shape;
-            shape.shapeType = ParticleSystemShapeType.Circle;
-            shape.radius = 0.4f;
-            var renderer = ps.GetComponent<ParticleSystemRenderer>();
-            var shader = Shader.Find("Sprites/Default");
-            if (shader != null) renderer.material = new Material(shader);
-            renderer.sortingOrder = 6;
-            return ps;
-        }
-
-        // ── Events ──────────────────────────────────────────────────────────
-
         void OnEpisodeEnded(Agent_Soccer.Team? winner)
         {
             if (winner == null) return;
-
-            var concededGoal = _env.GetGoalTransform(Agent_Soccer.Opponent(winner.Value));
-            if (_goalBurst != null && concededGoal != null)
-            {
-                _goalBurst.transform.position = concededGoal.position;
-                var main = _goalBurst.main;
-                main.startColor = winner == Agent_Soccer.Team.Blue
-                    ? Agent_UIStyle.BlueTeam : Agent_UIStyle.RedTeam;
-                _goalBurst.Emit(70);
-            }
-
             Agent_Stadium.Instance?.PulseGoal();
             if (_camera != null) StartCoroutine(Shake(0.35f, 0.22f));
         }
@@ -178,16 +105,6 @@ namespace PoSoccer
             }
             _ballVisual.localScale = baseScale;
             _squash = null;
-        }
-
-        void Update()
-        {
-            foreach (var (agent, ps) in _boost)
-            {
-                if (agent == null || ps == null) continue;
-                var emission = ps.emission;
-                emission.rateOverTime = agent.IsBoosting ? 45f : 0f;
-            }
         }
     }
 }
