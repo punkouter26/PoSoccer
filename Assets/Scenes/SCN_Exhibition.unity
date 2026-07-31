@@ -1725,6 +1725,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ef10c5d2a41dc85438485e7ce72ab686, type: 3}
   m_Name: 
   m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_MatchFX
+  particleSprite: {fileID: -3603556060819865620, guid: bce568d8b568ee048b7f4b898e374e53, type: 3}
 --- !u!1 &760298331
 GameObject:
   m_ObjectHideFlags: 0
