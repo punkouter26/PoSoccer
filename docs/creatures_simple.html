@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PoSoccer — Executive Dashboard</title>
+<style>
+ body{font-family:Segoe UI,Arial,sans-serif;background:#101418;color:#e8edf2;margin:0;padding:28px;max-width:900px}
+ h1{color:#7fd47f} h2{color:#8ecbff;margin-top:30px;font-size:19px}
+ .bar{background:#232d36;border-radius:8px;height:22px;overflow:hidden;margin:4px 0 14px}
+ .fill{height:100%;border-radius:8px;color:#08110a;font-weight:700;font-size:13px;line-height:22px;padding-left:10px;white-space:nowrap}
+ .g{background:#7fd47f}.y{background:#e8c46a}.r{background:#ff8b7b}.b{background:#7fb8ff}
+ .card{background:#161d24;border:1px solid #2a3540;border-radius:10px;padding:14px 18px;margin:10px 0}
+ .badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;margin-left:8px}
+ .bok{background:#1d4022;color:#8fe89f}.bwait{background:#4a3d1a;color:#ffd97a}.bbot{background:#3a2b4a;color:#d9b8ff}
+ .small{color:#94a1ae;font-size:12.5px} b.k{color:#9fd6ff}
+</style>
+</head>
+<body>
+<h1>⚽ PoSoccer — Agent Dashboard</h1>
+<p class="small">2026-07-31 · plain-language status of the AI players</p>
+
+<h2>🏃 Training right now: the STANDARD brain, v2</h2>
+<div class="card">
+The brain is playing <b>against itself</b> (both teams learning) on the new corner-proof pitch — 30 million practice steps planned.
+<div class="bar"><div class="fill b" style="width:24%">7.1M / 30M — 24% · ~6 h left</div></div>
+<b class="k">Learning signal:</b> its match reward climbed from losing (−0.31) to solidly winning (+0.87) its practice games.<br>
+<b class="k">Skill rating (ELO):</b> 1176 — even with its past selves so far; a sustained climb is the "getting genuinely better" signal.<br>
+<b class="k">Difficulty ramp:</b> passed level 1 of 3 — goals just narrowed from 6.0 to 4.0; the tight 2.5 net unlocks halfway through.
+<p class="small">⚠ One honest caveat: the plan was to start from the old brain's knowledge, but a network-size change made it
+start fresh (details in the technical report). It's learning fast anyway; if the final exam disappoints, we rerun with the fix.</p>
+</div>
+
+<h2>📈 How good is the current champion?</h2>
+<div class="card">
+100-match exam vs the rule-based bot (goal: 80% wins):
+<div class="bar"><div class="fill y" style="width:32%">32% wins — current brain, new physics</div></div>
+<div class="bar"><div class="fill r" style="width:18%">18% — same brain before the corner fixes</div></div>
+<div class="bar"><div class="fill g" style="width:100%">0% stalemates (was 27%) — corner-jam problem solved ✔</div></div>
+Progress story: 8% → 22% → 18% → <b>32%</b>. Matches now resolve 3.5× faster — every game ends with a real goal.
+</div>
+
+<h2>👥 The Roster</h2>
+<div class="card"><b style="color:#c0c0c8">■ STANDARD</b> — the balanced pro <span class="badge bok">REAL AI BRAIN</span><br>
+<span class="small">Reference build (75 kg). The only trained player; his v2 is in the oven right now.</span></div>
+<div class="card"><b style="color:#ff9f40">■ MATT</b> — the Striker <span class="badge bbot">BOT (awaiting training)</span><br>
+<span class="small">The big guy (1.25×, 95 kg): slow, unstoppable in a shoving duel, lives to score, hates draws.</span></div>
+<div class="card"><b style="color:#40cfe0">■ KIM</b> — the Wall <span class="badge bbot">BOT (awaiting training)</span><br>
+<span class="small">Compact and disciplined (66 kg): conceding hurts her more than anyone; paid to stand in the shot lane.</span></div>
+<div class="card"><b style="color:#b070f0">■ NICK</b> — the Midfielder <span class="badge bbot">BOT (awaiting training)</span><br>
+<span class="small">Smallest and fastest (60 kg): keeps the ball on a string, values the assist as much as the goal.</span></div>
+<p class="small">Fairness rule: everyone has the same total "motivation budget" and the same top-speed momentum —
+big-and-slow hits exactly as hard as small-and-fast. Personalities differ in <i>style</i>, not strength.</p>
+
+<h2>🔧 Recent behavior evolution</h2>
+<div class="card">
+✔ Corner-stuck ball fixed — rounded slick corners + automatic kick-out pop (stalemates 27% → 0%)<br>
+✔ Bots learned corner-craft: sweep the ball out along the wall instead of pinning it<br>
+✔ Bots learned to <b>boost-shoot</b> (sprint through the ball when lined up) and <b>shoulder-charge</b> ball-hogs<br>
+✔ Personalities rebalanced to equal budgets; big/small body physics added<br>
+⏳ Tonight: v2 brain finishes → automatic 100-match exam vs the 32% baseline
+</div>
+</body>
+</html>

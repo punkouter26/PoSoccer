@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PoSoccer — Technical Agent Report</title>
+<style>
+ body{font-family:Segoe UI,Arial,sans-serif;background:#0f1418;color:#dce3e8;margin:0;padding:24px;line-height:1.5}
+ h1{color:#7fd47f;border-bottom:2px solid #2a3540;padding-bottom:8px}
+ h2{color:#8ecbff;margin-top:32px} h3{color:#e8c46a}
+ table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+ th,td{border:1px solid #2a3540;padding:6px 10px;text-align:left;vertical-align:top}
+ th{background:#1a232b;color:#9fd6ff} tr:nth-child(even){background:#141c22}
+ code,.mono{font-family:Consolas,monospace;color:#a8e0a8;font-size:13px}
+ .ok{color:#7fd47f;font-weight:600}.warn{color:#e8c46a;font-weight:600}.bad{color:#ff7b6b;font-weight:600}
+ .card{background:#141c22;border:1px solid #2a3540;border-radius:8px;padding:14px 18px;margin:12px 0}
+ .small{font-size:12px;color:#8b98a5}
+</style>
+</head>
+<body>
+<h1>PoSoccer — Technical Agent Report</h1>
+<p class="small">Generated 2026-07-31 during live run <code>soccer_p2_00</code> (step ≈7.1M/30M).
+Scene verified from serialized data: <code>SCN_Training</code> (2 agents, BehaviorType Default, model GUID f1597e34…=STANDARD.onnx;
+serialized name "My Behavior" is overridden by the code-enforced contract in <code>Agent_Soccer.Awake</code>),
+<code>SCN_Exhibition</code> (4 agents, serialized HeuristicOnly, overridden per menu pick by <code>Agent_MatchLoader</code>).</p>
+
+<h2>1 · Operational Status</h2>
+<table>
+<tr><th>Run</th><th>Trainer</th><th>Step / max</th><th>%</th><th>ETA</th><th>Convergence</th><th>ONNX (path · mtime · age)</th></tr>
+<tr><td><b>soccer_p2_00</b> (ACTIVE)</td><td>MA-POCA self-play, 2×512</td><td class="mono">7.06M / 30M</td><td>23.5%</td>
+<td>~6 h at 1,030 steps/s avg (finishes tonight)</td>
+<td class="ok">Reward −0.31→+0.87 rising · entropy 0.98→0.71 healthy decline · ELO 1176 (parity phase)</td>
+<td class="mono">results/soccer_p2_00/STANDARD/STANDARD-6999621.onnx · 14:15 today · fresh</td></tr>
+<tr><td><b>soccer_p1e_00</b> (complete)</td><td>PPO vs bot, 2×256</td><td class="mono">20M / 20M</td><td>100%</td><td>done 10:27 today</td>
+<td class="warn">Reward −1.04→−0.29 (slow grind, ~+8pts win-rate/10M) · entropy 1.42→0.98 · LR annealed to 0</td>
+<td class="mono">Assets/Agents/Standard_v01/STANDARD.onnx · 10:27 today · <span class="ok">PROMOTED (GUID slot)</span></td></tr>
+<tr><td>soccer_p1c_00 / p1d_00</td><td>legacy physics / aborted</td><td class="mono">10M · 7.5M</td><td>—</td><td>—</td><td class="bad">STALE</td>
+<td class="mono">legacy name SoccerAgent.onnx / partial ckpts — archive candidates</td></tr>
+</table>
+
+<h2>2 · Bottleneck Analysis</h2>
+<div class="card">
+<b class="bad">B1 — Warm-start silently failed (root-caused).</b>
+<code>--initialize-from soccer_p1e_00</code> hit an architecture mismatch (2×256 → 2×512):
+ML-Agents logged <code>Failed to load for module Policy/Optimizer</code> and re-initialized.
+Forensic confirmation: p2's first reported entropy (0.97587) <i>exactly</i> equals p1e's final entropy —
+torch's <code>load_state_dict</code> copies shape-matching tensors (<code>log_sigma [3]</code>) before failing the rest.
+<b>Effect:</b> p2 trains from scratch with inherited low exploration noise (σ≈0.64 instead of 1.0) —
+an accidental but benign "confidence head start". <b>Options:</b> (a) let it finish — progress is strong;
+(b) if the final eval disappoints, rerun with <code>hidden_units: 256</code> for a true warm-start.
+</div>
+<div class="card">
+<b class="warn">B2 — Throughput halved vs phase 1</b> (1.03k vs 2.6k steps/s): POCA centralized critic +
+ghost-policy inference for the opponent team. Expected; not a stall (4/4 env processes alive, no batch starvation in logs).
+</div>
+<div class="card">
+<b class="ok">B3 — Reward calibration verified.</b> Dense stream (|Σ| ≈ 0.0016/decision) stays ~50× below terminal
+magnitudes (2.2 budget); no reward-hacking signature (episode length falling 624→583 while reward rises = faster goals, not farming).
+Action clipping is explicit (<code>Mathf.Clamp</code> in OnActionReceived) and the Gaussian policy σ≈0.64 keeps
+pre-clip actions mostly in range — no saturation pathology.
+</div>
+<div class="card">
+<b class="ok">B4 — No entropy collapse.</b> 0.71 at 7M with β=5e-3 and constant LR; σ≈0.5 equivalent — still exploring.
+Watch threshold: entropy &lt; 0.2 before 20M would warrant β increase.
+</div>
+<div class="card">
+<b class="ok">B5 — DecisionPeriod timing sound.</b> Period 8 @ 0.01 s timestep = 12.5 Hz decisions vs ~1 s ball-crossing
+times; 2-frame stacking restores velocity context. Historical curriculum bug (reward-gated lessons never advanced in
+20M of p1e — Lesson number flat 0) fixed in p2 via progress gating: Lesson1 reached at exactly 6M (20%).
+</div>
+
+<h2>3 · Metric Audit (TensorBoard scalars, thinned)</h2>
+<table>
+<tr><th>Metric</th><th>soccer_p1e_00 (start → mid → end)</th><th>soccer_p2_00 (start → mid → now)</th><th>Reading</th></tr>
+<tr><td>Cumulative Reward</td><td class="mono">−1.04 → −0.79 → −0.29</td><td class="mono">−0.31 → +0.53 → +0.87</td><td>p2 climbing fast (self-play relative scale)</td></tr>
+<tr><td>Episode Length</td><td class="mono">109 → 111 → 339</td><td class="mono">624 → 600 → 583</td><td>p1e grew (survival); p2 shrinking = quicker goals</td></tr>
+<tr><td>Policy Entropy</td><td class="mono">1.419 → 1.119 → 0.976</td><td class="mono">0.976 → 0.829 → 0.713</td><td>healthy anneal, no collapse</td></tr>
+<tr><td>Value Loss</td><td class="mono">0.041 → 0.009 → 0.008</td><td class="mono">0.0008 → 0.0016 → 0.0003</td><td>critic tracking well (small reward scale)</td></tr>
+<tr><td>Policy Loss</td><td class="mono">0.017 → 0.014 → 0.024</td><td class="mono">0.019 → 0.012 → 0.013</td><td>normal PPO/POCA band</td></tr>
+<tr><td>Self-play ELO</td><td class="mono">n/a</td><td class="mono">1200 → 1179 → 1176</td><td class="warn">parity vs ghost pool; the number to watch — sustained rise = real skill gain</td></tr>
+<tr><td>Lesson (goal_width)</td><td class="mono">0 → 0 → 0 (stuck, reward-gated)</td><td class="mono">0 → 0 → 1 (4.0 net @6M)</td><td>curriculum fixed; tight 2.5 net at 15M</td></tr>
+</table>
+<p class="small">Reward variance across the 4 env processes: not separately logged by ML-Agents (aggregated);
+per-env Player-*.log files show no divergent env (all connected, no timeout/restart entries).</p>
+
+<h2>4 · Brain Contract & ONNX Metadata</h2>
+<table>
+<tr><th>Property</th><th>Value</th></tr>
+<tr><td>Inputs</td><td class="mono">obs_0 [batch,66] — Sensor_Vision RayPerceptionSensor2D: 11 rays / 120° / 12 u, tags Ball·Wall·Goal·Agent (4 one-hot + miss + distance) ·
+obs_1 [batch,36] — 18 vector obs × 2 stacked</td></tr>
+<tr><td>Vector obs (18)</td><td class="mono">vel(2) · eye axis(2) · stamina(1) · relBall(2) · ballVel(2) · relOppGoal(2) · relOwnGoal(2) · distOppGoal(1) · teammate rel+vel(4, zero-padded in 1v1)</td></tr>
+<tr><td>Outputs</td><td class="mono">continuous_actions [batch,3] · deterministic_continuous_actions [batch,3] · version_number · memory_size=0 (no recurrence)</td></tr>
+<tr><td>Actions</td><td class="mono">a0 move (700 N drive, 2300 N/s slew) · a1 turn (250 N·m, ω≤360°/s) · a2 boost (&gt;0.1 → ×2.2, stamina-gated)</td></tr>
+<tr><td>Params</td><td class="mono">STANDARD.onnx (promoted): 93,140 · p2 checkpoints: 317,140</td></tr>
+<tr><td>Contract enforcement</td><td>Hard-coded in <code>Agent_Soccer.Awake</code> — scene serialization cannot drift (behavior name, obs size, stacking, 3 continuous actions, TeamId)</td></tr>
+</table>
+
+<h2>5 · Roster — Physique, DNA, Brains</h2>
+<table>
+<tr><th>Player</th><th>Physique</th><th>Terminal split (scorer/assist/team/conceded)</th><th>Signature dense trait</th><th>Movement style</th><th>Brain</th></tr>
+<tr><td><b>STANDARD</b> (silver)</td><td>1.0× · 75 kg</td><td class="mono">0.7 / 0.3 / 0.2 / −1.0</td><td>—</td><td>reference</td><td class="ok">trained (p1e 20M; p2 successor training)</td></tr>
+<tr><td><b>MATT</b> (orange)</td><td>1.25× · 95 kg — bulldozer</td><td class="mono">1.0 / 0.15 / 0.15 / −0.9</td><td>shoot gradient 0.0011</td><td>urgent, twitchy, draw-averse</td><td class="warn">untrained (bot-driven)</td></tr>
+<tr><td><b>KIM</b> (cyan)</td><td>0.9× · 66 kg</td><td class="mono">0.45 / 0.35 / 0.2 / −1.2</td><td>goal-screen 0.0006/step</td><td>disciplined, patient, deep-sitting</td><td class="warn">untrained (bot-driven)</td></tr>
+<tr><td><b>NICK</b> (purple)</td><td>0.85× · 60 kg — quickest</td><td class="mono">0.5 / 0.5 / 0.2 / −1.0</td><td>possession 0.0006/step ≤1.2 m</td><td>tidy, central</td><td class="warn">untrained (bot-driven)</td></tr>
+</table>
+<p class="small">Balance invariants: terminal Σ=2.2 · dense Σ=0.0016 · m·v<sub>max</sub> equal (shared 700 N force &amp; drag).
+Untrained players run <code>Agent_HeuristicBot</code>: chase → line-up → corner-craft sweep → boost-shot → shoulder-charge.</p>
+
+<h2>6 · Evaluation History (100-episode gate, blue=brain vs red=bot)</h2>
+<table>
+<tr><th>Run / physics</th><th>Win rate</th><th>Stalemates</th><th>Mean steps</th></tr>
+<tr><td>p1_00 · legacy</td><td>8%</td><td>—</td><td>—</td></tr>
+<tr><td>p1c_00 · legacy</td><td>22%</td><td class="bad">41%</td><td>—</td></tr>
+<tr><td>p1e_00 @10M · realistic</td><td>10%</td><td>—</td><td>—</td></tr>
+<tr><td>p1e_00 @20M · realistic</td><td>18%</td><td class="warn">27%</td><td class="mono">2318</td></tr>
+<tr><td>p1e_00 @20M · <b>corner-fixed</b> (current baseline)</td><td class="ok">32%</td><td class="ok">0%</td><td class="mono">649</td></tr>
+</table>
+<p class="small">Acceptance bar: ≥80% wins, ≤10% stalemates. Corner physics rework (rounded slick arcs +
+kick-out pops) eliminated stalemates entirely and tripled episode pace. Next eval fires automatically when
+soccer_p2_00 promotes.</p>
+</body>
+</html>
