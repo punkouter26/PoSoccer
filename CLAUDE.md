@@ -4,66 +4,76 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-PoSoccer ("Agent Soccer 2D"): a top-down 2D physics soccer **ML-Agents training benchmark** — Unity 6 (6000.5.4f1, 2D URP, mobile portrait) on the C# side, Python `mlagents` on the trainer side. V1 goal: a trained 1v1 policy that beats the rule-based bot in ≥80% of eval episodes with ≤10% stalemates (`docs/plans/2026-07-30-posoccer-v1-training-benchmark-design.md` is the reviewed spec). Playable game modes are deferred; spectator/inference only.
+PoSoccer: a top-down 2D physics soccer game + **ML-Agents training benchmark**. Unity 6 (6000.5.4f1, 2D URP, mobile portrait) + Python `mlagents` trainer. Two faces, one codebase:
+- **Benchmark**: train a brain that beats the rule-based bot ≥80% of eval episodes with ≤10% stalemates (spec: `docs/plans/2026-07-30-posoccer-v1-training-benchmark-design.md`).
+- **Game**: `SCN_Menu` → pick 2v2 matchups from a roster of four personalities → exhibition match with scoreboard, first-to-5, goal toasts, stadium lighting and sound.
 
-## Hard rules (UNITY_RULES — non-negotiable)
+## Hard rules (UNITY_RULES)
 
-- Scene setup goes through **Unity MCP tools only** — never write editor scripts for scene construction.
-- Script prefixes `Agent_` / `Sensor_` / `Reward_`; scene prefix `SCN_`; folder depth ≤2 under `Assets/`; agent assets in `<Name>_v<NN>` folders. `Agent_` is the blanket project prefix — it deliberately covers non-agent systems too (`Agent_UIStyle`, `Agent_Stadium`, `Agent_MainMenu`).
-- UI Toolkit only (no UGUI/IMGUI). Fixed timestep 0.01s, 60 FPS target, portrait 9:16.
-- **Version parity**: the C# package `Packages/com.unity.ml-agents` (embedded, 4.1.0 @ ab179e18) and Python `mlagents` (1.2.0.dev0, installed editable from the `/ml-agents` clone into `.venv`) must stay on the same commit. Re-pulling the clone requires re-syncing both.
-- Overwrite trained `.onnx` files **in place** (GUID preservation); clean up orphaned training processes; prune stale TensorBoard runs on restart.
+- Scene setup goes through **Unity MCP tools only** — never editor scripts for scene construction. (Building things *at runtime* in gameplay code — lights, UI, particles — is fine and used heavily.)
+- Script prefixes `Agent_` / `Sensor_` / `Reward_` (`Agent_` is the blanket project prefix, covering non-agents like `Agent_UIStyle`); scenes `SCN_`; folder depth ≤2 under `Assets/`; agent assets in `<Name>_v<NN>` folders.
+- UI Toolkit only (runtime, code-built, shared `PanelSettings` at ScaleWithScreenSize 1170×2532 match-width; style constants in `Agent_UIStyle`). Fixed timestep 0.01s, portrait.
+- **Version parity**: embedded `Packages/com.unity.ml-agents` (4.1.0 @ ab179e18, protobuf-swapped — see landmines) must match Python `mlagents` (1.2.0.dev0, editable from `/ml-agents` clone in `.venv`, Python ≤3.10.12).
+- Trained `.onnx` overwrites happen **in place** (GUID-stable slot: `Assets/Agents/Standard_v01/STANDARD.onnx`). Kill orphaned trainers after runs; TensorBoard restarts prune/archive runs.
 
 ## Commands
 
 ```powershell
-# Training (headless, 4 env processes x 16 pitches; detached-safe)
+# Training (headless, 4 env processes x 16 pitches; run detached via Start-Process)
 .\scripts\train-phase1.ps1 -RunId <run> -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4 `
-    [-Config <yaml in config/>] [-InitFrom <prev-run>] [-Resume]
-.\scripts\train-phase2.ps1 ...            # MA-POCA self-play (2v2/3v3, v2)
+    [-Config <yaml in config/>] [-InitFrom <run>] [-Resume]     # configs: STANDARD_phase*.yaml
+.\scripts\train-phase2.ps1 -InitFrom <run> ...                  # MA-POCA self-play (next lever)
 
-# Evaluation (the acceptance gate; exit 0 = pass, 1 = fail, 2/3 = setup errors)
-.\scripts\evaluate.ps1 -RunId <run> -Episodes 100      # trained blue vs bot
-.\scripts\evaluate.ps1 -Baseline -Episodes 40          # bot vs bot (~50% sanity check)
+# Evaluation gate (exit 0 pass / 1 fail / 2-3 setup errors)
+.\scripts\evaluate.ps1 -RunId <run> -Episodes 100               # trained blue vs bot
+.\scripts\evaluate.ps1 -Baseline -Episodes 40                   # bot vs bot sanity (~50%)
 
-# Pipeline pieces
-.\scripts\update-model.ps1 -RunId <run>   # copy results onnx -> Assets (GUID-stable slot)
-.\scripts\build-headless.ps1              # only when the editor is CLOSED; else use MCP manage_build
-.\scripts\tensorboard.ps1                 # restarts clean at :6006
-.\scripts\cleanup-training.ps1            # kill orphaned trainers/env players
+.\scripts\update-model.ps1 -RunId <run>    # results onnx -> GUID-stable Assets slot
+.\scripts\tensorboard.ps1                  # :6006; keeps newest 3 runs, archives rest
+.\scripts\cleanup-training.ps1             # kill orphaned trainers/env players
 ```
 
-Tests run through MCP (`run_tests`), **always scoped** — an unscoped run sweeps 200+ UnitySkills package tests: `run_tests(mode="EditMode", assembly_names=["PoSoccer.EditModeTests"])`, PlayMode likewise. Test code: `Assets/Tests/{EditMode,PlayMode}`.
+Builds: use MCP `manage_build(action="build", target="windows64", output_path="Builds/PoSoccer/PoSoccer.exe", scenes="Assets/Scenes/SCN_Training.unity")` from the running editor (async — grep `Logs/Editor.log` for "Build Finished"; "Success" can still follow earlier partial output, verify `PoSoccer_Data/Managed`). `scripts/build-headless.ps1` only works with the editor closed.
+
+Tests via MCP `run_tests`, **always scoped**: `assembly_names: ["PoSoccer.EditModeTests"]` / `["PoSoccer.PlayModeTests"]` (unscoped sweeps 200+ UnitySkills package tests). Tests live in `Assets/Tests/{EditMode,PlayMode}`.
 
 ## Working with the live editor (MCP)
 
-The Unity editor is normally already running. Two MCP servers are configured in `.mcp.json` (CoplayDev "MCPForUnity" + IvanMurzak "UnityMCP"). If MCP tools aren't in-session, drive the CoplayDev server with a FastMCP stdio client script (pattern: `fastmcp.Client` + `StdioTransport` spawning `uv run --project .tooling/coplay-unity-mcp/Server mcp-for-unity`), executing a JSON list of tool calls. Bridge status: `~/.unity-mcp/unity-mcp-status-*.json` (PoSoccer = port 6400; poll for `"reason":"ready"`).
+Editor is normally already running; CoplayDev "MCPForUnity" + IvanMurzak "UnityMCP" are in `.mcp.json`. If MCP tools aren't in-session, drive the CoplayDev server with a FastMCP stdio client executing a JSON call list (spawn `uv run --project .tooling/coplay-unity-mcp/Server mcp-for-unity`). Bridge status: `~/.unity-mcp/unity-mcp-status-*.json` (poll `"reason":"ready"`).
 
-Quirks that will bite you:
-- `refresh_unity` after C# edits drops the MCP connection (domain reload) — run it alone; "Connection closed" = success. Poll the status file before continuing.
-- `component_properties` colors/Vector2 need object form `{"r":..}` / `{"x":..}`, not arrays.
-- **Adding a collider to an object whose SpriteRenderer has no sprite yet auto-sizes it to 0.0001** — always set `size` explicitly afterward. This once silently disabled all collisions.
-- Lists of MonoBehaviour references don't resolve via `{"name":...}` — code self-discovers instead (`Agent_EnvController.Start`).
-- `manage_asset create` only supports Material/PhysicsMaterial — author other assets (ScriptableObjects, physics materials) as Unity YAML text files, then refresh.
-- `manage_build(action="build", target="windows64", output_path=...)` builds from the running editor (async; poll `action="status"` / grep "Build Finished" in `Logs/Editor.log`). "Result: Failure" can still leave partial output — verify `PoSoccer_Data/Managed` exists.
-- Overwriting a PNG repeatedly can corrupt its cached sprite mesh — create a new file if a sprite renders misshapen.
+Hard-won traps:
+- **Play mode blocks everything scene-side** ("This cannot be used during play mode") — the user often has Play running; `manage_editor stop` first, then edit, then let them replay.
+- `refresh_unity` after C# edits drops the MCP connection (domain reload) — run alone; "Connection closed" = success.
+- Colors/Vector2 in `component_properties` are objects `{"r":..}`/`{"x":..}`, not arrays. Lists of MonoBehaviour refs don't resolve — code self-discovers (see `Agent_EnvController.Start`).
+- **Collider added to a sprite-less object auto-sizes to 0.0001** — always set `size` explicitly. This once silently disabled all collisions.
+- **Overwriting a PNG in place can corrupt its cached sprite geometry** (renders misshapen/wrong size) — create a new file name instead (`ball.png`, `tile.png`, `pitch.png` exist for this reason).
+- `manage_asset create` only supports Material/PhysicsMaterial — author ScriptableObjects/PhysicsMaterial2D as YAML text files + refresh.
+- **An unfocused editor barely runs play-mode frames** — unattended play + screenshots look "frozen" while the game is fine. Verify behavior with PlayMode tests (test runner forces frames; see `HeuristicBots_ActuallyMove`) or the headless build. `runInBackground=1` is set; "Enter Play Mode Options" must stay OFF (ML-Agents Academy needs domain reload).
+- Unity 6.5 turns deprecations into errors (`GetInstanceID`, `TreeView`, old `Object.FindObjectsByType` overloads) — affects our code and third-party package version choices.
+- The move/rename asset tool sometimes reports failure while succeeding — verify on disk before retrying.
 
-## Architecture (the parts that span files)
+## Architecture (cross-file)
 
-**Env ↔ trainer contract.** `Agent_Soccer.Awake()` enforces the policy contract in code (behavior name from `brainName` [default `STANDARD`], 14 obs + 4/teammate-slot, 3 continuous actions: move/turn/boost) — scene serialization cannot drift. YAML `behaviors:` keys must match the brain name. Old runs (soccer_p1_00/p1c_00) exported under the legacy name `SoccerAgent`; `update-model.ps1` has a fallback.
+**Brain contract** (enforced in `Agent_Soccer.Awake`, scene can't drift): behavior name from `brainName` (default `STANDARD`), **18 vector obs** (14 self/ball/goal + 4 teammate zero-padded in 1v1) × **2 stacked**, 3 continuous actions (move/turn/boost), DecisionRequester period 8. Changing any of this obsoletes every trained `.onnx`.
 
-**Mode switching is env-var driven** (set by `evaluate.ps1` before `Start-Process`, read in `Awake` before policy init): `POSOCCER_EVAL=1` → blue InferenceOnly (model from `BehaviorParameters.Model`) vs red HeuristicOnly; `POSOCCER_BASELINE=1` → both heuristic; `POSOCCER_EPISODES/RUNID/OUT` configure `Agent_EvalStats` (on the Pitch root; static aggregation across grid clones; writes JSON, quits). `Agent_TrainingGrid` clones 16 pitches when a trainer is connected **or** eval mode is on.
+**Realistic physics** (post-overhaul): 75 kg agents, 700 N drive with 2300 N/s slew, 250 N·m torque, 360°/s rotation cap, stamina-scaled power (0.6 floor), FIFA ball (r=0.11 world, 0.43 kg, drag ~0.1 randomized per episode, Magnus curl + spin transfer). Zero in-plane gravity (top-down).
 
-**Episode flow.** `Reward_GoalTrigger` (net trigger) → `Agent_EnvController.OnGoalScored/OnStalemate` → terminal rewards (+0.7 scorer via last-touch tracking, +0.3 assist, −1.0 conceding, −0.1 stalemate at 5000 steps) → fires `EpisodeEnded` **before** `EndEpisode`/reset (subscribers can still read cumulative rewards) → `ResetPitch` re-reads the `goal_width` curriculum parameter (6.0→4.0→2.5m).
+**Episode flow**: `Reward_GoalTrigger` → `Agent_EnvController.OnGoalScored/OnStalemate/OnOutOfBounds` (containment watchdog) → terminal rewards (+0.7 scorer / +0.3 assist / −1.0 conceded / −0.1 stalemate) → `EpisodeEnded` event fires **before** reset (subscribers read cumulative rewards; HUD/FX/audio all hang off it) → `ResetPitch` (domain randomization: random own-half spawns, ball drag) reads `goal_width` curriculum. `stepCapOverride` on the exhibition Pitch shortens episodes to 2500 steps for pace.
 
-**Personalities = reward profiles.** A "player" is a brain name + a `Reward_Settings` asset (`Assets/Agents/<Name>_v01/Reward_<NAME>.asset`); the reward mix is the personality, expressed via training. Roster and how to activate a placeholder (MATT/KIM/NICK): `docs/players.md`. All shared code lives in `Assets/Scripts/`; the tracked model slot is `Assets/Agents/Standard_v01/STANDARD.onnx`. All bodies identical by design so brains are interchangeable.
+**Personalities**: a player = `Reward_Settings` asset (`Assets/Agents/<Name>_v01/Reward_<NAME>.asset`) = reward DNA + `playerName`/`playerColor`/`brainModel`. Roster: STANDARD (balanced, trained), MATT (striker), KIM (wall, `defensivePositionScale`), NICK (midfielder, `possessionScale`) — see `docs/players.md`. Bodies identical by design; brains interchangeable. Body wears `playerColor`, **team shows as thick outline frame + eye color** (built at runtime in `Agent_Soccer.Start` along with the initial letter label).
 
-**Assemblies.** Game code is `PoSoccer.Runtime` (`Assets/PoSoccer.Runtime.asmdef`) referencing `Unity.ML-Agents` (hyphen!), `Unity.InferenceEngine`, `Unity.InputSystem`.
+**Game flow**: `Agent_MainMenu` (4 picker rows, untrained players badged "(BOT)") → statics in `Agent_MatchSetup` → `Agent_MatchLoader` (order −60) applies profile/brain per agent (`brainModel` null ⇒ heuristic bot). `Agent_HUD` = scoreboard band + match clock + identity chips + goal/RESET toasts + first-to-5 end panel (match flow off in SCN_Training). `Agent_Stadium` builds 2D lights/shadows/post at runtime; `Agent_MatchFX` trail/shake/squash/boost particles; `Agent_Audio` velocity-scaled SFX + reactive crowd (placeholder WAVs in `Assets/Audio` — Store-pack clips drop into the same fields).
 
-**The protobuf landmine.** ML-Agents' packed `Google.Protobuf_Packed.dll` name-collides with an editor-only twin in `com.unity.ai.inference`, which broke player builds (CS0400). Fix in place: the embedded package ships stock NuGet `Google.Protobuf.dll` 3.21.12 with its three asmdefs' `precompiledReferences` updated. Never reintroduce the packed dll; file-renaming it does NOT work (assembly identity mismatch breaks the linker).
+**Eval mode** is env-var driven (set by `evaluate.ps1` pre-launch, read in `Awake`): `POSOCCER_EVAL/BASELINE/EPISODES/RUNID/OUT`; `Agent_EvalStats` (Pitch root) aggregates across the 16-pitch grid, writes JSON, quits. `Agent_TrainingGrid` clones pitches when a trainer is connected or eval mode is on.
 
-**Scenes.** `SCN_Training` (index 0 in build; the training/eval scene) and `SCN_Exhibition` (brain-vs-brain inference showcase — assign models to both agents' `BehaviorParameters`). Keyboard play: disable Blue's `Agent_HeuristicBot`, set HeuristicOnly (W/S drive, A/D turn, K or Shift boost; ball interaction is pure momentum — no kick action by design).
+**Assemblies**: `PoSoccer.Runtime` (refs: `Unity.ML-Agents` [hyphen], `Unity.InferenceEngine`, `Unity.InputSystem`, `Unity.RenderPipelines.Universal.Runtime` + `.2D.Runtime` + Core).
 
-## Training history / state
+## Landmines
 
-soccer_p1_00 (pure RL, 5M): eval 8%. soccer_p1c_00 (+`ballToGoalVelocityScale` shaping, warm-start, 10M): eval 22% wins / 41% stalemates — defense solved, finishing weak. Known levers: longer runs, stalemate penalty tuning, goal-reward dominance over shaping, Phase 2 self-play. Eval reports: `results/eval/*.json` (never pruned by tensorboard.ps1).
+- **Protobuf**: ML-Agents + com.unity.ai.inference both shipped `Google.Protobuf_Packed.dll`; player builds resolved the editor-only twin (CS0400). Fixed by embedding the package with stock NuGet `Google.Protobuf.dll` 3.21.12 + asmdef refs updated. Never reintroduce the packed dll; file-renaming breaks the linker (assembly identity).
+- Scene order in Build Settings: `SCN_Training` must stay index 0 (headless training/eval boot it). Menu/Exhibition follow.
+- Old runs exported under legacy behavior name `SoccerAgent`; `update-model.ps1 -Behavior` falls back automatically.
+
+## State (2026-07-31)
+
+Realistic-physics STANDARD: 20M steps, eval **18%** (trend 10→18 per 10M; never left curriculum Lesson0). Bar 80%/≤10% unmet — next levers: Phase 2 POCA self-play (`-InitFrom soccer_p1e_00`), personality brain runs, or bar recalibration. Eval reports in `results/eval/*.json`. Free Asset Store picks (optional, zero dependencies): `docs/asset-store-free-assets.md`.
