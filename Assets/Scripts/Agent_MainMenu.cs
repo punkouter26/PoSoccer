@@ -49,17 +49,19 @@ namespace PoSoccer
             safe.style.justifyContent = Justify.Center;
             root.Add(safe);
 
+            // All sizes are in 1170x2532 reference-resolution units (PanelSettings
+            // scales the panel to the actual screen, match-width).
             var title = new Label("PoSoccer");
-            title.style.fontSize = 56;
+            title.style.fontSize = 120;
             title.style.color = Color.white;
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            title.style.marginBottom = 4;
+            title.style.marginBottom = 8;
             safe.Add(title);
 
             var subtitle = new Label("pick the matchup");
-            subtitle.style.fontSize = 18;
+            subtitle.style.fontSize = 44;
             subtitle.style.color = new Color(0.7f, 0.75f, 0.72f);
-            subtitle.style.marginBottom = 28;
+            subtitle.style.marginBottom = 70;
             safe.Add(subtitle);
 
             safe.Add(BuildPickerRow("BLUE", new Color(0.2f, 0.5f, 1f), _blueButtons,
@@ -68,11 +70,11 @@ namespace PoSoccer
                 p => { _red = p; Restyle(); }));
 
             var play = new Button(StartMatch) { text = "PLAY" };
-            play.style.fontSize = 30;
+            play.style.fontSize = 72;
             play.style.unityFontStyleAndWeight = FontStyle.Bold;
-            play.style.marginTop = 32;
-            play.style.paddingLeft = 48; play.style.paddingRight = 48;
-            play.style.paddingTop = 12; play.style.paddingBottom = 12;
+            play.style.marginTop = 80;
+            play.style.paddingLeft = 120; play.style.paddingRight = 120;
+            play.style.paddingTop = 28; play.style.paddingBottom = 28;
             play.style.backgroundColor = new Color(0.16f, 0.55f, 0.28f);
             play.style.color = Color.white;
             play.style.borderTopLeftRadius = 10; play.style.borderTopRightRadius = 10;
@@ -87,14 +89,14 @@ namespace PoSoccer
             System.Action<Reward_Settings> onPick)
         {
             var section = new VisualElement();
-            section.style.marginBottom = 18;
+            section.style.marginBottom = 44;
             section.style.alignItems = Align.Center;
 
             var header = new Label(teamLabel);
-            header.style.fontSize = 20;
+            header.style.fontSize = 48;
             header.style.color = teamColor;
             header.style.unityFontStyleAndWeight = FontStyle.Bold;
-            header.style.marginBottom = 8;
+            header.style.marginBottom = 18;
             section.Add(header);
 
             var row = new VisualElement();
@@ -110,9 +112,9 @@ namespace PoSoccer
                     text = profile.playerName,
                     userData = profile,
                 };
-                b.style.width = 86; b.style.height = 64;
-                b.style.marginLeft = 4; b.style.marginRight = 4;
-                b.style.fontSize = 15;
+                b.style.width = 250; b.style.height = 170;
+                b.style.marginLeft = 12; b.style.marginRight = 12;
+                b.style.fontSize = 38;
                 b.style.unityFontStyleAndWeight = FontStyle.Bold;
                 b.style.color = Color.black;
                 b.style.backgroundColor = profile.playerColor;
