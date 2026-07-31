@@ -13,19 +13,22 @@ MonoBehaviour:
   m_Name: Reward_KIM
   m_EditorClassIdentifier:
   playerName: KIM
-  personalityNotes: 'PLACEHOLDER - personality not designed yet. Intended direction:
-    defensive wall. Tune goalConceded harsher, add own-goal-distance shaping, lower
-    scorer reward; train as behavior "KIM".'
-  goalScorer: 0.7
-  assist: 0.3
-  teamBaselineVictory: 0.2
-  goalConceded: -1
-  stalemateTimeout: -0.1
-  stepPenalty: -0.0001
-  ballProximityScale: 0.0004
-  facingAlignmentScale: 0.0002
+  personalityNotes: 'THE WALL. Conceding hurts double; screening the lane between
+    ball and own goal pays continuously (defensivePositionScale). Patient - a draw
+    barely stings, does not swarm, comfortable near the goal line (low wall penalty).
+    Disciplined, smooth movement. Weakness by design: scores rarely.'
+  goalScorer: 0.4
+  assist: 0.4
+  teamBaselineVictory: 0.3
+  goalConceded: -2
+  stalemateTimeout: -0.02
+  stepPenalty: -0.00005
+  ballProximityScale: 0.0002
+  facingAlignmentScale: 0.0003
   ballToGoalVelocityScale: 0.001
-  actionJitterScale: 0.001
-  wallProximityPenalty: 0.0005
-  ballContact: 0.05
+  actionJitterScale: 0.002
+  wallProximityPenalty: 0.0002
+  defensivePositionScale: 0.0005
+  possessionScale: 0
+  ballContact: 0.03
   maxEnvironmentSteps: 5000

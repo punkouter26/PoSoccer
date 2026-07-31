@@ -220,6 +220,22 @@ namespace PoSoccer
                 env.PitchHalfExtents.y - Mathf.Abs(local.y));
             if (wallDist < 0.8f)
                 AddReward(-rewards.wallProximityPenalty * (0.8f - wallDist) / 0.8f);
+
+            // Personality traits (zero-cost when the profile leaves them at 0):
+            // KIM-style defense - stand on the line from the ball back to own goal.
+            if (rewards.defensivePositionScale > 0f)
+            {
+                Vector2 ballToOwnGoal = env.GetGoalPosition(team) - env.Ball.position;
+                if (ballToOwnGoal.sqrMagnitude > 0.01f && d > 0.01f)
+                {
+                    float screen = Vector2.Dot(ballToOwnGoal.normalized, (-toBall).normalized);
+                    AddReward(rewards.defensivePositionScale * Mathf.Max(0f, screen));
+                }
+            }
+
+            // NICK-style possession - close control of the ball pays continuously.
+            if (rewards.possessionScale > 0f && d < 1.2f)
+                AddReward(rewards.possessionScale);
         }
 
         public override void Heuristic(in ActionBuffers actionsOut)

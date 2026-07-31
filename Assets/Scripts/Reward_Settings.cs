@@ -33,6 +33,10 @@ namespace PoSoccer
         public float actionJitterScale = 0.001f;
         [Tooltip("Penalty scale for lingering within 0.8m of a wall (cures wall-hugging).")]
         public float wallProximityPenalty = 0.0005f;
+        [Tooltip("Defender trait: reward for positioning between the ball and own goal (0 = off).")]
+        public float defensivePositionScale = 0f;
+        [Tooltip("Midfielder trait: reward per step while keeping the ball within 1.2m (0 = off).")]
+        public float possessionScale = 0f;
 
         [Header("Sparse rewards")]
         public float ballContact = 0.05f;

@@ -13,19 +13,21 @@ MonoBehaviour:
   m_Name: Reward_MATT
   m_EditorClassIdentifier:
   playerName: MATT
-  personalityNotes: 'PLACEHOLDER - personality not designed yet. Intended direction:
-    aggressive striker. Tune goalScorer up, goalConceded down, boost ballToGoalVelocityScale;
-    train as behavior "MATT".'
-  goalScorer: 0.7
-  assist: 0.3
-  teamBaselineVictory: 0.2
-  goalConceded: -1
-  stalemateTimeout: -0.1
-  stepPenalty: -0.0001
-  ballProximityScale: 0.0004
+  personalityNotes: 'THE STRIKER. Glory hunter: massive scoring reward, barely fears
+    conceding, hates draws, swarms the ball and shoots on sight. Loose jitter rein
+    means frantic, aggressive movement. Weakness by design: abandons defense.'
+  goalScorer: 1
+  assist: 0.15
+  teamBaselineVictory: 0.1
+  goalConceded: -0.4
+  stalemateTimeout: -0.3
+  stepPenalty: -0.0002
+  ballProximityScale: 0.0006
   facingAlignmentScale: 0.0002
-  ballToGoalVelocityScale: 0.001
-  actionJitterScale: 0.001
+  ballToGoalVelocityScale: 0.002
+  actionJitterScale: 0.0005
   wallProximityPenalty: 0.0005
-  ballContact: 0.05
+  defensivePositionScale: 0
+  possessionScale: 0
+  ballContact: 0.08
   maxEnvironmentSteps: 5000

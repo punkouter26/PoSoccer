@@ -23,5 +23,7 @@ MonoBehaviour:
   ballToGoalVelocityScale: 0.001
   actionJitterScale: 0.001
   wallProximityPenalty: 0.0005
+  defensivePositionScale: 0
+  possessionScale: 0
   ballContact: 0.05
   maxEnvironmentSteps: 5000
