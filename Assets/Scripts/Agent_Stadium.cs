@@ -28,7 +28,7 @@ namespace PoSoccer
             Instance = this;
 
             if (litMaterial != null)
-                foreach (var sr in FindObjectsByType<SpriteRenderer>(FindObjectsSortMode.None))
+                foreach (var sr in FindObjectsByType<SpriteRenderer>())
                     sr.sharedMaterial = litMaterial;
 
             // Lights

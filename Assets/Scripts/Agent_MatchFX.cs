@@ -113,9 +113,23 @@ namespace PoSoccer
 
         void OnEpisodeEnded(Agent_Soccer.Team? winner)
         {
+            // The kickoff teleport would otherwise smear the trail across the pitch.
+            StartCoroutine(ClearTrailAfterReset());
+
             if (winner == null) return;
             Agent_Stadium.Instance?.PulseGoal();
             if (_camera != null) StartCoroutine(Shake(0.35f, 0.22f));
+        }
+
+        IEnumerator ClearTrailAfterReset()
+        {
+            var trail = _env.Ball != null ? _env.Ball.GetComponent<TrailRenderer>() : null;
+            if (trail == null) yield break;
+            trail.emitting = false;
+            yield return new WaitForFixedUpdate();
+            yield return new WaitForFixedUpdate();
+            trail.Clear();
+            trail.emitting = true;
         }
 
         void Update()

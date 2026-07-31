@@ -75,6 +75,8 @@ namespace PoSoccer
             _score.style.fontSize = Agent_UIStyle.FontL;
             _score.style.unityFontStyleAndWeight = FontStyle.Bold;
             _score.style.color = Agent_UIStyle.TextPrimary;
+            // The training scene has no match, so a frozen 0-0 would only mislead.
+            _score.style.display = enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
             band.Add(_score);
 
             _stepLabel = new Label(string.Empty);
@@ -95,23 +97,40 @@ namespace PoSoccer
             _blueChips = new VisualElement { style = { flexDirection = FlexDirection.Row } };
             _redChips = new VisualElement { style = { flexDirection = FlexDirection.Row } };
 
-            var menu = new Button(() => { Time.timeScale = 1f; SceneManager.LoadScene(menuScene); })
-            { text = "MENU" };
-            menu.style.fontSize = Agent_UIStyle.FontS;
-            menu.style.color = Agent_UIStyle.TextPrimary;
-            menu.style.backgroundColor = Agent_UIStyle.PanelBg;
-            Agent_UIStyle.Round(menu);
-            menu.style.paddingLeft = 28; menu.style.paddingRight = 28;
-            menu.style.paddingTop = 14; menu.style.paddingBottom = 14;
-            menu.style.display = enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
+            var center = new VisualElement();
+            center.style.alignItems = Align.Center;
+            center.Add(SmallButton("MENU",
+                () => { Time.timeScale = 1f; SceneManager.LoadScene(menuScene); }));
+            Button mute = null;
+            mute = SmallButton(Agent_Audio.Muted ? "SND OFF" : "SND ON", () =>
+            {
+                Agent_Audio.Muted = !Agent_Audio.Muted;
+                mute.text = Agent_Audio.Muted ? "SND OFF" : "SND ON";
+            });
+            mute.style.marginTop = 10;
+            center.Add(mute);
+            center.style.display = enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
 
             band.Add(_blueChips);
-            band.Add(menu);
+            band.Add(center);
             band.Add(_redChips);
             return band;
         }
 
         VisualElement _blueChips, _redChips;
+        float _matchSeconds;
+
+        static Button SmallButton(string text, System.Action onClick)
+        {
+            var b = new Button(onClick) { text = text };
+            b.style.fontSize = Agent_UIStyle.FontS;
+            b.style.color = Agent_UIStyle.TextPrimary;
+            b.style.backgroundColor = Agent_UIStyle.PanelBg;
+            Agent_UIStyle.Round(b);
+            b.style.paddingLeft = 28; b.style.paddingRight = 28;
+            b.style.paddingTop = 14; b.style.paddingBottom = 14;
+            return b;
+        }
 
         void BuildToast()
         {
@@ -172,7 +191,17 @@ namespace PoSoccer
 
         void OnEpisodeEnded(Agent_Soccer.Team? winner)
         {
-            if (!enableMatchFlow || _ended || winner == null) return;
+            if (!enableMatchFlow || _ended) return;
+
+            if (winner == null)
+            {
+                // Stalemate or out-of-bounds: announce the reset so it reads as intended.
+                _toast.text = "RESET";
+                _toast.style.color = Agent_UIStyle.TextMuted;
+                _toast.style.display = DisplayStyle.Flex;
+                _toastUntil = Time.unscaledTime + 1f;
+                return;
+            }
 
             if (winner == Agent_Soccer.Team.Blue) _blueScore++; else _redScore++;
 
@@ -244,8 +273,17 @@ namespace PoSoccer
             if (env == null || _score == null) return;
             if (_chips.Count == 0 && env.agents.Count > 0) BuildChips();
 
-            _score.text = $"{_blueScore}  —  {_redScore}";
-            _stepLabel.text = $"step {env.StepCount}  ·  goal {env.CurrentGoalWidth:0.0}m";
+            if (enableMatchFlow)
+            {
+                if (!_ended) _matchSeconds += Time.deltaTime;
+                _score.text = $"{_blueScore}  —  {_redScore}";
+                _stepLabel.text = $"{(int)(_matchSeconds / 60):0}:{(int)(_matchSeconds % 60):00}";
+            }
+            else
+            {
+                // Training telemetry: raw steps + curriculum state belong here only.
+                _stepLabel.text = $"step {env.StepCount}  ·  goal {env.CurrentGoalWidth:0.0}m";
+            }
 
             if (_toast.style.display == DisplayStyle.Flex && Time.unscaledTime > _toastUntil)
                 _toast.style.display = DisplayStyle.None;

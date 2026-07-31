@@ -1626,6 +1626,7 @@ MonoBehaviour:
   pitchHalfExtents: {x: 6, y: 9}
   ballSpawnJitter: 1
   defaultGoalWidth: 6
+  stepCapOverride: 2500
   magnusScale: 0.0005
   ballDampingRange: {x: 0.08, y: 0.15}
   randomizeSpawns: 1
@@ -2737,7 +2738,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 5022602860645237092, guid: aeeca897e4ecc7b46990a5af2d36074c, type: 3}
+  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
   m_InferenceDevice: 0
   m_BehaviorType: 1
   m_BehaviorName: My Behavior
@@ -3046,7 +3047,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 5022602860645237092, guid: aeeca897e4ecc7b46990a5af2d36074c, type: 3}
+  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
   m_InferenceDevice: 0
   m_BehaviorType: 1
   m_BehaviorName: My Behavior

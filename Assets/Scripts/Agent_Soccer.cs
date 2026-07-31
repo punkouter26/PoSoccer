@@ -130,11 +130,26 @@ namespace PoSoccer
             if (body != null && rewards.playerColor.a > 0f)
                 body.color = rewards.playerColor;
 
+            Color teamColor = team == Team.Blue
+                ? new Color(0.2f, 0.5f, 1f)
+                : new Color(1f, 0.25f, 0.2f);
+
             var eye = transform.Find("Eye");
             if (eye != null && eye.TryGetComponent(out SpriteRenderer eyeRenderer))
-                eyeRenderer.color = team == Team.Blue
-                    ? new Color(0.2f, 0.5f, 1f)
-                    : new Color(1f, 0.25f, 0.2f);
+                eyeRenderer.color = teamColor;
+
+            // Thick team-colored outline: a slightly larger frame sprite behind the body.
+            if (body != null && body.sprite != null && transform.Find("TeamOutline") == null)
+            {
+                var outlineGo = new GameObject("TeamOutline");
+                outlineGo.transform.SetParent(transform, false);
+                outlineGo.transform.localScale = new Vector3(1.3f, 1.3f, 1f);
+                var outline = outlineGo.AddComponent<SpriteRenderer>();
+                outline.sprite = body.sprite;
+                outline.sharedMaterial = body.sharedMaterial;
+                outline.color = teamColor;
+                outline.sortingOrder = body.sortingOrder - 1;
+            }
 
             // Identity letter (S/M/K/N) on the body, driven by the assigned profile.
             if (!string.IsNullOrEmpty(rewards.playerName) && transform.Find("Label") == null)
@@ -310,7 +325,9 @@ namespace PoSoccer
             // Disable the bot component to reclaim keyboard control for play-testing.
             if (_bot != null && _bot.enabled && env != null && env.Ball != null)
             {
-                Vector3 a = _bot.ComputeActions(Body, env.Ball, env.GetGoalTransform(Opponent(team)));
+                var mate = env.GetTeammate(this);
+                Vector3 a = _bot.ComputeActions(Body, env.Ball,
+                    env.GetGoalTransform(Opponent(team)), mate != null ? mate.Body : null);
                 continuous[0] = a.x;
                 continuous[1] = a.y;
                 continuous[2] = a.z;

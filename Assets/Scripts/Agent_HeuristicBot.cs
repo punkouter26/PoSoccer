@@ -31,7 +31,7 @@ namespace PoSoccer
         void Awake()
         {
             // Desynchronize unstick timing between bots so they don't re-jam together.
-            _unstickJitter = (GetInstanceID() & 3) * 0.3f;
+            _unstickJitter = (GetHashCode() & 3) * 0.3f;
         }
 
         /// <summary>Compute [move, turn, boost] for the given agent state.</summary>
@@ -84,6 +84,11 @@ namespace PoSoccer
             }
             if (Time.time < _flankUntil) target = _flankPoint;
 
+            return Steer(self, target, opponentGoal, allowBoost: true);
+        }
+
+        Vector3 Steer(Rigidbody2D self, Vector2 target, Transform opponentGoal, bool allowBoost)
+        {
             // Never chase points inside the walls (that is how wall-jams start).
             // Pitch-local clamp so 16-grid clones each clamp around their own pitch.
             Vector2 center = opponentGoal != null && opponentGoal.parent != null
@@ -98,7 +103,7 @@ namespace PoSoccer
 
             float turn = Mathf.Clamp(signedAngle / 45f, -1f, 1f);
             float move = Mathf.Abs(signedAngle) < driveAngleDeg ? 1f : 0.25f;
-            float boost = (Mathf.Abs(signedAngle) < driveAngleDeg && toTarget.magnitude > 2f)
+            float boost = allowBoost && Mathf.Abs(signedAngle) < driveAngleDeg && toTarget.magnitude > 2f
                 ? boostAggression : 0f;
 
             return new Vector3(move, turn, boost);

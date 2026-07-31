@@ -1270,6 +1270,7 @@ MonoBehaviour:
   pitchHalfExtents: {x: 6, y: 9}
   ballSpawnJitter: 1
   defaultGoalWidth: 6
+  stepCapOverride: 0
   magnusScale: 0.0005
   ballDampingRange: {x: 0.08, y: 0.15}
   randomizeSpawns: 1

@@ -87,6 +87,13 @@ namespace PoSoccer
                 Play(goalHorn, 0.85f);
                 _goalSpike = 1f;
             }
+            // The whistle marks the kickoff, not the goal - never stacked on the horn.
+            StartCoroutine(KickoffWhistle());
+        }
+
+        System.Collections.IEnumerator KickoffWhistle()
+        {
+            yield return new WaitForSecondsRealtime(1.5f);
             Play(whistle, 0.45f);
         }
 

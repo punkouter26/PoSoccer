@@ -9,7 +9,7 @@ PoSoccer ("Agent Soccer 2D"): a top-down 2D physics soccer **ML-Agents training 
 ## Hard rules (UNITY_RULES — non-negotiable)
 
 - Scene setup goes through **Unity MCP tools only** — never write editor scripts for scene construction.
-- Script prefixes `Agent_` / `Sensor_` / `Reward_`; scene prefix `SCN_`; folder depth ≤2 under `Assets/`; agent assets in `<Name>_v<NN>` folders.
+- Script prefixes `Agent_` / `Sensor_` / `Reward_`; scene prefix `SCN_`; folder depth ≤2 under `Assets/`; agent assets in `<Name>_v<NN>` folders. `Agent_` is the blanket project prefix — it deliberately covers non-agent systems too (`Agent_UIStyle`, `Agent_Stadium`, `Agent_MainMenu`).
 - UI Toolkit only (no UGUI/IMGUI). Fixed timestep 0.01s, 60 FPS target, portrait 9:16.
 - **Version parity**: the C# package `Packages/com.unity.ml-agents` (embedded, 4.1.0 @ ab179e18) and Python `mlagents` (1.2.0.dev0, installed editable from the `/ml-agents` clone into `.venv`) must stay on the same commit. Re-pulling the clone requires re-syncing both.
 - Overwrite trained `.onnx` files **in place** (GUID preservation); clean up orphaned training processes; prune stale TensorBoard runs on restart.

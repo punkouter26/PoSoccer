@@ -126,9 +126,11 @@ namespace PoSoccer
             {
                 if (profile == null) continue;
                 var captured = profile;
+                // Untrained players are driven by the rule-based bot - say so up front.
                 var b = new Button(() => onPick(captured))
                 {
-                    text = profile.playerName,
+                    text = profile.brainModel != null
+                        ? profile.playerName : $"{profile.playerName}\n(BOT)",
                     userData = profile,
                 };
                 b.style.width = 250; b.style.height = 170;

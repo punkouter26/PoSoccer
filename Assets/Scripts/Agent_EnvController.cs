@@ -29,6 +29,8 @@ namespace PoSoccer
         [Header("Curriculum")]
         [Tooltip("Fallback goal width when no trainer curriculum is driving 'goal_width'.")]
         public float defaultGoalWidth = 6.0f;
+        [Tooltip("Episode step cap override for exhibition scenes (0 = use the reward profile's cap).")]
+        public int stepCapOverride = 0;
 
         [Header("Ball physics")]
         [Tooltip("Magnus-lite: curl force = scale * spin * perpendicular(velocity). Gives swerving shots.")]
@@ -99,7 +101,9 @@ namespace PoSoccer
         void FixedUpdate()
         {
             StepCount++;
-            if (rewards != null && StepCount >= rewards.maxEnvironmentSteps)
+            int cap = stepCapOverride > 0 ? stepCapOverride
+                : rewards != null ? rewards.maxEnvironmentSteps : 5000;
+            if (StepCount >= cap)
                 OnStalemate();
             else if (AnythingOutOfBounds())
                 OnOutOfBounds();
