@@ -20,7 +20,7 @@ if ($Rebuild -or -not (Test-Path $exe)) {
     & "$root\scripts\build-headless.ps1"
 }
 
-$model = Join-Path $root "Assets\Agents\SoccerAgent_v01\SoccerAgent_v01.onnx"
+$model = Join-Path $root "Assets\Agents\Standard_v01\STANDARD.onnx"
 if (-not $Baseline -and -not (Test-Path $model)) {
     Write-Error "No model at $model - train first (scripts\train-phase1.ps1), then scripts\update-model.ps1 -RunId <run> and assign the .onnx to both agents' BehaviorParameters."
     exit 2

@@ -1,118 +1,262 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 
 namespace PoSoccer
 {
     /// <summary>
-    /// UI Toolkit runtime HUD (UNITY_RULES: UI Toolkit only, Safe Area compliant,
-    /// mobile portrait 9:16). Shows per-agent stamina bars and the episode step counter.
-    /// Builds its element tree in code so no UXML asset wiring is required in-scene.
+    /// Match HUD (UI Toolkit, portrait, safe-area). Uses the dead bands above and
+    /// below the pitch: scoreboard on top, per-player identity chips with stamina
+    /// on the bottom - nothing ever covers the play area. Includes a goal toast,
+    /// a MENU button, and a first-to-N end panel (match flow off in training).
+    /// Styling comes from Agent_UIStyle so menu and HUD stay consistent.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class Agent_HUD : MonoBehaviour
     {
         public Agent_EnvController env;
+        [Tooltip("Enable goal toasts, scoreboard persistence and the end panel. Off in the training scene.")]
+        public bool enableMatchFlow = true;
+        [Tooltip("First team to this many goals ends the match (0 = endless).")]
+        public int matchGoals = 5;
+        public string menuScene = "SCN_Menu";
 
         UIDocument _doc;
-        Label _stepLabel;
-        readonly List<(Agent_Soccer agent, VisualElement fill, Label label)> _bars = new();
+        Label _score, _stepLabel, _toast;
+        VisualElement _root, _endPanel;
+        readonly List<(Agent_Soccer agent, VisualElement fill)> _chips = new();
+        int _blueScore, _redScore;
+        float _toastUntil;
+        bool _ended;
 
         void OnEnable()
         {
             _doc = GetComponent<UIDocument>();
-            var root = _doc.rootVisualElement;
-            if (_doc.panelSettings == null || root == null)
+            _root = _doc.rootVisualElement;
+            if (_doc.panelSettings == null || _root == null)
             {
-                Debug.LogWarning("Agent_HUD: assign a PanelSettings asset (with a runtime " +
-                                 "theme) to the UIDocument; HUD disabled for this session.");
+                Debug.LogWarning("Agent_HUD: assign a PanelSettings asset; HUD disabled.");
                 enabled = false;
                 return;
             }
-            root.Clear();
 
-            // Safe-area padding so notches/rounded corners never clip the HUD.
-            var safe = new VisualElement { name = "safe-area" };
+            _root.Clear();
+            var safe = new VisualElement();
             safe.style.flexGrow = 1;
-            ApplySafeArea(safe);
-            root.Add(safe);
+            Agent_UIStyle.ApplySafeArea(safe);
+            safe.style.justifyContent = Justify.SpaceBetween;
+            _root.Add(safe);
 
-            var panel = new VisualElement { name = "hud-panel" };
-            panel.style.position = Position.Absolute;
-            panel.style.top = 8; panel.style.left = 8; panel.style.right = 8;
-            panel.style.backgroundColor = new Color(0f, 0f, 0f, 0.35f);
-            panel.style.borderTopLeftRadius = 8; panel.style.borderTopRightRadius = 8;
-            panel.style.borderBottomLeftRadius = 8; panel.style.borderBottomRightRadius = 8;
-            panel.style.paddingTop = 6; panel.style.paddingBottom = 6;
-            panel.style.paddingLeft = 10; panel.style.paddingRight = 10;
-            safe.Add(panel);
-
-            _stepLabel = new Label("step 0");
-            _stepLabel.style.color = Color.white;
-            _stepLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            panel.Add(_stepLabel);
-            _panel = panel;
+            safe.Add(BuildTopBand());
+            safe.Add(BuildBottomBand());
+            BuildToast();
         }
 
-        VisualElement _panel;
-
-        // Rows are built lazily: the env controller discovers its agents in Start(),
-        // which runs after this component's OnEnable.
-        void BuildRows()
+        void Start()
         {
-            var panel = _panel;
-            if (panel == null) return;
+            if (env != null) env.EpisodeEnded += OnEpisodeEnded;
+        }
+
+        void OnDestroy()
+        {
+            if (env != null) env.EpisodeEnded -= OnEpisodeEnded;
+        }
+
+        // ── Bands ───────────────────────────────────────────────────────────
+
+        VisualElement BuildTopBand()
+        {
+            var band = new VisualElement();
+            band.style.alignItems = Align.Center;
+            Agent_UIStyle.PadAll(band);
+
+            _score = new Label("0  —  0");
+            _score.style.fontSize = Agent_UIStyle.FontL;
+            _score.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _score.style.color = Agent_UIStyle.TextPrimary;
+            band.Add(_score);
+
+            _stepLabel = new Label(string.Empty);
+            _stepLabel.style.fontSize = Agent_UIStyle.FontS;
+            _stepLabel.style.color = Agent_UIStyle.TextMuted;
+            band.Add(_stepLabel);
+            return band;
+        }
+
+        VisualElement BuildBottomBand()
+        {
+            var band = new VisualElement();
+            band.style.flexDirection = FlexDirection.Row;
+            band.style.justifyContent = Justify.SpaceBetween;
+            band.style.alignItems = Align.Center;
+            Agent_UIStyle.PadAll(band);
+
+            _blueChips = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+            _redChips = new VisualElement { style = { flexDirection = FlexDirection.Row } };
+
+            var menu = new Button(() => { Time.timeScale = 1f; SceneManager.LoadScene(menuScene); })
+            { text = "MENU" };
+            menu.style.fontSize = Agent_UIStyle.FontS;
+            menu.style.color = Agent_UIStyle.TextPrimary;
+            menu.style.backgroundColor = Agent_UIStyle.PanelBg;
+            Agent_UIStyle.Round(menu);
+            menu.style.paddingLeft = 28; menu.style.paddingRight = 28;
+            menu.style.paddingTop = 14; menu.style.paddingBottom = 14;
+            menu.style.display = enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
+
+            band.Add(_blueChips);
+            band.Add(menu);
+            band.Add(_redChips);
+            return band;
+        }
+
+        VisualElement _blueChips, _redChips;
+
+        void BuildToast()
+        {
+            _toast = new Label(string.Empty);
+            _toast.style.position = Position.Absolute;
+            _toast.style.left = 0; _toast.style.right = 0;
+            _toast.style.top = Length.Percent(38);
+            _toast.style.unityTextAlign = TextAnchor.MiddleCenter;
+            _toast.style.fontSize = Agent_UIStyle.FontXL;
+            _toast.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _toast.style.color = Agent_UIStyle.TextPrimary;
+            _toast.style.display = DisplayStyle.None;
+            _root.Add(_toast);
+        }
+
+        void BuildChips()
+        {
             foreach (var agent in env.agents)
             {
-                if (agent == null) continue;
-                var row = new VisualElement();
-                row.style.flexDirection = FlexDirection.Row;
-                row.style.alignItems = Align.Center;
-                row.style.marginTop = 3;
+                if (agent == null || agent.rewards == null) continue;
 
-                var label = new Label(agent.name);
-                label.style.color = agent.team == Agent_Soccer.Team.Blue
-                    ? new Color(0.4f, 0.8f, 1f) : new Color(1f, 0.5f, 0.5f);
-                label.style.width = 110;
-                row.Add(label);
+                var chip = new VisualElement();
+                chip.style.alignItems = Align.Center;
+                chip.style.marginLeft = 10; chip.style.marginRight = 10;
+
+                var square = new Label(agent.rewards.playerName.Substring(0, 1));
+                square.style.width = 84; square.style.height = 84;
+                square.style.backgroundColor = agent.rewards.playerColor;
+                square.style.unityTextAlign = TextAnchor.MiddleCenter;
+                square.style.fontSize = Agent_UIStyle.FontM;
+                square.style.unityFontStyleAndWeight = FontStyle.Bold;
+                square.style.color = Color.black;
+                Agent_UIStyle.Round(square, 12);
+                float bw = 6f;
+                var teamColor = agent.team == Agent_Soccer.Team.Blue
+                    ? Agent_UIStyle.BlueTeam : Agent_UIStyle.RedTeam;
+                square.style.borderBottomWidth = bw;
+                square.style.borderBottomColor = teamColor;
+                chip.Add(square);
 
                 var barBg = new VisualElement();
-                barBg.style.flexGrow = 1;
-                barBg.style.height = 8;
+                barBg.style.width = 84; barBg.style.height = 18;
+                barBg.style.marginTop = 8;
                 barBg.style.backgroundColor = new Color(1f, 1f, 1f, 0.15f);
+                Agent_UIStyle.Round(barBg, 9);
                 var fill = new VisualElement();
-                fill.style.height = 8;
-                fill.style.backgroundColor = new Color(0.3f, 0.9f, 0.4f);
+                fill.style.height = 18;
+                Agent_UIStyle.Round(fill, 9);
                 barBg.Add(fill);
-                row.Add(barBg);
+                chip.Add(barBg);
 
-                panel.Add(row);
-                _bars.Add((agent, fill, label));
+                (agent.team == Agent_Soccer.Team.Blue ? _blueChips : _redChips).Add(chip);
+                _chips.Add((agent, fill));
             }
         }
 
-        static void ApplySafeArea(VisualElement element)
+        // ── Match flow ──────────────────────────────────────────────────────
+
+        void OnEpisodeEnded(Agent_Soccer.Team? winner)
         {
-            Rect safe = Screen.safeArea;
-            element.style.paddingTop = Screen.height - safe.yMax;
-            element.style.paddingBottom = safe.yMin;
-            element.style.paddingLeft = safe.xMin;
-            element.style.paddingRight = Screen.width - safe.xMax;
+            if (!enableMatchFlow || _ended || winner == null) return;
+
+            if (winner == Agent_Soccer.Team.Blue) _blueScore++; else _redScore++;
+
+            var scorer = env.LastToucher;
+            string who = scorer != null && scorer.rewards != null && scorer.team == winner
+                ? scorer.rewards.playerName : winner.ToString().ToUpperInvariant();
+            _toast.text = $"GOAL — {who}";
+            _toast.style.color = winner == Agent_Soccer.Team.Blue
+                ? Agent_UIStyle.BlueTeam : Agent_UIStyle.RedTeam;
+            _toast.style.display = DisplayStyle.Flex;
+            _toastUntil = Time.unscaledTime + 1.6f;
+
+            if (matchGoals > 0 && (_blueScore >= matchGoals || _redScore >= matchGoals))
+                ShowEndPanel();
         }
+
+        void ShowEndPanel()
+        {
+            _ended = true;
+            Time.timeScale = 0f;
+
+            _endPanel = new VisualElement();
+            _endPanel.style.position = Position.Absolute;
+            _endPanel.style.left = 0; _endPanel.style.right = 0;
+            _endPanel.style.top = 0; _endPanel.style.bottom = 0;
+            _endPanel.style.backgroundColor = new Color(0f, 0f, 0f, 0.75f);
+            _endPanel.style.alignItems = Align.Center;
+            _endPanel.style.justifyContent = Justify.Center;
+
+            var headline = new Label(_blueScore > _redScore ? "BLUE WINS" : "RED WINS");
+            headline.style.fontSize = Agent_UIStyle.FontXL;
+            headline.style.unityFontStyleAndWeight = FontStyle.Bold;
+            headline.style.color = _blueScore > _redScore
+                ? Agent_UIStyle.BlueTeam : Agent_UIStyle.RedTeam;
+            _endPanel.Add(headline);
+
+            var score = new Label($"{_blueScore}  —  {_redScore}");
+            score.style.fontSize = Agent_UIStyle.FontL;
+            score.style.color = Agent_UIStyle.TextPrimary;
+            score.style.marginBottom = 40;
+            _endPanel.Add(score);
+
+            _endPanel.Add(EndButton("REMATCH", Agent_UIStyle.Accent,
+                () => { Time.timeScale = 1f; SceneManager.LoadScene(SceneManager.GetActiveScene().name); }));
+            _endPanel.Add(EndButton("MENU", Agent_UIStyle.PanelBg,
+                () => { Time.timeScale = 1f; SceneManager.LoadScene(menuScene); }));
+
+            _root.Add(_endPanel);
+        }
+
+        static Button EndButton(string text, Color bg, System.Action onClick)
+        {
+            var b = new Button(onClick) { text = text };
+            b.style.fontSize = Agent_UIStyle.FontM;
+            b.style.unityFontStyleAndWeight = FontStyle.Bold;
+            b.style.color = Agent_UIStyle.TextPrimary;
+            b.style.backgroundColor = bg;
+            Agent_UIStyle.Round(b);
+            b.style.marginTop = 16;
+            b.style.paddingLeft = 90; b.style.paddingRight = 90;
+            b.style.paddingTop = 20; b.style.paddingBottom = 20;
+            return b;
+        }
+
+        // ── Per-frame ───────────────────────────────────────────────────────
 
         void Update()
         {
-            if (env == null || _stepLabel == null) return;
-            if (_bars.Count == 0 && env.agents.Count > 0) BuildRows();
-            _stepLabel.text = $"step {env.StepCount} / goal width {env.CurrentGoalWidth:0.0}m";
+            if (env == null || _score == null) return;
+            if (_chips.Count == 0 && env.agents.Count > 0) BuildChips();
 
-            foreach (var (agent, fill, _) in _bars)
+            _score.text = $"{_blueScore}  —  {_redScore}";
+            _stepLabel.text = $"step {env.StepCount}  ·  goal {env.CurrentGoalWidth:0.0}m";
+
+            if (_toast.style.display == DisplayStyle.Flex && Time.unscaledTime > _toastUntil)
+                _toast.style.display = DisplayStyle.None;
+
+            foreach (var (agent, fill) in _chips)
             {
                 if (agent == null) continue;
                 float ratio = agent.Stamina != null ? agent.Stamina.Ratio : 0f;
                 fill.style.width = Length.Percent(ratio * 100f);
                 fill.style.backgroundColor = Color.Lerp(
-                    new Color(0.9f, 0.3f, 0.2f), new Color(0.3f, 0.9f, 0.4f), ratio);
+                    Agent_UIStyle.StaminaLow, Agent_UIStyle.StaminaHigh, ratio);
             }
         }
     }

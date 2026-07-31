@@ -52,6 +52,9 @@ namespace PoSoccer
         /// </summary>
         public event System.Action<Agent_Soccer.Team?> EpisodeEnded;
 
+        /// <summary>Most recent ball toucher (the scorer credit holder), for UI.</summary>
+        public Agent_Soccer LastToucher => _lastToucher;
+
         SimpleMultiAgentGroup _blueGroup;
         SimpleMultiAgentGroup _redGroup;
         Agent_Soccer _lastToucher;

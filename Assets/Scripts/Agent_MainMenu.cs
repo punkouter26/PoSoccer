@@ -46,7 +46,7 @@ namespace PoSoccer
             var safe = new VisualElement();
             safe.style.flexGrow = 1;
             ApplySafeArea(safe);
-            safe.style.backgroundColor = new Color(0.05f, 0.09f, 0.07f);
+            safe.style.backgroundColor = Agent_UIStyle.Background;
             safe.style.alignItems = Align.Center;
             safe.style.justifyContent = Justify.Center;
             root.Add(safe);
@@ -61,13 +61,13 @@ namespace PoSoccer
             safe.Add(title);
 
             var subtitle = new Label("pick the matchup");
-            subtitle.style.fontSize = 44;
-            subtitle.style.color = new Color(0.7f, 0.75f, 0.72f);
+            subtitle.style.fontSize = Agent_UIStyle.FontM;
+            subtitle.style.color = Agent_UIStyle.TextMuted;
             subtitle.style.marginBottom = 70;
             safe.Add(subtitle);
 
-            var blue = new Color(0.2f, 0.5f, 1f);
-            var red = new Color(1f, 0.25f, 0.2f);
+            var blue = Agent_UIStyle.BlueTeam;
+            var red = Agent_UIStyle.RedTeam;
             safe.Add(BuildPickerRow("BLUE 1", blue, _slotButtons[0], p => { _picks[0] = p; Restyle(); }));
             safe.Add(BuildPickerRow("BLUE 2", blue, _slotButtons[1], p => { _picks[1] = p; Restyle(); }));
             safe.Add(BuildPickerRow("RED 1", red, _slotButtons[2], p => { _picks[2] = p; Restyle(); }));
@@ -79,10 +79,9 @@ namespace PoSoccer
             play.style.marginTop = 80;
             play.style.paddingLeft = 120; play.style.paddingRight = 120;
             play.style.paddingTop = 28; play.style.paddingBottom = 28;
-            play.style.backgroundColor = new Color(0.16f, 0.55f, 0.28f);
-            play.style.color = Color.white;
-            play.style.borderTopLeftRadius = 10; play.style.borderTopRightRadius = 10;
-            play.style.borderBottomLeftRadius = 10; play.style.borderBottomRightRadius = 10;
+            play.style.backgroundColor = Agent_UIStyle.Accent;
+            play.style.color = Agent_UIStyle.TextPrimary;
+            Agent_UIStyle.Round(play);
             safe.Add(play);
 
             Restyle();
