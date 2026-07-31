@@ -359,8 +359,21 @@ namespace PoSoccer
             if (_bot != null && _bot.enabled && env != null && env.Ball != null)
             {
                 var mate = env.GetTeammate(this);
+
+                // Nearest opposing body, for the bot's shoulder-charge.
+                Rigidbody2D foe = null;
+                float bestSqr = float.MaxValue;
+                for (int agentIndex = 0; agentIndex < env.agents.Count; agentIndex++)
+                {
+                    var other = env.agents[agentIndex];
+                    if (other == null || other == this || other.team == team
+                        || other.Body == null) continue;
+                    float sqr = (other.Body.position - Body.position).sqrMagnitude;
+                    if (sqr < bestSqr) { bestSqr = sqr; foe = other.Body; }
+                }
+
                 Vector3 a = _bot.ComputeActions(Body, env.Ball,
-                    env.GetGoalTransform(Opponent(team)), mate != null ? mate.Body : null);
+                    env.GetGoalTransform(Opponent(team)), mate != null ? mate.Body : null, foe);
                 continuous[0] = a.x;
                 continuous[1] = a.y;
                 continuous[2] = a.z;

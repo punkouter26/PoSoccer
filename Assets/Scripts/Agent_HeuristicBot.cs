@@ -36,7 +36,7 @@ namespace PoSoccer
 
         /// <summary>Compute [move, turn, boost] for the given agent state.</summary>
         public Vector3 ComputeActions(Rigidbody2D self, Rigidbody2D ball, Transform opponentGoal,
-            Rigidbody2D teammate = null)
+            Rigidbody2D teammate = null, Rigidbody2D nearestOpponent = null)
         {
             if (ball == null) return Vector3.zero;
 
@@ -84,6 +84,30 @@ namespace PoSoccer
                     target = ball.position - escape * 0.7f;
                     return Steer(self, target, opponentGoal, allowBoost: false);
                 }
+            }
+
+            // Boost-shot: already behind the ball on the ball->goal axis and facing
+            // it - burst through the contact so body speed becomes shot speed.
+            if (opponentGoal != null && toBall.magnitude < 1.1f)
+            {
+                Vector2 goalDir = ((Vector2)opponentGoal.position - ball.position).normalized;
+                bool behindBall = Vector2.Dot(toBall.normalized, goalDir) > 0.75f;
+                float facingErr = Vector2.SignedAngle(self.transform.up, toBall);
+                if (behindBall && Mathf.Abs(facingErr) < 20f)
+                    return new Vector3(1f, Mathf.Clamp(facingErr / 45f, -1f, 1f), 1f);
+            }
+
+            // Shoulder-charge: an opponent parked between us and a slow ball gets
+            // bumped off it - momentum is the only tackle this game has.
+            if (nearestOpponent != null && ball.linearVelocity.sqrMagnitude < 1f)
+            {
+                Vector2 toFoe = nearestOpponent.position - self.position;
+                bool foeBetween = toBall.magnitude < 3f
+                    && toFoe.magnitude < toBall.magnitude
+                    && Vector2.Dot(toFoe.normalized, toBall.normalized) > 0.85f;
+                float chargeErr = Vector2.SignedAngle(self.transform.up, toFoe);
+                if (foeBetween && toFoe.magnitude < 2f && Mathf.Abs(chargeErr) < 30f)
+                    return new Vector3(1f, Mathf.Clamp(chargeErr / 45f, -1f, 1f), 0.8f);
             }
 
             // When close to the ball, aim for the point behind the ball on the
