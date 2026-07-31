@@ -134,6 +134,28 @@ namespace PoSoccer
                 eyeRenderer.color = team == Team.Blue
                     ? new Color(0.2f, 0.5f, 1f)
                     : new Color(1f, 0.25f, 0.2f);
+
+            // Identity letter (S/M/K/N) on the body, driven by the assigned profile.
+            if (!string.IsNullOrEmpty(rewards.playerName) && transform.Find("Label") == null)
+            {
+                var labelGo = new GameObject("Label");
+                labelGo.transform.SetParent(transform, false);
+                labelGo.transform.localPosition = new Vector3(0f, -0.12f, 0f);
+
+                var text = labelGo.AddComponent<TextMesh>();
+                text.text = rewards.playerName.Substring(0, 1);
+                text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+                text.fontSize = 96;
+                text.characterSize = 0.14f;
+                text.anchor = TextAnchor.MiddleCenter;
+                text.alignment = TextAlignment.Center;
+                text.fontStyle = FontStyle.Bold;
+                text.color = Color.black;
+
+                var renderer = labelGo.GetComponent<MeshRenderer>();
+                renderer.sharedMaterial = text.font.material;
+                renderer.sortingOrder = 5;
+            }
         }
 
         public override void OnEpisodeBegin()
