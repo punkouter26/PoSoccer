@@ -6,10 +6,18 @@ profile** (`Reward_Settings` asset — the personality DNA) in a versioned folde
 
 | Player | Personality | Folder | Reward profile | Brain |
 |---|---|---|---|---|
-| **STANDARD** | Balanced baseline | `Assets/Agents/Standard_v01/` | `Reward_STANDARD.asset` | `STANDARD` (legacy-physics runs: 8%, 22%; realistic-physics run in progress) |
-| **MATT** | The Striker — glory hunter, shoots on sight, hates draws, abandons defense | `Assets/Agents/Matt_v01/` | `Reward_MATT.asset` | `MATT` (designed, untrained) |
-| **KIM** | The Wall — conceding hurts 2×, screens the ball→own-goal lane (`defensivePositionScale`), patient and smooth | `Assets/Agents/Kim_v01/` | `Reward_KIM.asset` | `KIM` (designed, untrained) |
+| **STANDARD** | Balanced baseline | `Assets/Agents/Standard_v01/` | `Reward_STANDARD.asset` | `STANDARD` (legacy-physics runs: 8%, 22%; realistic-physics 20M: 18% old / 32% corner-fixed physics) |
+| **MATT** | The Striker — biggest scoring reward + shoot gradient, lowest conceding fear, hates draws, urgent movement | `Assets/Agents/Matt_v01/` | `Reward_MATT.asset` | `MATT` (designed, untrained) |
+| **KIM** | The Wall — deepest conceding fear, screens the ball→own-goal lane (`defensivePositionScale`), patient and smooth | `Assets/Agents/Kim_v01/` | `Reward_KIM.asset` | `KIM` (designed, untrained) |
 | **NICK** | The Midfielder — paid for close control (`possessionScale`), loves the assist, stays central, passes up shots | `Assets/Agents/Nick_v01/` | `Reward_NICK.asset` | `NICK` (designed, untrained) |
+
+**Balance rule (unique but equally good):** every profile spends the same total
+incentive budget — terminal stakes (`goalScorer + assist + teamBaselineVictory +
+|goalConceded|`) = **2.2** and dense shaping (`ballProximityScale +
+facingAlignmentScale + ballToGoalVelocityScale + defensivePositionScale +
+possessionScale`) = **0.0016** — allocated differently per personality. Movement
+penalties (`stepPenalty`, `actionJitterScale`, `wallProximityPenalty`) are style
+flavor, not budget. Keep both sums invariant when tuning a personality.
 
 Custom look: drop a per-player square texture into their folder (e.g.
 `Matt_v01/MATT_square.png`) and assign it to the agent's SpriteRenderer sprite;
