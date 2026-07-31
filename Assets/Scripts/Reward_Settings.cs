@@ -17,6 +17,8 @@ namespace PoSoccer
         public string personalityNotes;
         [Tooltip("Body tint applied at runtime. Team is shown by the eye color instead.")]
         public Color playerColor = Color.white;
+        [Tooltip("This player's trained brain. Null = plays with the rule-based bot until trained.")]
+        public Unity.InferenceEngine.ModelAsset brainModel;
 
         [Header("Terminal rewards")]
         public float goalScorer = 0.7f;

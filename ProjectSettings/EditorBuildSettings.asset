@@ -8,6 +8,12 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/SCN_Training.unity
     guid: dce7c0c4c86e3dc47976428cf0283a9d
+  - enabled: 1
+    path: Assets/Scenes/SCN_Menu.unity
+    guid: fe887a26060f59f4db892651d6e9f68a
+  - enabled: 1
+    path: Assets/Scenes/SCN_Exhibition.unity
+    guid: 329c35857c05a7c4a9ef8a6689f4b5d5
   m_configObjects:
     com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
