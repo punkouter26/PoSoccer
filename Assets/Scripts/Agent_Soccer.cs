@@ -114,6 +114,24 @@ namespace PoSoccer
             _bot = GetComponent<Agent_HeuristicBot>();
         }
 
+        // Runs after Agent_EnvController.Start (execution order -50) has assigned
+        // the reward profile, so the personality's look is available.
+        void Start()
+        {
+            if (rewards == null) return;
+
+            // Body wears the personality color; the eye shows the team.
+            var body = GetComponent<SpriteRenderer>();
+            if (body != null && rewards.playerColor.a > 0f)
+                body.color = rewards.playerColor;
+
+            var eye = transform.Find("Eye");
+            if (eye != null && eye.TryGetComponent(out SpriteRenderer eyeRenderer))
+                eyeRenderer.color = team == Team.Blue
+                    ? new Color(0.2f, 0.5f, 1f)
+                    : new Color(1f, 0.25f, 0.2f);
+        }
+
         public override void OnEpisodeBegin()
         {
             TouchedBallThisEpisode = false;

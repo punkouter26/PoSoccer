@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: Reward_KIM
   m_EditorClassIdentifier:
   playerName: KIM
+  playerColor: {r: 0.16, g: 0.75, b: 0.85, a: 1}
   personalityNotes: 'THE WALL. Conceding hurts double; screening the lane between
     ball and own goal pays continuously (defensivePositionScale). Patient - a draw
     barely stings, does not swarm, comfortable near the goal line (low wall penalty).

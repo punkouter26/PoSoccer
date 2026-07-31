@@ -15,6 +15,8 @@ namespace PoSoccer
         [TextArea]
         [Tooltip("Design notes: how this personality attacks, scores, defends.")]
         public string personalityNotes;
+        [Tooltip("Body tint applied at runtime. Team is shown by the eye color instead.")]
+        public Color playerColor = Color.white;
 
         [Header("Terminal rewards")]
         public float goalScorer = 0.7f;

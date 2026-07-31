@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: Reward_MATT
   m_EditorClassIdentifier:
   playerName: MATT
+  playerColor: {r: 1, g: 0.5, b: 0.12, a: 1}
   personalityNotes: 'THE STRIKER. Glory hunter: massive scoring reward, barely fears
     conceding, hates draws, swarms the ball and shoots on sight. Loose jitter rein
     means frantic, aggressive movement. Weakness by design: abandons defense.'

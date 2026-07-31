@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: Reward_NICK
   m_EditorClassIdentifier:
   playerName: NICK
+  playerColor: {r: 0.66, g: 0.4, b: 0.92, a: 1}
   personalityNotes: 'THE MIDFIELDER. Possession is the point: continuous reward for
     keeping the ball within 1.2m (possessionScale), highest ball-affinity on the
     roster, loves the assist as much as the goal. Stays central (high wall penalty),
