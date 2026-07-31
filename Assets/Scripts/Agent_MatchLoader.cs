@@ -26,14 +26,23 @@ namespace PoSoccer
 
         void Awake()
         {
+            // 1v1 from the menu: bench the second pair before the env controller
+            // discovers agents (inactive objects are excluded from discovery).
+            bool oneVOne = Agent_MatchSetup.Applied && !Agent_MatchSetup.TwoVTwo;
+            if (blueAgent2 != null) blueAgent2.gameObject.SetActive(!oneVOne);
+            if (redAgent2 != null) redAgent2.gameObject.SetActive(!oneVOne);
+
             Apply(blueAgent, Agent_MatchSetup.BluePlayer != null
                 ? Agent_MatchSetup.BluePlayer : defaultBlue);
-            Apply(blueAgent2, Agent_MatchSetup.BluePlayer2 != null
-                ? Agent_MatchSetup.BluePlayer2 : defaultBlue2);
             Apply(redAgent, Agent_MatchSetup.RedPlayer != null
                 ? Agent_MatchSetup.RedPlayer : defaultRed);
-            Apply(redAgent2, Agent_MatchSetup.RedPlayer2 != null
-                ? Agent_MatchSetup.RedPlayer2 : defaultRed2);
+            if (!oneVOne)
+            {
+                Apply(blueAgent2, Agent_MatchSetup.BluePlayer2 != null
+                    ? Agent_MatchSetup.BluePlayer2 : defaultBlue2);
+                Apply(redAgent2, Agent_MatchSetup.RedPlayer2 != null
+                    ? Agent_MatchSetup.RedPlayer2 : defaultRed2);
+            }
         }
 
         static void Apply(Agent_Soccer agent, Reward_Settings profile)
