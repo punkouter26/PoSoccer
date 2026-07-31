@@ -1872,6 +1872,9 @@ MonoBehaviour:
   maxAngularVelocityDeg: 360
   forceSlewRate: 2300
   tiredPowerFloor: 0.6
+  wallKickImpulse: 6
+  wallKickBand: 1
+  wallKickCooldown: 0.5
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
 --- !u!114 &1579506621
@@ -2198,6 +2201,9 @@ MonoBehaviour:
   maxAngularVelocityDeg: 360
   forceSlewRate: 2300
   tiredPowerFloor: 0.6
+  wallKickImpulse: 6
+  wallKickBand: 1
+  wallKickCooldown: 0.5
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
 --- !u!114 &1593781675
@@ -2224,7 +2230,7 @@ MonoBehaviour:
     hasUpgradedBrainParametersWithActionSpec: 1
   m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
   m_InferenceDevice: 0
-  m_BehaviorType: 1
+  m_BehaviorType: 0
   m_BehaviorName: My Behavior
   TeamId: 0
   m_UseChildSensors: 1

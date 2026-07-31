@@ -35,24 +35,27 @@ behaviors:
       play_against_latest_model_ratio: 0.5
       initial_elo: 1200.0
 
+# Curriculum gates on training progress (fraction of max_steps): self-play
+# rewards are zero-sum, so reward-gating never advances, and this mlagents
+# version has no Elo measure. 0-20% wide net, 20-50% mid, then tight.
 environment_parameters:
   goal_width:
     curriculum:
       - name: Lesson0_WideNet
         completion_criteria:
-          measure: Elo
+          measure: progress
           behavior: STANDARD
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 1250.0
+          threshold: 0.2
         value: 6.0
       - name: Lesson1_MidNet
         completion_criteria:
-          measure: Elo
+          measure: progress
           behavior: STANDARD
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 1350.0
+          threshold: 0.5
         value: 4.0
       - name: Lesson2_TightNet
         value: 2.5
