@@ -26,14 +26,40 @@ namespace PoSoccer
         float _flankUntil;
         Vector2 _flankPoint;
         float _flankSide = 1f;
+        float _unstickJitter;
+
+        void Awake()
+        {
+            // Desynchronize unstick timing between bots so they don't re-jam together.
+            _unstickJitter = (GetInstanceID() & 3) * 0.3f;
+        }
 
         /// <summary>Compute [move, turn, boost] for the given agent state.</summary>
-        public Vector3 ComputeActions(Rigidbody2D self, Rigidbody2D ball, Transform opponentGoal)
+        public Vector3 ComputeActions(Rigidbody2D self, Rigidbody2D ball, Transform opponentGoal,
+            Rigidbody2D teammate = null)
         {
             if (ball == null) return Vector3.zero;
 
             Vector2 toBall = ball.position - self.position;
             Vector2 target = ball.position;
+
+            // Closest man presses: if the teammate is clearly nearer the ball, take a
+            // support position between the ball and our own goal instead of piling in.
+            if (teammate != null && opponentGoal != null)
+            {
+                float myDist = toBall.magnitude;
+                float mateDist = Vector2.Distance(teammate.position, ball.position);
+                if (mateDist + 0.5f < myDist)
+                {
+                    Vector2 c = opponentGoal.parent != null
+                        ? (Vector2)opponentGoal.parent.position : Vector2.zero;
+                    Vector2 ownGoal = c * 2f - (Vector2)opponentGoal.position;
+                    Vector2 toOwnGoal = (ownGoal - ball.position).normalized;
+                    Vector2 lateral = Vector2.Perpendicular(toOwnGoal) * (1.8f * _flankSide);
+                    target = ball.position + toOwnGoal * 3f + lateral;
+                    return Steer(self, target, opponentGoal, allowBoost: false);
+                }
+            }
 
             // When close to the ball, aim for the point behind the ball on the
             // ball->goal line so pushes travel goalward instead of poking around.
@@ -48,7 +74,7 @@ namespace PoSoccer
             if (jammed && float.IsPositiveInfinity(_jamSince)) _jamSince = Time.time;
             if (!jammed) _jamSince = float.PositiveInfinity;
 
-            if (Time.time - _jamSince > unstickAfter && Time.time > _flankUntil)
+            if (Time.time - _jamSince > unstickAfter + _unstickJitter && Time.time > _flankUntil)
             {
                 _flankSide = -_flankSide;   // alternate sides so mirrored bots desync
                 _flankPoint = ball.position
