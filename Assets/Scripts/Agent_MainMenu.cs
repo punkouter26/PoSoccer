@@ -22,9 +22,11 @@ namespace PoSoccer
         public string matchScene = "SCN_Exhibition";
 
         Reward_Settings[] _roster;
-        Reward_Settings _blue, _red;
-        readonly System.Collections.Generic.List<Button> _blueButtons = new();
-        readonly System.Collections.Generic.List<Button> _redButtons = new();
+        readonly Reward_Settings[] _picks = new Reward_Settings[4];   // B1, B2, R1, R2
+        readonly System.Collections.Generic.List<Button>[] _slotButtons =
+        {
+            new(), new(), new(), new(),
+        };
 
         void OnEnable()
         {
@@ -37,8 +39,8 @@ namespace PoSoccer
             }
 
             _roster = new[] { standard, matt, kim, nick };
-            _blue = standard;
-            _red = standard;
+            _picks[0] = standard; _picks[1] = nick;   // Blue: STANDARD + NICK
+            _picks[2] = matt;     _picks[3] = kim;    // Red:  MATT + KIM
 
             root.Clear();
             var safe = new VisualElement();
@@ -64,10 +66,12 @@ namespace PoSoccer
             subtitle.style.marginBottom = 70;
             safe.Add(subtitle);
 
-            safe.Add(BuildPickerRow("BLUE", new Color(0.2f, 0.5f, 1f), _blueButtons,
-                p => { _blue = p; Restyle(); }));
-            safe.Add(BuildPickerRow("RED", new Color(1f, 0.25f, 0.2f), _redButtons,
-                p => { _red = p; Restyle(); }));
+            var blue = new Color(0.2f, 0.5f, 1f);
+            var red = new Color(1f, 0.25f, 0.2f);
+            safe.Add(BuildPickerRow("BLUE 1", blue, _slotButtons[0], p => { _picks[0] = p; Restyle(); }));
+            safe.Add(BuildPickerRow("BLUE 2", blue, _slotButtons[1], p => { _picks[1] = p; Restyle(); }));
+            safe.Add(BuildPickerRow("RED 1", red, _slotButtons[2], p => { _picks[2] = p; Restyle(); }));
+            safe.Add(BuildPickerRow("RED 2", red, _slotButtons[3], p => { _picks[3] = p; Restyle(); }));
 
             var play = new Button(StartMatch) { text = "PLAY" };
             play.style.fontSize = 72;
@@ -126,11 +130,11 @@ namespace PoSoccer
 
         void Restyle()
         {
-            void Apply(System.Collections.Generic.List<Button> buttons, Reward_Settings picked)
+            for (int slot = 0; slot < 4; slot++)
             {
-                foreach (var b in buttons)
+                foreach (var b in _slotButtons[slot])
                 {
-                    bool selected = ReferenceEquals(b.userData, picked);
+                    bool selected = ReferenceEquals(b.userData, _picks[slot]);
                     float w = selected ? 4f : 0f;
                     b.style.borderTopWidth = w; b.style.borderBottomWidth = w;
                     b.style.borderLeftWidth = w; b.style.borderRightWidth = w;
@@ -139,14 +143,14 @@ namespace PoSoccer
                     b.style.opacity = selected ? 1f : 0.55f;
                 }
             }
-            Apply(_blueButtons, _blue);
-            Apply(_redButtons, _red);
         }
 
         void StartMatch()
         {
-            Agent_MatchSetup.BluePlayer = _blue;
-            Agent_MatchSetup.RedPlayer = _red;
+            Agent_MatchSetup.BluePlayer = _picks[0];
+            Agent_MatchSetup.BluePlayer2 = _picks[1];
+            Agent_MatchSetup.RedPlayer = _picks[2];
+            Agent_MatchSetup.RedPlayer2 = _picks[3];
             SceneManager.LoadScene(matchScene);
         }
 

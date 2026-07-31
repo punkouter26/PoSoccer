@@ -291,6 +291,15 @@ namespace PoSoccer
         public Transform GetGoalTransform(Agent_Soccer.Team ownerTeam) =>
             ownerTeam == Agent_Soccer.Team.Blue ? blueGoal : redGoal;
 
+        /// <summary>First teammate of the given agent, or null in 1v1.</summary>
+        public Agent_Soccer GetTeammate(Agent_Soccer self)
+        {
+            foreach (var agent in agents)
+                if (agent != null && agent != self && agent.team == self.team)
+                    return agent;
+            return null;
+        }
+
         int TeamSize(Agent_Soccer.Team t)
         {
             int n = 0;

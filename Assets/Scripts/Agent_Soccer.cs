@@ -55,8 +55,11 @@ namespace PoSoccer
         float _drive;                                  // slew-limited applied force (N)
         readonly float[] _prevActions = new float[3];  // for the jitter penalty
 
-        /// <summary>Vector observation count (teammate slots return with 2v2 in v2).</summary>
-        public const int BaseObservationSize = 14;
+        /// <summary>
+        /// Vector observation count: 14 self/ball/goal floats + 4 teammate floats
+        /// (zero-padded in 1v1 so one brain contract covers 1v1 and 2v2).
+        /// </summary>
+        public const int BaseObservationSize = 18;
 
         protected override void Awake()
         {
@@ -180,6 +183,19 @@ namespace PoSoccer
             sensor.AddObservation(relOpp);
             sensor.AddObservation(relOwn);
             sensor.AddObservation(distToOppGoal);
+
+            // Teammate (4, zero-padded in 1v1)
+            Agent_Soccer mate = env != null ? env.GetTeammate(this) : null;
+            if (mate != null && mate.Body != null)
+            {
+                sensor.AddObservation((mate.Body.position - Body.position) * invMax);
+                sensor.AddObservation(mate.Body.linearVelocity * 0.1f);
+            }
+            else
+            {
+                sensor.AddObservation(Vector2.zero);
+                sensor.AddObservation(Vector2.zero);
+            }
         }
 
         public override void OnActionReceived(ActionBuffers actions)

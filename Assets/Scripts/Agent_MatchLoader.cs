@@ -14,18 +14,26 @@ namespace PoSoccer
     public sealed class Agent_MatchLoader : MonoBehaviour
     {
         public Agent_Soccer blueAgent;
+        public Agent_Soccer blueAgent2;
         public Agent_Soccer redAgent;
+        public Agent_Soccer redAgent2;
 
         [Header("Defaults when launched without the menu")]
         public Reward_Settings defaultBlue;
+        public Reward_Settings defaultBlue2;
         public Reward_Settings defaultRed;
+        public Reward_Settings defaultRed2;
 
         void Awake()
         {
             Apply(blueAgent, Agent_MatchSetup.BluePlayer != null
                 ? Agent_MatchSetup.BluePlayer : defaultBlue);
+            Apply(blueAgent2, Agent_MatchSetup.BluePlayer2 != null
+                ? Agent_MatchSetup.BluePlayer2 : defaultBlue2);
             Apply(redAgent, Agent_MatchSetup.RedPlayer != null
                 ? Agent_MatchSetup.RedPlayer : defaultRed);
+            Apply(redAgent2, Agent_MatchSetup.RedPlayer2 != null
+                ? Agent_MatchSetup.RedPlayer2 : defaultRed2);
         }
 
         static void Apply(Agent_Soccer agent, Reward_Settings profile)
