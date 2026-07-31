@@ -258,6 +258,98 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_SpriteSortPoint: 0
   m_BlendShapeWeights: []
+--- !u!1 &106435018
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 106435019}
+  - component: {fileID: 106435020}
+  m_Layer: 0
+  m_Name: Backdrop
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &106435019
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 106435018}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 2.2, y: 2.2, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 588775818}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!212 &106435020
+SpriteRenderer:
+  serializedVersion: 3
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 106435018}
+  m_Enabled: 1
+  m_CastShadows: 0
+  m_ReceiveShadows: 0
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 0
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 0
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: -20
+  m_MaskInteraction: 0
+  m_Sprite: {fileID: 3484779304036253661, guid: af793bc28eeaa76428f5b07a7fa58761, type: 3}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_FlipX: 0
+  m_FlipY: 0
+  m_DrawMode: 0
+  m_Size: {x: 8, y: 13}
+  m_AdaptiveModeThreshold: 0.5
+  m_SpriteTileMode: 0
+  m_WasSpriteAssigned: 1
+  m_SpriteSortPoint: 0
+  m_BlendShapeWeights: []
 --- !u!1 &129460678
 GameObject:
   m_ObjectHideFlags: 0
@@ -1505,6 +1597,8 @@ GameObject:
   - component: {fileID: 588775817}
   - component: {fileID: 588775819}
   - component: {fileID: 588775820}
+  - component: {fileID: 588775822}
+  - component: {fileID: 588775821}
   m_Layer: 0
   m_Name: Pitch
   m_TagString: Untagged
@@ -1564,6 +1658,7 @@ Transform:
   - {fileID: 1593781669}
   - {fileID: 219326531}
   - {fileID: 1785677901}
+  - {fileID: 106435019}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &588775819
@@ -1598,6 +1693,38 @@ MonoBehaviour:
   defaultBlue2: {fileID: 11400000, guid: 59a6a1fc32970544e878f00aeb667f79, type: 2}
   defaultRed: {fileID: 11400000, guid: 8864935e263b3b949aae2ce597bd1403, type: 2}
   defaultRed2: {fileID: 11400000, guid: 8422c6b744068394992bf7f17ddaba21, type: 2}
+--- !u!114 &588775821
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 588775816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f1dc7e45c65cf794384a0edfab3803cd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_Audio
+  kick: {fileID: 8300000, guid: ed5c27876d49aff49a8a91fd217523bb, type: 3}
+  wall: {fileID: 8300000, guid: 0cfb793649e0df64e85802970f9283c2, type: 3}
+  goalHorn: {fileID: 8300000, guid: f9d541257e1f6f344a98a638c8f3393f, type: 3}
+  whistle: {fileID: 8300000, guid: 8e4157b493ce7594881d3f5548e87ab5, type: 3}
+  crowdLoop: {fileID: 8300000, guid: 07661d89f6ff0f142a56d0ba2b477525, type: 3}
+  music: {fileID: 0}
+  crowdBase: 0.16
+  crowdSwellMax: 0.45
+--- !u!114 &588775822
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 588775816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ef10c5d2a41dc85438485e7ce72ab686, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_MatchFX
 --- !u!1 &760298331
 GameObject:
   m_ObjectHideFlags: 0
@@ -1625,7 +1752,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 12.5, y: 18.5, z: 1}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 588775818}
@@ -1679,8 +1806,8 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: -10
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 7399533318584292489, guid: 23323bbb61d65984cbfa9dc2c2a73dc4, type: 3}
-  m_Color: {r: 0.13, g: 0.42, b: 0.2, a: 1}
+  m_Sprite: {fileID: 6362663692451344482, guid: 6ddfe25881f6773419c7301dd67b26e3, type: 3}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -1921,6 +2048,52 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_SpriteSortPoint: 0
   m_BlendShapeWeights: []
+--- !u!1 &1291179481
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1291179483}
+  - component: {fileID: 1291179482}
+  m_Layer: 0
+  m_Name: Stadium
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1291179482
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1291179481}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a346ce827eeda3f4db3de8b547fada55, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_Stadium
+  litMaterial: {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
+  globalFill: 0.5
+--- !u!4 &1291179483
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1291179481}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1362575903
 GameObject:
   m_ObjectHideFlags: 0
@@ -3844,3 +4017,4 @@ SceneRoots:
   - {fileID: 588775818}
   - {fileID: 129460680}
   - {fileID: 1977980029}
+  - {fileID: 1291179483}

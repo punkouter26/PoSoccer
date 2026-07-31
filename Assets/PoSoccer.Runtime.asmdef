@@ -4,7 +4,10 @@
     "references": [
         "Unity.ML-Agents",
         "Unity.InferenceEngine",
-        "Unity.InputSystem"
+        "Unity.InputSystem",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Universal.2D.Runtime",
+        "Unity.RenderPipelines.Core.Runtime"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -84,6 +84,22 @@ namespace PoSoccer
             Agent_UIStyle.Round(play);
             safe.Add(play);
 
+            Button sound = null;
+            sound = new Button(() =>
+            {
+                Agent_Audio.Muted = !Agent_Audio.Muted;
+                sound.text = Agent_Audio.Muted ? "SOUND: OFF" : "SOUND: ON";
+            })
+            { text = Agent_Audio.Muted ? "SOUND: OFF" : "SOUND: ON" };
+            sound.style.fontSize = Agent_UIStyle.FontS;
+            sound.style.color = Agent_UIStyle.TextMuted;
+            sound.style.backgroundColor = Agent_UIStyle.PanelBg;
+            Agent_UIStyle.Round(sound);
+            sound.style.marginTop = 28;
+            sound.style.paddingLeft = 40; sound.style.paddingRight = 40;
+            sound.style.paddingTop = 14; sound.style.paddingBottom = 14;
+            safe.Add(sound);
+
             Restyle();
         }
 
