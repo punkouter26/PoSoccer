@@ -41,6 +41,14 @@ namespace PoSoccer
         [Tooltip("Power fraction remaining at zero stamina (exhausted agents visibly slow).")]
         public float tiredPowerFloor = 0.6f;
 
+        [Header("Wall kick-out (corner escape)")]
+        [Tooltip("Impulse (N*s) that pops the ball toward open field when a player touches it inside the wall band. 6 N*s on the 0.43 kg ball is a ~14 m/s pop in corners; straight walls get half.")]
+        public float wallKickImpulse = 6f;
+        [Tooltip("Distance from a wall inside which the pop triggers.")]
+        public float wallKickBand = 1.0f;
+        [Tooltip("Seconds between pops from the same player (corner scrums are continuous contact).")]
+        public float wallKickCooldown = 0.5f;
+
         [Header("Wiring (set by env controller at runtime)")]
         public Agent_EnvController env;
         public Reward_Settings rewards;
@@ -54,6 +62,7 @@ namespace PoSoccer
         BehaviorParameters _behavior;
         Transform _label;                              // identity letter, kept upright
         float _drive;                                  // slew-limited applied force (N)
+        float _nextWallKick;                           // kick-out cooldown timestamp
         readonly float[] _prevActions = new float[3];  // for the jitter penalty
 
         /// <summary>
@@ -186,6 +195,7 @@ namespace PoSoccer
             TouchedBallThisEpisode = false;
             IsBoosting = false;
             _drive = 0f;
+            _nextWallKick = 0f;
             System.Array.Clear(_prevActions, 0, _prevActions.Length);
             Stamina.ResetForEpisode();
             Body.linearVelocity = Vector2.zero;
@@ -301,6 +311,18 @@ namespace PoSoccer
             if (wallDist < 0.8f)
                 AddReward(-rewards.wallProximityPenalty * (0.8f - wallDist) / 0.8f);
 
+            // Corner aversion: a ball parked in a corner zone bleeds reward for
+            // everyone on the pitch, so both teams learn extraction over pinning.
+            if (rewards.cornerBallPenalty > 0f)
+            {
+                Vector2 ballLocal = env.Ball.position - (Vector2)env.transform.position;
+                float cornerDist = Mathf.Max(
+                    env.PitchHalfExtents.x - Mathf.Abs(ballLocal.x),
+                    env.PitchHalfExtents.y - Mathf.Abs(ballLocal.y));
+                if (cornerDist < 2f)
+                    AddReward(-rewards.cornerBallPenalty * (1f - cornerDist / 2f));
+            }
+
             // Personality traits (zero-cost when the profile leaves them at 0):
             // KIM-style defense - stand on the line from the ball back to own goal.
             if (rewards.defensivePositionScale > 0f)
@@ -357,6 +379,39 @@ namespace PoSoccer
                 env.Ball.angularVelocity += Body.angularVelocity * 0.3f;
 
             env?.NotifyBallTouch(this);
+            TryWallKick();
+        }
+
+        void OnCollisionStay2D(Collision2D collision)
+        {
+            // Corner scrums are continuous contact - Enter alone fires only once.
+            if (collision.collider.CompareTag("Ball")) TryWallKick();
+        }
+
+        // Corner escape: touching the ball inside the wall band kicks it toward
+        // open field - a deliberate "dig it out" mechanic so corners can't hold it.
+        void TryWallKick()
+        {
+            if (env == null || env.Ball == null || Time.time < _nextWallKick) return;
+
+            Vector2 half = env.PitchHalfExtents;
+            Vector2 local = env.Ball.position - (Vector2)env.transform.position;
+            Vector2 inward = Vector2.zero;
+            if (half.x - Mathf.Abs(local.x) < wallKickBand) inward.x = -Mathf.Sign(local.x);
+            // Never kick away from a goal mouth - shots settling on the goal line stay live.
+            bool inGoalMouth = Mathf.Abs(local.x) < env.CurrentGoalWidth * 0.5f + 0.3f;
+            if (!inGoalMouth && half.y - Mathf.Abs(local.y) < wallKickBand) inward.y = -Mathf.Sign(local.y);
+            if (inward == Vector2.zero) return;
+
+            bool corner = inward.x != 0f && inward.y != 0f;
+            // Blend in the kicker's facing so the pop can be aimed a little,
+            // but never let it point back into the boundary.
+            Vector2 dir = (inward.normalized + (Vector2)transform.up * 0.4f).normalized;
+            if (Vector2.Dot(dir, inward) <= 0f) dir = inward.normalized;
+
+            env.Ball.AddForce(dir * (corner ? wallKickImpulse : wallKickImpulse * 0.5f),
+                ForceMode2D.Impulse);
+            _nextWallKick = Time.time + wallKickCooldown;
         }
 
         public static Team Opponent(Team t) => t == Team.Blue ? Team.Red : Team.Blue;

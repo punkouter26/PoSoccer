@@ -71,6 +71,9 @@ namespace PoSoccer
             // Safety net: keep the pitch functional even if no asset is wired.
             if (rewards == null) rewards = ScriptableObject.CreateInstance<Reward_Settings>();
 
+            // Rounded slick corners + bouncy pads (anti corner-jam), idempotent per pitch.
+            Agent_PitchGuard.Build(this);
+
             // Self-discover agents under this pitch; also heals null serialized entries
             // and keeps runtime-instantiated grid clones self-contained.
             agents.RemoveAll(a => a == null);

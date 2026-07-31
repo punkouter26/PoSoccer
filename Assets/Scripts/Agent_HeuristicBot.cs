@@ -61,6 +61,31 @@ namespace PoSoccer
                 }
             }
 
+            // Corner-craft: never press straight into a corner pocket (that is what
+            // wedges the ball). Approach from behind the ball ALONG the wall and
+            // sweep it toward open field, preferring the exit that also moves play
+            // toward the goal we attack.
+            if (opponentGoal != null)
+            {
+                Vector2 center = opponentGoal.parent != null
+                    ? (Vector2)opponentGoal.parent.position : Vector2.zero;
+                Vector2 halfExt = interiorHalfExtents + new Vector2(0.6f, 0.6f);
+                Vector2 ballLocal = ball.position - center;
+                float cornerDist = Mathf.Max(
+                    halfExt.x - Mathf.Abs(ballLocal.x),
+                    halfExt.y - Mathf.Abs(ballLocal.y));
+                if (cornerDist < 2.4f)
+                {
+                    Vector2 escapeX = new(-Mathf.Sign(ballLocal.x), 0f);
+                    Vector2 escapeY = new(0f, -Mathf.Sign(ballLocal.y));
+                    Vector2 toGoal = ((Vector2)opponentGoal.position - ball.position).normalized;
+                    Vector2 escape = Vector2.Dot(escapeX, toGoal) > Vector2.Dot(escapeY, toGoal)
+                        ? escapeX : escapeY;
+                    target = ball.position - escape * 0.7f;
+                    return Steer(self, target, opponentGoal, allowBoost: false);
+                }
+            }
+
             // When close to the ball, aim for the point behind the ball on the
             // ball->goal line so pushes travel goalward instead of poking around.
             if (opponentGoal != null && toBall.magnitude < controlDistance)
