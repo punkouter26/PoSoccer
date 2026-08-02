@@ -27,8 +27,16 @@ resistance and turf friction, the ball uses FIFA mass (0.43 kg) and radius
 with bounded drive force and torque. Every other clause of Rule 2 (SI units,
 realistic material friction, deterministic scaling) is met in full.
 
-**Revisit if:** the game ever adds a Z axis (lofted passes, headers, chips). At
-that point gravity becomes real and this exemption must be withdrawn.
+**Status: PERMANENT.** A Z axis (lofted passes, headers, chips) was considered
+and **explicitly rejected by the project owner on 2026-08-02** — PoSoccer is a
+2D game and stays 2D. This exemption is therefore not provisional and should
+not be re-raised.
+
+**Where gravity does enter:** `g = 9.81` is used for real in the locomotion
+model. The traction budget is `mu * m * g` — body weight sets the normal force,
+which sets how hard the feet can push, cut and brake. Gravity is modelled where
+it physically acts on a top-down game, rather than being bolted onto the wrong
+axis for the sake of a checkbox.
 
 ---
 

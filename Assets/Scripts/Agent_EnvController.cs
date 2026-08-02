@@ -15,6 +15,10 @@ namespace PoSoccer
     {
         [Header("Wiring")]
         public Reward_Settings rewards;
+        [Tooltip("All trainable personality profiles. POSOCCER_PROFILE (set by the training " +
+                 "scripts before launch) picks one by playerName, so a single build can train " +
+                 "any brain without a scene edit per run.")]
+        public Reward_Settings[] profileRoster;
         public Rigidbody2D ball;
         public Transform blueGoal;
         public Transform redGoal;
@@ -66,6 +70,43 @@ namespace PoSoccer
         Vector3 _ballSpawn;
         bool _episodeEnding;
 
+        // Execution order (-50) puts this before Agent_Soccer.Awake, which is where
+        // the brain contract is frozen - the profile swap must land before that.
+        void Awake()
+        {
+            ApplyProfileOverride();
+        }
+
+        bool _profileOverridden;
+
+        void ApplyProfileOverride()
+        {
+            string wanted = System.Environment.GetEnvironmentVariable("POSOCCER_PROFILE");
+            if (string.IsNullOrEmpty(wanted) || profileRoster == null) return;
+
+            for (int i = 0; i < profileRoster.Length; i++)
+            {
+                var profile = profileRoster[i];
+                if (profile == null || profile.playerName == null) continue;
+                if (!string.Equals(profile.playerName, wanted,
+                        System.StringComparison.OrdinalIgnoreCase)) continue;
+
+                rewards = profile;
+                _profileOverridden = true;
+
+                // Push onto the agents now, while they are still pre-Awake.
+                var children = GetComponentsInChildren<Agent_Soccer>(true);
+                for (int a = 0; a < children.Length; a++)
+                {
+                    children[a].rewards = profile;
+                    children[a].brainName = profile.playerName;
+                }
+                Debug.Log($"[Env] POSOCCER_PROFILE={wanted} -> training brain '{profile.playerName}'");
+                return;
+            }
+            Debug.LogError($"[Env] POSOCCER_PROFILE='{wanted}' matches no entry in profileRoster.");
+        }
+
         void Start()
         {
             // Safety net: keep the pitch functional even if no asset is wired.
@@ -83,7 +124,11 @@ namespace PoSoccer
             foreach (var agent in agents)
             {
                 agent.env = this;
+                // The profile override owns both agents so the run trains one brain
+                // against a mirror of itself; without it, the serialized asset wins.
+                if (_profileOverridden) agent.rewards = rewards;
                 if (agent.rewards == null) agent.rewards = rewards;
+                if (_profileOverridden) agent.brainName = rewards.playerName;
                 _spawnPositions[agent] = agent.transform.position;
                 _spawnRotations[agent] = agent.transform.rotation;
             }

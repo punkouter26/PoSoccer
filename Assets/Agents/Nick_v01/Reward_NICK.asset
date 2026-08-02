@@ -35,4 +35,4 @@ MonoBehaviour:
   defensivePositionScale: 0
   possessionScale: 0.0006
   ballContact: 0.05
-  maxEnvironmentSteps: 5000
+  maxEnvironmentSteps: 9000

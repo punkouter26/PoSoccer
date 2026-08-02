@@ -75,7 +75,8 @@ Write-Host "Installing mlagents-envs and mlagents (editable, from the pinned com
 & $py -m pip install -r $req --quiet
 
 # 7. Verify parity end to end.
-$actualPy = (& $py -c "import mlagents;print(mlagents.__version__)").Trim()
+# NB: the mlagents package does not expose __version__; ask the metadata instead.
+$actualPy = (& $py -c "from importlib.metadata import version; print(version('mlagents'))").Trim()
 if ($actualPy -ne $expectedPy) {
     throw "PARITY BREAK: installed mlagents is $actualPy, expected $expectedPy from commit $commit."
 }
