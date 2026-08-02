@@ -19,8 +19,10 @@ $root = Split-Path $PSScriptRoot -Parent
 $py = Join-Path $root ".venv\Scripts\mlagents-learn.exe"
 if (-not (Test-Path $py)) { throw "No trainer at $py - run scripts/setup-training-env.ps1 first." }
 
-$env = Join-Path $root $EnvPath
-if (-not (Test-Path $env)) { throw "No player build at $env - build SCN_Training first." }
+# NB: not named $env - that collides with PowerShell's environment provider,
+# which this script uses below to pass POSOCCER_PROFILE to the player.
+$envExe = Join-Path $root $EnvPath
+if (-not (Test-Path $envExe)) { throw "No player build at $envExe - build SCN_Training first." }
 
 $basePort = 5010
 foreach ($name in $Profiles) {
@@ -35,7 +37,7 @@ foreach ($name in $Profiles) {
     $env:POSOCCER_PROFILE = $name
 
     $mlArgs = @($config, "--run-id=$runId", "--base-port=$basePort",
-                "--results-dir=$root\results", "--env=$env",
+                "--results-dir=$root\results", "--env=$envExe",
                 "--no-graphics", "--num-envs=$NumEnvs")
     if ($Force) { $mlArgs += "--force" }
 
