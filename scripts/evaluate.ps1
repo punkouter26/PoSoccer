@@ -6,6 +6,8 @@ param(
     [string]$RunId = "soccer_p1_00",
     [int]$Episodes = 100,
     [switch]$Baseline,
+    [ValidateSet("STANDARD", "MATT", "KIM", "NICK")]
+    [string]$Profile = "STANDARD",
     [string]$ExePath = "Builds\PoSoccer\PoSoccer.exe",
     [int]$TimeoutMin = 30,
     [switch]$Rebuild
@@ -20,10 +22,24 @@ if ($Rebuild -or -not (Test-Path $exe)) {
     & "$root\scripts\build-headless.ps1"
 }
 
-$model = Join-Path $root "Assets\Agents\Standard_v01\STANDARD.onnx"
+# Agent asset folders follow <AgentName>_v<NN> (UNITY_RULES 1).
+$folders = @{ STANDARD = "Standard_v01"; MATT = "Matt_v01"; KIM = "Kim_v01"; NICK = "Nick_v01" }
+$model = Join-Path $root "Assets\Agents\$($folders[$Profile])\$Profile.onnx"
 if (-not $Baseline -and -not (Test-Path $model)) {
-    Write-Error "No model at $model - train first (scripts\train-phase1.ps1), then scripts\update-model.ps1 -RunId <run> and assign the .onnx to both agents' BehaviorParameters."
+    Write-Error "No model at $model - train first, then scripts\update-model.ps1 -RunId <run> -Profile $Profile."
     exit 2
+}
+
+# The player evaluates whatever model is baked into the scene, so a stale build
+# silently evaluates the wrong weights. Warn when the build predates the model.
+if (-not $Baseline -and (Test-Path $exe)) {
+    $modelTime = (Get-Item $model).LastWriteTime
+    $buildTime = (Get-Item $exe).LastWriteTime
+    if ($modelTime -gt $buildTime) {
+        Write-Warning ("Model ($($modelTime.ToString('HH:mm:ss'))) is newer than the player build " +
+                       "($($buildTime.ToString('HH:mm:ss'))). Re-assign m_Model and rebuild, or this " +
+                       "evaluates stale weights.")
+    }
 }
 
 $tag = if ($Baseline) { "baseline" } else { $RunId }

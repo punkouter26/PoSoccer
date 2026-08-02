@@ -2,6 +2,8 @@
 # The curriculum's completion_criteria.behavior must name a single behavior, so
 # the four brains cannot share one file - they are generated from one template
 # instead, which keeps the hyperparameters identical by construction.
+param([int]$MaxSteps = 10000000)
+
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 $profiles = @("STANDARD", "MATT", "KIM", "NICK")
@@ -31,7 +33,7 @@ behaviors:
       extrinsic:
         gamma: 0.99
         strength: 1.0
-    max_steps: 10000000
+    max_steps: ${MaxSteps}
     time_horizon: 1024
     summary_freq: 20000
     checkpoint_interval: 250000
