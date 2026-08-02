@@ -46,6 +46,9 @@ namespace PoSoccer
                 // Headless eval runs faster than real time; physics step stays 0.01s.
                 Time.timeScale = 20f;
                 Application.targetFrameRate = -1;
+                // Deliberate raw Debug.Log (not Agent_Log): these lines are the
+                // headless evaluation telemetry read from the player's stdout by
+                // evaluate.ps1, so they must survive into non-development builds.
                 Debug.Log($"[EvalStats] Eval mode: target={_target} baseline={BaselineMode}");
             }
         }

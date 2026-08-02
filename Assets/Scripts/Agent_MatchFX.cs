@@ -1,4 +1,5 @@
-using System.Collections;
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 
 namespace PoSoccer
@@ -23,7 +24,7 @@ namespace PoSoccer
         Agent_EnvController _env;
         Camera _camera;
         Transform _ballVisual;
-        Coroutine _squash;
+        CancellationTokenSource _squashCts;
         readonly System.Collections.Generic.List<(Agent_Soccer agent, ParticleSystem ps)> _boost = new();
 
         void Start()
@@ -50,6 +51,9 @@ namespace PoSoccer
         {
             if (_env != null) _env.EpisodeEnded -= OnEpisodeEnded;
             BallContact.Hit -= OnBallHit;
+            _squashCts?.Cancel();
+            _squashCts?.Dispose();
+            _squashCts = null;
         }
 
         static void BuildTrail(Transform ball)
@@ -114,20 +118,21 @@ namespace PoSoccer
         void OnEpisodeEnded(Agent_Soccer.Team? winner)
         {
             // The kickoff teleport would otherwise smear the trail across the pitch.
-            StartCoroutine(ClearTrailAfterReset());
+            ClearTrailAfterResetAsync(this.GetCancellationTokenOnDestroy()).Forget();
 
             if (winner == null) return;
             Agent_Stadium.Instance?.PulseGoal();
-            if (_camera != null) StartCoroutine(Shake(0.35f, 0.22f));
+            if (_camera != null) ShakeAsync(0.35f, 0.22f, this.GetCancellationTokenOnDestroy()).Forget();
         }
 
-        IEnumerator ClearTrailAfterReset()
+        async UniTaskVoid ClearTrailAfterResetAsync(CancellationToken token)
         {
             var trail = _env.Ball != null ? _env.Ball.GetComponent<TrailRenderer>() : null;
-            if (trail == null) yield break;
+            if (trail == null) return;
             trail.emitting = false;
-            yield return new WaitForFixedUpdate();
-            yield return new WaitForFixedUpdate();
+            await UniTask.WaitForFixedUpdate(token);
+            await UniTask.WaitForFixedUpdate(token);
+            if (trail == null) return;
             trail.Clear();
             trail.emitting = true;
         }
@@ -147,12 +152,16 @@ namespace PoSoccer
             float impact = collision.relativeVelocity.magnitude;
             if (impact > 4f && _ballVisual != null)
             {
-                if (_squash != null) StopCoroutine(_squash);
-                _squash = StartCoroutine(Squash(Mathf.Min(0.45f, impact * 0.03f)));
+                // A new hard contact restarts the squash: cancel the in-flight one.
+                _squashCts?.Cancel();
+                _squashCts?.Dispose();
+                _squashCts = CancellationTokenSource.CreateLinkedTokenSource(
+                    this.GetCancellationTokenOnDestroy());
+                SquashAsync(Mathf.Min(0.45f, impact * 0.03f), _squashCts.Token).Forget();
             }
         }
 
-        IEnumerator Shake(float duration, float amplitude)
+        async UniTaskVoid ShakeAsync(float duration, float amplitude, CancellationToken token)
         {
             Vector3 basePos = _camera.transform.position;
             float t = 0f;
@@ -162,12 +171,12 @@ namespace PoSoccer
                 float falloff = 1f - t / duration;
                 _camera.transform.position = basePos +
                     (Vector3)(Random.insideUnitCircle * amplitude * falloff);
-                yield return null;
+                await UniTask.Yield(PlayerLoopTiming.Update, token);
             }
-            _camera.transform.position = basePos;
+            if (_camera != null) _camera.transform.position = basePos;
         }
 
-        IEnumerator Squash(float amount)
+        async UniTaskVoid SquashAsync(float amount, CancellationToken token)
         {
             Vector3 baseScale = new(2f, 2f, 1f);
             float t = 0f;
@@ -177,10 +186,9 @@ namespace PoSoccer
                 float k = Mathf.Sin(t / 0.18f * Mathf.PI) * amount;
                 _ballVisual.localScale = new Vector3(
                     baseScale.x * (1f + k), baseScale.y * (1f - k), 1f);
-                yield return null;
+                await UniTask.Yield(PlayerLoopTiming.Update, token);
             }
-            _ballVisual.localScale = baseScale;
-            _squash = null;
+            if (_ballVisual != null) _ballVisual.localScale = baseScale;
         }
     }
 }

@@ -1,3 +1,5 @@
+using System.Threading;
+using Cysharp.Threading.Tasks;
 using UnityEngine;
 
 namespace PoSoccer
@@ -88,12 +90,13 @@ namespace PoSoccer
                 _goalSpike = 1f;
             }
             // The whistle marks the kickoff, not the goal - never stacked on the horn.
-            StartCoroutine(KickoffWhistle());
+            KickoffWhistleAsync(this.GetCancellationTokenOnDestroy()).Forget();
         }
 
-        System.Collections.IEnumerator KickoffWhistle()
+        async UniTaskVoid KickoffWhistleAsync(CancellationToken token)
         {
-            yield return new WaitForSecondsRealtime(1.5f);
+            await UniTask.Delay(System.TimeSpan.FromSeconds(1.5), DelayType.UnscaledDeltaTime,
+                cancellationToken: token);
             Play(whistle, 0.45f);
         }
 

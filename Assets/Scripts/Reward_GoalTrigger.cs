@@ -17,7 +17,7 @@ namespace PoSoccer
         void OnTriggerEnter2D(Collider2D other)
         {
             if (!other.CompareTag("Ball")) return;
-            Debug.Log($"[Goal] Ball entered {name} - {owningTeam} concedes");
+            Agent_Log.Info($"[Goal] Ball entered {name} - {owningTeam} concedes");
             env?.OnGoalScored(owningTeam);
         }
     }

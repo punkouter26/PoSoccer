@@ -120,6 +120,14 @@ namespace PoSoccer
         VisualElement _blueChips, _redChips;
         float _matchSeconds;
 
+        // Update runs at 60 fps but these labels change a few times a match (score)
+        // or once a second (clock). Cache the last rendered values so the string is
+        // rebuilt only on change - see .claude/rules/performance.md (zero alloc in Update).
+        int _shownBlue = -1, _shownRed = -1;
+        int _shownSecond = -1;
+        int _shownStep = -1;
+        float _shownGoalWidth = float.NaN;
+
         static Button SmallButton(string text, System.Action onClick)
         {
             var b = new Button(onClick) { text = text };
@@ -276,13 +284,32 @@ namespace PoSoccer
             if (enableMatchFlow)
             {
                 if (!_ended) _matchSeconds += Time.deltaTime;
-                _score.text = $"{_blueScore}  —  {_redScore}";
-                _stepLabel.text = $"{(int)(_matchSeconds / 60):0}:{(int)(_matchSeconds % 60):00}";
+
+                if (_blueScore != _shownBlue || _redScore != _shownRed)
+                {
+                    _score.text = $"{_blueScore}  —  {_redScore}";
+                    _shownBlue = _blueScore;
+                    _shownRed = _redScore;
+                }
+
+                int second = (int)_matchSeconds;
+                if (second != _shownSecond)
+                {
+                    _stepLabel.text = $"{second / 60:0}:{second % 60:00}";
+                    _shownSecond = second;
+                }
             }
             else
             {
                 // Training telemetry: raw steps + curriculum state belong here only.
-                _stepLabel.text = $"step {env.StepCount}  ·  goal {env.CurrentGoalWidth:0.0}m";
+                int step = env.StepCount;
+                float goalWidth = env.CurrentGoalWidth;
+                if (step != _shownStep || !Mathf.Approximately(goalWidth, _shownGoalWidth))
+                {
+                    _stepLabel.text = $"step {step}  ·  goal {goalWidth:0.0}m";
+                    _shownStep = step;
+                    _shownGoalWidth = goalWidth;
+                }
             }
 
             if (_toast.style.display == DisplayStyle.Flex && Time.unscaledTime > _toastUntil)
