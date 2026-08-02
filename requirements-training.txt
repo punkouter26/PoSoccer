@@ -1,0 +1,26 @@
+# Toolchain parity pin (UNITY_RULES 5).
+#
+# The embedded C# package Packages/com.unity.ml-agents is version 4.1.0, taken
+# from the Unity-Technologies/ml-agents develop branch at commit ab179e18.
+# 4.1.0 is NOT a published PyPI release, so `pip install mlagents==4.1.0` cannot
+# satisfy parity -- the Python trainer MUST be installed editable from that same
+# commit, whose setup.py declares mlagents 1.2.0.dev0 / mlagents-envs 1.2.0.dev0.
+#
+# Run scripts/setup-training-env.ps1 to build this environment reproducibly.
+# Do not `pip install mlagents` from PyPI: it resolves to 1.1.0 and speaks a
+# different gRPC capability set than the embedded package.
+#
+# ---- pinned anchors (single source of truth; setup-training-env.ps1 reads these) ----
+# ML_AGENTS_REPO=https://github.com/Unity-Technologies/ml-agents.git
+# ML_AGENTS_COMMIT=ab179e18
+# ML_AGENTS_PY_VERSION=1.2.0.dev0
+# CSHARP_PACKAGE_VERSION=4.1.0
+# PYTHON_MAX=3.10.12
+#
+# Installed editable from the clone (in this order):
+#   -e <clone>/ml-agents-envs
+#   -e <clone>/ml-agents
+#
+# Everything below is installed on top of the editable packages.
+protobuf==3.20.3
+tensorboard>=2.14,<3

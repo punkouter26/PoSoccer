@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace PoSoccer.Tests
 {
-    public class EditMode_SoccerAgent
+    public class Agent_EditMode_SoccerAgent
     {
         GameObject _go;
 

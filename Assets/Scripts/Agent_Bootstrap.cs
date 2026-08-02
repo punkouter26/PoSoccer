@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace PoSoccer
 {
@@ -11,24 +12,29 @@ namespace PoSoccer
     public sealed class Agent_Bootstrap : MonoBehaviour
     {
         [Tooltip("Fixed physics timestep (PRD: 0.01s / 100 Hz).")]
-        public float fixedTimestep = 0.01f;
+        [FormerlySerializedAs("fixedTimestep")]
+        [SerializeField] private float _fixedTimestep = 0.01f;
         [Tooltip("Frame-rate lock for interactive play (mobile portrait target).")]
-        public int targetFrameRate = 60;
+        [FormerlySerializedAs("targetFrameRate")]
+        [SerializeField] private int _targetFrameRate = 60;
         [Tooltip("Physics2D solver velocity iterations cap.")]
-        public int velocityIterations = 8;
+        [FormerlySerializedAs("velocityIterations")]
+        [SerializeField] private int _velocityIterations = 8;
         [Tooltip("Physics2D solver position iterations cap.")]
-        public int positionIterations = 3;
+        [FormerlySerializedAs("positionIterations")]
+        [SerializeField] private int _positionIterations = 3;
 
         void Awake()
         {
             // Bird's-eye view: no in-plane gravity. Real-world g applies along the
             // unmodeled Z axis; friction/drag values stand in for rolling resistance.
+            // Documented exemption from the Earth-gravity rule - see docs/rules-exemptions.md.
             Physics2D.gravity = Vector2.zero;
-            Physics2D.velocityIterations = velocityIterations;
-            Physics2D.positionIterations = positionIterations;
+            Physics2D.velocityIterations = _velocityIterations;
+            Physics2D.positionIterations = _positionIterations;
 
-            Time.fixedDeltaTime = fixedTimestep;
-            Application.targetFrameRate = targetFrameRate;
+            Time.fixedDeltaTime = _fixedTimestep;
+            Application.targetFrameRate = _targetFrameRate;
         }
     }
 }

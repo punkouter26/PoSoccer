@@ -8,7 +8,7 @@ using UnityEngine.TestTools;
 
 namespace PoSoccer.Tests
 {
-    public class PlayMode_GoalFlow
+    public class Agent_PlayMode_GoalFlow
     {
         Agent_EnvController _env;
 

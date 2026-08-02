@@ -3,6 +3,7 @@ using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace PoSoccer
 {
@@ -26,28 +27,38 @@ namespace PoSoccer
 
         [Header("Actuation (SI units - 75 kg body)")]
         [Tooltip("Drive force (N) along the +Y eye axis at action = 1. ~700 N on a 75 kg body with drag 2 gives a ~4.7 m/s jog.")]
-        public float moveForce = 700f;
+        [FormerlySerializedAs("moveForce")]
+        [SerializeField] private float _moveForce = 700f;
         [Tooltip("Turn torque (N*m) at action = 1.")]
-        public float turnTorque = 250f;
+        [FormerlySerializedAs("turnTorque")]
+        [SerializeField] private float _turnTorque = 250f;
         [Tooltip("Force multiplier while boosting with stamina available (PRD: 2.2x -> ~10 m/s sprint).")]
-        public float boostMultiplier = 2.2f;
+        [FormerlySerializedAs("boostMultiplier")]
+        [SerializeField] private float _boostMultiplier = 2.2f;
         [Tooltip("Boost action activation threshold (PRD: 0.1).")]
-        public float boostThreshold = 0.1f;
+        [FormerlySerializedAs("boostThreshold")]
+        [SerializeField] private float _boostThreshold = 0.1f;
         [Tooltip("Human rotation limit (deg/s). Athletes cannot spin faster than ~a full turn per second.")]
-        public float maxAngularVelocityDeg = 360f;
+        [FormerlySerializedAs("maxAngularVelocityDeg")]
+        [SerializeField] private float _maxAngularVelocityDeg = 360f;
         [Tooltip("How fast the applied drive force can change (N/s). Full power takes ~0.3s; reversals are not instant.")]
-        public float forceSlewRate = 2300f;
+        [FormerlySerializedAs("forceSlewRate")]
+        [SerializeField] private float _forceSlewRate = 2300f;
         [Range(0.3f, 1f)]
         [Tooltip("Power fraction remaining at zero stamina (exhausted agents visibly slow).")]
-        public float tiredPowerFloor = 0.6f;
+        [FormerlySerializedAs("tiredPowerFloor")]
+        [SerializeField] private float _tiredPowerFloor = 0.6f;
 
         [Header("Wall kick-out (corner escape)")]
         [Tooltip("Impulse (N*s) that pops the ball toward open field when a player touches it inside the wall band. 6 N*s on the 0.43 kg ball is a ~14 m/s pop in corners; straight walls get half.")]
-        public float wallKickImpulse = 6f;
+        [FormerlySerializedAs("wallKickImpulse")]
+        [SerializeField] private float _wallKickImpulse = 6f;
         [Tooltip("Distance from a wall inside which the pop triggers.")]
-        public float wallKickBand = 1.0f;
+        [FormerlySerializedAs("wallKickBand")]
+        [SerializeField] private float _wallKickBand = 1.0f;
         [Tooltip("Seconds between pops from the same player (corner scrums are continuous contact).")]
-        public float wallKickCooldown = 0.5f;
+        [FormerlySerializedAs("wallKickCooldown")]
+        [SerializeField] private float _wallKickCooldown = 0.5f;
 
         [Header("Wiring (set by env controller at runtime)")]
         public Agent_EnvController env;
@@ -270,18 +281,18 @@ namespace PoSoccer
             float turn = Mathf.Clamp(actions.ContinuousActions[1], -1f, 1f);
             float boost = Mathf.Clamp01(actions.ContinuousActions[2]);
 
-            IsBoosting = boost > boostThreshold && Stamina.HasStamina;
+            IsBoosting = boost > _boostThreshold && Stamina.HasStamina;
 
             // Exhaustion scales available power; drive force slews rather than
             // stepping, so direction reversals take human-like time.
-            float staminaPower = tiredPowerFloor + (1f - tiredPowerFloor) * Stamina.Ratio;
-            float targetDrive = move * moveForce * (IsBoosting ? boostMultiplier : 1f) * staminaPower;
-            _drive = Mathf.MoveTowards(_drive, targetDrive, forceSlewRate * Time.fixedDeltaTime);
+            float staminaPower = _tiredPowerFloor + (1f - _tiredPowerFloor) * Stamina.Ratio;
+            float targetDrive = move * _moveForce * (IsBoosting ? _boostMultiplier : 1f) * staminaPower;
+            _drive = Mathf.MoveTowards(_drive, targetDrive, _forceSlewRate * Time.fixedDeltaTime);
 
             Body.AddForce((Vector2)transform.up * _drive);
-            Body.AddTorque(turn * turnTorque);
+            Body.AddTorque(turn * _turnTorque);
             Body.angularVelocity = Mathf.Clamp(
-                Body.angularVelocity, -maxAngularVelocityDeg, maxAngularVelocityDeg);
+                Body.angularVelocity, -_maxAngularVelocityDeg, _maxAngularVelocityDeg);
             Stamina.Tick(IsBoosting, Time.fixedDeltaTime);
 
             ApplyDenseRewards(move, turn, boost);
@@ -421,10 +432,10 @@ namespace PoSoccer
             Vector2 half = env.PitchHalfExtents;
             Vector2 local = env.Ball.position - (Vector2)env.transform.position;
             Vector2 inward = Vector2.zero;
-            if (half.x - Mathf.Abs(local.x) < wallKickBand) inward.x = -Mathf.Sign(local.x);
+            if (half.x - Mathf.Abs(local.x) < _wallKickBand) inward.x = -Mathf.Sign(local.x);
             // Never kick away from a goal mouth - shots settling on the goal line stay live.
             bool inGoalMouth = Mathf.Abs(local.x) < env.CurrentGoalWidth * 0.5f + 0.3f;
-            if (!inGoalMouth && half.y - Mathf.Abs(local.y) < wallKickBand) inward.y = -Mathf.Sign(local.y);
+            if (!inGoalMouth && half.y - Mathf.Abs(local.y) < _wallKickBand) inward.y = -Mathf.Sign(local.y);
             if (inward == Vector2.zero) return;
 
             bool corner = inward.x != 0f && inward.y != 0f;
@@ -433,9 +444,9 @@ namespace PoSoccer
             Vector2 dir = (inward.normalized + (Vector2)transform.up * 0.4f).normalized;
             if (Vector2.Dot(dir, inward) <= 0f) dir = inward.normalized;
 
-            env.Ball.AddForce(dir * (corner ? wallKickImpulse : wallKickImpulse * 0.5f),
+            env.Ball.AddForce(dir * (corner ? _wallKickImpulse : _wallKickImpulse * 0.5f),
                 ForceMode2D.Impulse);
-            _nextWallKick = Time.time + wallKickCooldown;
+            _nextWallKick = Time.time + _wallKickCooldown;
         }
 
         public static Team Opponent(Team t) => t == Team.Blue ? Team.Red : Team.Blue;

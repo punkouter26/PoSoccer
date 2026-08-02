@@ -54,8 +54,9 @@ namespace PoSoccer
             safe.style.justifyContent = Justify.Center;
             root.Add(safe);
 
-            // All sizes are in 1170x2532 reference-resolution units (PanelSettings
-            // scales the panel to the actual screen, match-width).
+            // All sizes are in 1080x1920 reference-resolution units (9:16 per
+            // UNITY_RULES; PanelSettings scales the panel to the actual screen,
+            // match-width).
             var title = new Label("PoSoccer");
             title.style.fontSize = 120;
             title.style.color = Color.white;
