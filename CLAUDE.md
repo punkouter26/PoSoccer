@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-PoSoccer: a top-down 2D physics soccer game + **ML-Agents training benchmark**. Unity 6 (6000.5.4f1, 2D URP, mobile portrait) + Python `mlagents` trainer. Two faces, one codebase:
+PoSoccer: a top-down 2D physics soccer game + **ML-Agents training benchmark**. Unity 6 (6000.5.6f1, 2D URP, mobile portrait) + Python `mlagents` trainer. Two faces, one codebase:
 - **Benchmark**: train a brain that beats the rule-based bot ≥80% of eval episodes with ≤10% stalemates (spec: `docs/plans/2026-07-30-posoccer-v1-training-benchmark-design.md`).
 - **Game**: `SCN_Menu` → pick 2v2 matchups from a roster of four personalities → exhibition match with scoreboard, first-to-5, goal toasts, stadium lighting and sound.
 
@@ -12,13 +12,18 @@ PoSoccer: a top-down 2D physics soccer game + **ML-Agents training benchmark**. 
 
 - Scene setup goes through **Unity MCP tools only** — never editor scripts for scene construction. (Building things *at runtime* in gameplay code — lights, UI, particles — is fine and used heavily.)
 - Script prefixes `Agent_` / `Sensor_` / `Reward_` (`Agent_` is the blanket project prefix, covering non-agents like `Agent_UIStyle`); scenes `SCN_`; folder depth ≤2 under `Assets/`; agent assets in `<Name>_v<NN>` folders.
-- UI Toolkit only (runtime, code-built, shared `PanelSettings` at ScaleWithScreenSize 1170×2532 match-width; style constants in `Agent_UIStyle`). Fixed timestep 0.01s, portrait.
-- **Version parity**: embedded `Packages/com.unity.ml-agents` (4.1.0 @ ab179e18, protobuf-swapped — see landmines) must match Python `mlagents` (1.2.0.dev0, editable from `/ml-agents` clone in `.venv`, Python ≤3.10.12).
-- Trained `.onnx` overwrites happen **in place** (GUID-stable slot: `Assets/Agents/Standard_v01/STANDARD.onnx`). Kill orphaned trainers after runs; TensorBoard restarts prune/archive runs.
+- UI Toolkit only (runtime, code-built, shared `PanelSettings` at ScaleWithScreenSize **1080×1920** (9:16) match-width; style constants in `Agent_UIStyle`). Fixed timestep 0.01s, portrait **locked** (`defaultScreenOrientation: 0`, landscape autorotate off).
+- **Version parity**: embedded `Packages/com.unity.ml-agents` (4.1.0 @ ab179e18, protobuf-swapped — see landmines) must match Python `mlagents` 1.2.0.dev0. Pins live in `requirements-training.txt`; `scripts/setup-training-env.ps1` builds `.venv` from that commit and **fails loudly on drift**. Python ≤3.10.12.
+- Trained `.onnx` overwrites happen **in place** (GUID-stable slot per personality: `Assets/Agents/<Name>_v01/<NAME>.onnx`). Kill orphaned trainers after runs; TensorBoard restarts prune/archive runs.
+- **Git branch: `master`.** Do not create other branches unless explicitly asked. (`main` still exists on the remote; the GitHub default has not been flipped yet.)
+- Deliberate departures from these rules are recorded in `docs/rules-exemptions.md` — an audit finding not on that page is a real defect.
 
 ## Commands
 
 ```powershell
+# One-time / after any parity bump: build .venv from the pinned ml-agents commit
+.\scripts\setup-training-env.ps1 [-Force]   # clones .tooling/ml-agents, editable installs, verifies
+
 # Training (headless, 4 env processes x 16 pitches; run detached via Start-Process)
 .\scripts\train-phase1.ps1 -RunId <run> -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4 `
     [-Config <yaml in config/>] [-InitFrom <run>] [-Resume]     # configs: STANDARD_phase*.yaml
@@ -28,7 +33,7 @@ PoSoccer: a top-down 2D physics soccer game + **ML-Agents training benchmark**. 
 .\scripts\evaluate.ps1 -RunId <run> -Episodes 100               # trained blue vs bot
 .\scripts\evaluate.ps1 -Baseline -Episodes 40                   # bot vs bot sanity (~50%)
 
-.\scripts\update-model.ps1 -RunId <run>    # results onnx -> GUID-stable Assets slot
+.\scripts\update-model.ps1 -RunId <run> [-Profile STANDARD|MATT|KIM|NICK]   # onnx -> GUID-stable slot
 .\scripts\tensorboard.ps1                  # :6006; keeps newest 3 runs, archives rest
 .\scripts\cleanup-training.ps1             # kill orphaned trainers/env players
 ```
@@ -39,7 +44,11 @@ Tests via MCP `run_tests`, **always scoped**: `assembly_names: ["PoSoccer.EditMo
 
 ## Working with the live editor (MCP)
 
-Editor is normally already running; CoplayDev "MCPForUnity" + IvanMurzak "UnityMCP" are in `.mcp.json`. If MCP tools aren't in-session, drive the CoplayDev server with a FastMCP stdio client executing a JSON call list (spawn `uv run --project .tooling/coplay-unity-mcp/Server mcp-for-unity`). Bridge status: `~/.unity-mcp/unity-mcp-status-*.json` (poll `"reason":"ready"`).
+Editor is normally already running. **The server that actually works is `unityMCP`, registered in `.claude/settings.json` at `http://localhost:8080/mcp`** (CoplayDev toolset: `manage_scene`, `manage_gameobject`, `read_console`, `refresh_unity`, `run_tests`, …). `.mcp.json` holds the IvanMurzak `UnityMCP` binary (moved to port **8090** — 8080 is taken) and the `ai-game-developer` HTTP connector.
+
+- Bridge status: `~/.unity-mcp/unity-mcp-status-*.json` (poll `"reason":"ready"`).
+- **Multiple editors share port 6400.** If another project (e.g. PoSumo) is open, tool calls fail with "Instance hash does not match"; call `set_active_instance` with the hash from the status file first.
+- The ~80 `assets-*` / `gameobject-*` / `scene-*` **skills** in `.claude/skills/` belong to the IvanMurzak server. Its plugin config (`UserSettings/AI-Game-Developer-Config.json`) is `connectionMode: "Cloud"`, so those skills stay unusable until the `ai-game-developer` connector is authorized.
 
 Hard-won traps:
 - **Play mode blocks everything scene-side** ("This cannot be used during play mode") — the user often has Play running; `manage_editor stop` first, then edit, then let them replay.
@@ -66,14 +75,27 @@ Hard-won traps:
 
 **Eval mode** is env-var driven (set by `evaluate.ps1` pre-launch, read in `Awake`): `POSOCCER_EVAL/BASELINE/EPISODES/RUNID/OUT`; `Agent_EvalStats` (Pitch root) aggregates across the 16-pitch grid, writes JSON, quits. `Agent_TrainingGrid` clones pitches when a trainer is connected or eval mode is on.
 
-**Assemblies**: `PoSoccer.Runtime` (refs: `Unity.ML-Agents` [hyphen], `Unity.InferenceEngine`, `Unity.InputSystem`, `Unity.RenderPipelines.Universal.Runtime` + `.2D.Runtime` + Core).
+**Assemblies** (3 total, no Editor assembly by design — scene work is MCP-only):
+- `PoSoccer.Runtime` (`Assets/`) → `Unity.ML-Agents` [hyphen], `Unity.InferenceEngine`, `Unity.InputSystem`, `Unity.RenderPipelines.Universal.Runtime` + `.2D.Runtime` + Core
+- `PoSoccer.EditModeTests` (`Assets/Tests/EditMode`) → `PoSoccer.Runtime`, `Unity.ML-Agents`, TestRunner
+- `PoSoccer.PlayModeTests` (`Assets/Tests/PlayMode`) → same
+
+**Key packages** (68 installed; `manage_packages list_packages` for the full set): `com.unity.ml-agents` 4.1.0 **Embedded**, Sentis/`com.unity.ai.inference` 2.6.1, URP 17.5.0 (2D renderer), Input System 1.20.0, Addressables 3.1.0, Cinemachine 3.1.7, Recorder 5.1.6, Memory Profiler, Profile Analyzer, Burst 1.8.29. Tooling packages: UnitySkills 2.4.2 (Git), CoplayDev MCP for Unity 10.1.0 (Git), IvanMurzak AI Game Developer 0.86.3 (OpenUPM). No DOTween/UniTask/VContainer/Zenject/Odin, no networking stack, no TextMeshPro (UI Toolkit only). Scoped registry: OpenUPM for `com.ivanmurzak` + `extensions.unity`.
 
 ## Landmines
 
 - **Protobuf**: ML-Agents + com.unity.ai.inference both shipped `Google.Protobuf_Packed.dll`; player builds resolved the editor-only twin (CS0400). Fixed by embedding the package with stock NuGet `Google.Protobuf.dll` 3.21.12 + asmdef refs updated. Never reintroduce the packed dll; file-renaming breaks the linker (assembly identity).
+- **Git LFS**: `.gitattributes` routes every `*.onnx`, `*.png`, `*.wav`, `*.psd`, `*.fbx`, `*.ttf` through LFS. A clone made without `git lfs install` leaves **all 94 binaries as ~130-byte pointer stubs** — sprites and audio silently break and `STANDARD.onnx` fails to import with `InvalidProtocolBufferException: ... invalid wire type`, which reads like the protobuf landmine below but is not. Fix: `git lfs install --local; git lfs pull`, then reimport. Check with `git lfs ls-files` vs. on-disk file sizes.
 - Scene order in Build Settings: `SCN_Training` must stay index 0 (headless training/eval boot it). Menu/Exhibition follow.
 - Old runs exported under legacy behavior name `SoccerAgent`; `update-model.ps1 -Behavior` falls back automatically.
+- `.venv`, `.tooling/`, `Builds/`, `results/` are all gitignored — a fresh clone has **no training toolchain at all**. Run `scripts/setup-training-env.ps1` before assuming any `scripts/*.ps1` will work.
 
-## State (2026-07-31)
+## Coding rules
+
+Enforced style lives in `.claude/rules/` and is loaded automatically: `architecture.md` (MVS + VContainer + MessagePipe + UniTask — aspirational; the current code is plain MonoBehaviour/ScriptableObject and does **not** yet follow it), `csharp-unity.md` (naming, `[SerializeField] private`, no LINQ in gameplay), `performance.md` (zero alloc in Update, draw-call/atlas budget), `serialization.md` (**`[FormerlySerializedAs]` on every rename**), `unity-specifics.md` (no `?.` on Unity objects, no coroutines).
+
+## State (2026-08-02)
 
 Realistic-physics STANDARD: 20M steps, eval **18%** (trend 10→18 per 10M; never left curriculum Lesson0). Bar 80%/≤10% unmet — next levers: Phase 2 POCA self-play (`-InitFrom soccer_p1e_00`), personality brain runs, or bar recalibration. Eval reports in `results/eval/*.json`. Free Asset Store picks (optional, zero dependencies): `docs/asset-store-free-assets.md`.
+
+**Open items:** `.venv` does not exist on this machine — `setup-training-env.ps1` is written but has never been run, so training/eval are blocked. MATT/KIM/NICK have no `brainModel` and play as heuristic bots. The `ai-game-developer` connector is unauthorized. Active-ragdoll articulation is an accepted open deviation (`docs/rules-exemptions.md`).
