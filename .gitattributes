@@ -19,6 +19,11 @@
 *.yaml text
 *.md text
 
+# The IvanMurzak plugin regenerates these with LF; without an explicit eol the
+# `* text=auto` rule above tries to check them out as CRLF and all 77 show as
+# modified with an empty diff forever.
+.claude/skills/**/SKILL.md text eol=lf
+
 # Binary assets via Git LFS (enable `git lfs install` to activate)
 *.onnx filter=lfs diff=lfs merge=lfs -text
 *.psd filter=lfs diff=lfs merge=lfs -text
