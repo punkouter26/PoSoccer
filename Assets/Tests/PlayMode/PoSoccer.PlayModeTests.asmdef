@@ -4,6 +4,7 @@
     "references": [
         "PoSoccer.Runtime",
         "Unity.ML-Agents",
+        "Unity.InferenceEngine",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
