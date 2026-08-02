@@ -92,8 +92,9 @@ namespace PoSoccer.Tests
             blue.Stamina.Tick(boosting: true, deltaTime: 10f);   // force-drain to 0
             Assert.IsFalse(blue.Stamina.HasStamina);
 
+            // [forward, lateral, turn, boost]
             blue.OnActionReceived(new ActionBuffers(
-                new[] { 0f, 0f, 1f }, System.Array.Empty<int>()));
+                new[] { 0f, 0f, 0f, 1f }, System.Array.Empty<int>()));
 
             Assert.IsFalse(blue.IsBoosting,
                 "boost must not activate at zero stamina (force stays 1x, not 2.2x)");

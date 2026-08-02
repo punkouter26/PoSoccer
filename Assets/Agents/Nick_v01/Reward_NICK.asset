@@ -15,7 +15,7 @@ MonoBehaviour:
   playerName: NICK
   playerColor: {r: 0.66, g: 0.4, b: 0.92, a: 1}
   bodyScale: 0.85
-  bodyMass: 60
+  bodyMass: 54
   personalityNotes: 'THE MIDFIELDER. Possession is the point: continuous reward for
     keeping the ball within 1.2m (possessionScale, his signature trait), loves the
     assist as much as the goal. Stays central (high wall penalty), tidy on the

@@ -35,10 +35,10 @@ namespace PoSoccer
         }
 
         /// <summary>Compute [move, turn, boost] for the given agent state.</summary>
-        public Vector3 ComputeActions(Rigidbody2D self, Rigidbody2D ball, Transform opponentGoal,
+        public Vector4 ComputeActions(Rigidbody2D self, Rigidbody2D ball, Transform opponentGoal,
             Rigidbody2D teammate = null, Rigidbody2D nearestOpponent = null)
         {
-            if (ball == null) return Vector3.zero;
+            if (ball == null) return Vector4.zero;
 
             Vector2 toBall = ball.position - self.position;
             Vector2 target = ball.position;
@@ -94,7 +94,7 @@ namespace PoSoccer
                 bool behindBall = Vector2.Dot(toBall.normalized, goalDir) > 0.75f;
                 float facingErr = Vector2.SignedAngle(self.transform.up, toBall);
                 if (behindBall && Mathf.Abs(facingErr) < 20f)
-                    return new Vector3(1f, Mathf.Clamp(facingErr / 45f, -1f, 1f), 1f);
+                    return new Vector4(1f, 0f, Mathf.Clamp(facingErr / 45f, -1f, 1f), 1f);
             }
 
             // Shoulder-charge: an opponent parked between us and a slow ball gets
@@ -107,7 +107,7 @@ namespace PoSoccer
                     && Vector2.Dot(toFoe.normalized, toBall.normalized) > 0.85f;
                 float chargeErr = Vector2.SignedAngle(self.transform.up, toFoe);
                 if (foeBetween && toFoe.magnitude < 2f && Mathf.Abs(chargeErr) < 30f)
-                    return new Vector3(1f, Mathf.Clamp(chargeErr / 45f, -1f, 1f), 0.8f);
+                    return new Vector4(1f, 0f, Mathf.Clamp(chargeErr / 45f, -1f, 1f), 0.8f);
             }
 
             // When close to the ball, aim for the point behind the ball on the
@@ -136,7 +136,7 @@ namespace PoSoccer
             return Steer(self, target, opponentGoal, allowBoost: true);
         }
 
-        Vector3 Steer(Rigidbody2D self, Vector2 target, Transform opponentGoal, bool allowBoost)
+        Vector4 Steer(Rigidbody2D self, Vector2 target, Transform opponentGoal, bool allowBoost)
         {
             // Never chase points inside the walls (that is how wall-jams start).
             // Pitch-local clamp so 16-grid clones each clamp around their own pitch.
@@ -148,14 +148,28 @@ namespace PoSoccer
                 center.y - interiorHalfExtents.y, center.y + interiorHalfExtents.y);
 
             Vector2 toTarget = target - self.position;
+            float dist = toTarget.magnitude;
             float signedAngle = Vector2.SignedAngle(self.transform.up, toTarget);
 
             float turn = Mathf.Clamp(signedAngle / 45f, -1f, 1f);
-            float move = Mathf.Abs(signedAngle) < driveAngleDeg ? 1f : 0.25f;
-            float boost = allowBoost && Mathf.Abs(signedAngle) < driveAngleDeg && toTarget.magnitude > 2f
+
+            // Drive is still primarily forward - sideways travel is genuinely slower
+            // for a real body, so strafing is a correction, not a travel mode.
+            Vector2 dir = dist > 0.001f ? toTarget / dist : Vector2.zero;
+            float align = Vector2.Dot(dir, self.transform.up);
+            float forward = Mathf.Abs(signedAngle) < 90f ? Mathf.Max(0.4f, align) : 0.2f;
+            float lateral = Mathf.Clamp(Vector2.Dot(dir, self.transform.right), -0.6f, 0.6f);
+
+            // Decelerate into the target instead of orbiting it. The probe measured
+            // an 18 m path for a 10.4 m approach; braking early fixes that.
+            float approach = Mathf.Max(0.3f, Mathf.Clamp01(dist / 1.5f));
+            forward *= approach;
+            lateral *= approach;
+
+            float boost = allowBoost && Mathf.Abs(signedAngle) < driveAngleDeg && dist > 2f
                 ? boostAggression : 0f;
 
-            return new Vector3(move, turn, boost);
+            return new Vector4(forward, lateral, turn, boost);
         }
     }
 }

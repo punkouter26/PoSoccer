@@ -38,15 +38,15 @@ namespace PoSoccer.Tests
             var go = new GameObject("probe");
             var rb = go.AddComponent<Rigidbody2D>();
             rb.mass = 75f;
-            rb.linearDamping = 2f;
+            rb.linearDamping = 0.7f;
             rb.gravityScale = 0f;
 
-            const float MoveForce = 700f;
+            const float MoveForce = 236f;
             const float Boost = 2.2f;
-            const float Slew = 2300f;
+            const float Slew = 1200f;
 
             var sb = new StringBuilder();
-            sb.AppendLine("[PROBE-A] straight-line locomotion (75kg, damping 2)");
+            sb.AppendLine("[PROBE-A] straight-line locomotion (75kg, damping 0.7, traction-limited)");
 
             foreach (float mult in new[] { 1f, Boost })
             {

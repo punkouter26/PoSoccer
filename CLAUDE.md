@@ -64,9 +64,11 @@ Hard-won traps:
 
 ## Architecture (cross-file)
 
-**Brain contract** (enforced in `Agent_Soccer.Awake`, scene can't drift): behavior name from `brainName` (default `STANDARD`), **18 vector obs** (14 self/ball/goal + 4 teammate zero-padded in 1v1) × **2 stacked**, 3 continuous actions (move/turn/boost), DecisionRequester period 8. Changing any of this obsoletes every trained `.onnx`.
+**Brain contract** (enforced in `Agent_Soccer.Awake`, scene can't drift): behavior name from `brainName` (default `STANDARD`), **18 vector obs** (14 self/ball/goal + 4 teammate zero-padded in 1v1) × **2 stacked**, **4 continuous actions** (forward / lateral / turn / boost), DecisionRequester period 8. Changing any of this obsoletes every trained `.onnx` — the 3-action `STANDARD.onnx` from the 20M-step run **is already obsolete** and is no longer assigned anywhere.
 
-**Realistic physics** (post-overhaul): 75 kg agents, 700 N drive with 2300 N/s slew, 250 N·m torque, 360°/s rotation cap, stamina-scaled power (0.6 floor), FIFA ball (r=0.11 world, 0.43 kg, drag ~0.1 randomized per episode, Magnus curl + spin transfer). Zero in-plane gravity (top-down).
+**Realistic physics** (traction overhaul): 75 kg reference agent, **236 N/75 kg drive** (force scales with mass, so every physique shares one top speed and heavier bodies simply carry more momentum), 1200 N/s slew, linearDamping **0.7** set from code, 250 N·m torque. Locomotion is **traction-limited**: all foot force — launching, cutting, braking — shares one friction circle of `mu * m * g` (mu 1.2), with active foot braking when there is no drive intent and extra lateral damping so strafing is slower than running. Turn rate falls from 360°/s at rest to 25% of that at sprint. Measured: **4.35 m/s jog / 9.54 m/s sprint, t95 ≈ 3.7 s** (human-like build-up). FIFA ball (r=0.11, 0.43 kg, drag ~0.1 randomized, Magnus curl). Zero in-plane gravity (top-down — see `docs/rules-exemptions.md`); gravity enters physically via the traction budget.
+
+**Movement probe**: `Agent_PlayMode_MovementProbe` reports locomotion numbers to the console (chassis / as-shipped / forced-bot). Use it instead of watching the Game view — an unfocused editor barely runs play-mode frames.
 
 **Episode flow**: `Reward_GoalTrigger` → `Agent_EnvController.OnGoalScored/OnStalemate/OnOutOfBounds` (containment watchdog) → terminal rewards (+0.7 scorer / +0.3 assist / −1.0 conceded / −0.1 stalemate) → `EpisodeEnded` event fires **before** reset (subscribers read cumulative rewards; HUD/FX/audio all hang off it) → `ResetPitch` (domain randomization: random own-half spawns, ball drag) reads `goal_width` curriculum. `stepCapOverride` on the exhibition Pitch shortens episodes to 2500 steps for pace.
 

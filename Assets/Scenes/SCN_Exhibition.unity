@@ -746,13 +746,21 @@ MonoBehaviour:
   MaxStep: 0
   team: 0
   brainName: STANDARD
-  moveForce: 700
-  turnTorque: 250
-  boostMultiplier: 2.2
-  boostThreshold: 0.1
-  maxAngularVelocityDeg: 360
-  forceSlewRate: 2300
-  tiredPowerFloor: 0.6
+  _moveForce: 236
+  _linearDamping: 0.7
+  _tractionMu: 1.2
+  _lateralDrag: 3
+  _sprintTurnFactor: 0.25
+  _turnScaleSpeed: 10
+  _turnTorque: 250
+  _boostMultiplier: 2.2
+  _boostThreshold: 0.1
+  _maxAngularVelocityDeg: 360
+  _forceSlewRate: 1200
+  _tiredPowerFloor: 0.6
+  _wallKickImpulse: 6
+  _wallKickBand: 1
+  _wallKickCooldown: 0.5
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
 --- !u!114 &219326537
@@ -777,7 +785,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
+  m_Model: {fileID: 0}
   m_InferenceDevice: 0
   m_BehaviorType: 1
   m_BehaviorName: My Behavior
@@ -2381,13 +2389,21 @@ MonoBehaviour:
   MaxStep: 0
   team: 0
   brainName: STANDARD
-  moveForce: 700
-  turnTorque: 250
-  boostMultiplier: 2.2
-  boostThreshold: 0.1
-  maxAngularVelocityDeg: 360
-  forceSlewRate: 2300
-  tiredPowerFloor: 0.6
+  _moveForce: 236
+  _linearDamping: 0.7
+  _tractionMu: 1.2
+  _lateralDrag: 3
+  _sprintTurnFactor: 0.25
+  _turnScaleSpeed: 10
+  _turnTorque: 250
+  _boostMultiplier: 2.2
+  _boostThreshold: 0.1
+  _maxAngularVelocityDeg: 360
+  _forceSlewRate: 1200
+  _tiredPowerFloor: 0.6
+  _wallKickImpulse: 6
+  _wallKickBand: 1
+  _wallKickCooldown: 0.5
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
 --- !u!114 &1579506621
@@ -2412,7 +2428,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
+  m_Model: {fileID: 0}
   m_InferenceDevice: 0
   m_BehaviorType: 1
   m_BehaviorName: My Behavior
@@ -2707,13 +2723,21 @@ MonoBehaviour:
   MaxStep: 0
   team: 1
   brainName: STANDARD
-  moveForce: 700
-  turnTorque: 250
-  boostMultiplier: 2.2
-  boostThreshold: 0.1
-  maxAngularVelocityDeg: 360
-  forceSlewRate: 2300
-  tiredPowerFloor: 0.6
+  _moveForce: 236
+  _linearDamping: 0.7
+  _tractionMu: 1.2
+  _lateralDrag: 3
+  _sprintTurnFactor: 0.25
+  _turnScaleSpeed: 10
+  _turnTorque: 250
+  _boostMultiplier: 2.2
+  _boostThreshold: 0.1
+  _maxAngularVelocityDeg: 360
+  _forceSlewRate: 1200
+  _tiredPowerFloor: 0.6
+  _wallKickImpulse: 6
+  _wallKickBand: 1
+  _wallKickCooldown: 0.5
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
 --- !u!114 &1593781675
@@ -2738,7 +2762,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
+  m_Model: {fileID: 0}
   m_InferenceDevice: 0
   m_BehaviorType: 1
   m_BehaviorName: My Behavior
@@ -3016,13 +3040,21 @@ MonoBehaviour:
   MaxStep: 0
   team: 1
   brainName: STANDARD
-  moveForce: 700
-  turnTorque: 250
-  boostMultiplier: 2.2
-  boostThreshold: 0.1
-  maxAngularVelocityDeg: 360
-  forceSlewRate: 2300
-  tiredPowerFloor: 0.6
+  _moveForce: 236
+  _linearDamping: 0.7
+  _tractionMu: 1.2
+  _lateralDrag: 3
+  _sprintTurnFactor: 0.25
+  _turnScaleSpeed: 10
+  _turnTorque: 250
+  _boostMultiplier: 2.2
+  _boostThreshold: 0.1
+  _maxAngularVelocityDeg: 360
+  _forceSlewRate: 1200
+  _tiredPowerFloor: 0.6
+  _wallKickImpulse: 6
+  _wallKickBand: 1
+  _wallKickCooldown: 0.5
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
 --- !u!114 &1785677907
@@ -3047,7 +3079,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
+  m_Model: {fileID: 0}
   m_InferenceDevice: 0
   m_BehaviorType: 1
   m_BehaviorName: My Behavior
@@ -3447,10 +3479,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9195e5ea76e5f9c41a5ee700bb167467, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Agent_Bootstrap
-  fixedTimestep: 0.01
-  targetFrameRate: 60
-  velocityIterations: 8
-  positionIterations: 3
+  _fixedTimestep: 0.01
+  _targetFrameRate: 60
+  _velocityIterations: 8
+  _positionIterations: 3
 --- !u!4 &2002091282
 Transform:
   m_ObjectHideFlags: 0

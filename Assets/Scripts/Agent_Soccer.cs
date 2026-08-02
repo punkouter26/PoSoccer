@@ -26,9 +26,27 @@ namespace PoSoccer
         public string brainName = "STANDARD";
 
         [Header("Actuation (SI units - 75 kg body)")]
-        [Tooltip("Drive force (N) along the +Y eye axis at action = 1. ~700 N on a 75 kg body with drag 2 gives a ~4.7 m/s jog.")]
+        [Tooltip("Drive force (N) at action = 1. 236 N on a 75 kg body with damping 0.7 " +
+                 "gives a ~4.5 m/s jog reached over ~4 s, matching human sprint build-up.")]
         [FormerlySerializedAs("moveForce")]
-        [SerializeField] private float _moveForce = 700f;
+        [SerializeField] private float _moveForce = 236f;
+
+        [Header("Ground contact (traction)")]
+        [Tooltip("Runtime linear damping. Low value = long coast; braking is done actively " +
+                 "by the feet within the traction budget rather than by fake global drag.")]
+        [SerializeField] private float _linearDamping = 0.7f;
+        [Tooltip("Coefficient of friction, studs on turf (~1.0-1.5). Total foot force is " +
+                 "capped at mu * m * g, so cuts, launches and braking are all traction-limited.")]
+        [SerializeField] private float _tractionMu = 1.2f;
+        [Tooltip("Extra sideways damping. A real body skids far less laterally than it rolls " +
+                 "forward; isotropic drag made strafing feel frictionless.")]
+        [SerializeField] private float _lateralDrag = 1.5f;
+        [Tooltip("Fraction of the standing turn rate still available at full sprint. " +
+                 "Humans pivot freely at rest and barely at all at top speed.")]
+        [Range(0.05f, 1f)]
+        [SerializeField] private float _sprintTurnFactor = 0.25f;
+        [Tooltip("Speed (m/s) treated as full sprint when scaling the turn rate.")]
+        [SerializeField] private float _turnScaleSpeed = 10f;
         [Tooltip("Turn torque (N*m) at action = 1.")]
         [FormerlySerializedAs("turnTorque")]
         [SerializeField] private float _turnTorque = 250f;
@@ -41,9 +59,9 @@ namespace PoSoccer
         [Tooltip("Human rotation limit (deg/s). Athletes cannot spin faster than ~a full turn per second.")]
         [FormerlySerializedAs("maxAngularVelocityDeg")]
         [SerializeField] private float _maxAngularVelocityDeg = 360f;
-        [Tooltip("How fast the applied drive force can change (N/s). Full power takes ~0.3s; reversals are not instant.")]
+        [Tooltip("How fast the applied drive force can change (N/s). Muscle ramps over ~0.2s at jog, ~0.45s to full sprint.")]
         [FormerlySerializedAs("forceSlewRate")]
-        [SerializeField] private float _forceSlewRate = 2300f;
+        [SerializeField] private float _forceSlewRate = 1200f;
         [Range(0.3f, 1f)]
         [Tooltip("Power fraction remaining at zero stamina (exhausted agents visibly slow).")]
         [FormerlySerializedAs("tiredPowerFloor")]
@@ -72,15 +90,39 @@ namespace PoSoccer
         Agent_HeuristicBot _bot;
         BehaviorParameters _behavior;
         Transform _label;                              // identity letter, kept upright
-        float _drive;                                  // slew-limited applied force (N)
+        Vector2 _driveVec;                             // slew-limited foot force (N), world space
         float _nextWallKick;                           // kick-out cooldown timestamp
-        readonly float[] _prevActions = new float[3];  // for the jitter penalty
+        readonly float[] _prevActions = new float[4];  // for the jitter penalty
+
+        /// <summary>Standard gravity, used for the traction budget (mu * m * g).</summary>
+        const float Gravity = 9.81f;
+
+        /// <summary>Body mass the tuning constants are quoted against.</summary>
+        const float ReferenceMass = 75f;
+
+        // Drive force scales with mass (constant N/kg), so every physique reaches
+        // the same top speed and acceleration - bigger muscles move a bigger body -
+        // while heavier players still carry more momentum into contact.
+        float _driveForce;
+
+        void CacheDriveForce()
+        {
+            float mass = Body != null ? Body.mass : ReferenceMass;
+            _driveForce = _moveForce * (mass / ReferenceMass);
+        }
 
         /// <summary>
         /// Vector observation count: 14 self/ball/goal floats + 4 teammate floats
         /// (zero-padded in 1v1 so one brain contract covers 1v1 and 2v2).
         /// </summary>
         public const int BaseObservationSize = 18;
+
+        /// <summary>
+        /// Continuous actions: [0] forward drive, [1] lateral drive (strafe),
+        /// [2] turn, [3] boost. Lateral was added so the body no longer has to
+        /// rotate in order to translate - real players sidestep and backpedal.
+        /// </summary>
+        public const int ContinuousActionCount = 4;
 
         protected override void Awake()
         {
@@ -96,7 +138,8 @@ namespace PoSoccer
                 // 2 stacked frames give the policy velocity/trend context at the
                 // slower decision cadence (period 8).
                 _behavior.BrainParameters.NumStackedVectorObservations = 2;
-                _behavior.BrainParameters.ActionSpec = ActionSpec.MakeContinuous(3);
+                _behavior.BrainParameters.ActionSpec =
+                    ActionSpec.MakeContinuous(ContinuousActionCount);
                 ApplyEvalMode();
             }
         }
@@ -155,6 +198,10 @@ namespace PoSoccer
                     s.x * rewards.bodyScale, s.y * rewards.bodyScale, s.z);
             }
             if (rewards.bodyMass > 0f && Body != null) Body.mass = rewards.bodyMass;
+            // Damping is owned by code, not the scene: the traction model brakes
+            // actively, so global drag must stay low or it double-counts.
+            if (Body != null) Body.linearDamping = _linearDamping;
+            CacheDriveForce();
 
             // Body wears the personality color; the eye shows the team.
             var body = GetComponent<SpriteRenderer>();
@@ -216,7 +263,7 @@ namespace PoSoccer
         {
             TouchedBallThisEpisode = false;
             IsBoosting = false;
-            _drive = 0f;
+            _driveVec = Vector2.zero;
             _nextWallKick = 0f;
             System.Array.Clear(_prevActions, 0, _prevActions.Length);
             Stamina.ResetForEpisode();
@@ -278,27 +325,64 @@ namespace PoSoccer
         public override void OnActionReceived(ActionBuffers actions)
         {
             float move = Mathf.Clamp(actions.ContinuousActions[0], -1f, 1f);
-            float turn = Mathf.Clamp(actions.ContinuousActions[1], -1f, 1f);
-            float boost = Mathf.Clamp01(actions.ContinuousActions[2]);
+            float lateral = Mathf.Clamp(actions.ContinuousActions[1], -1f, 1f);
+            float turn = Mathf.Clamp(actions.ContinuousActions[2], -1f, 1f);
+            float boost = Mathf.Clamp01(actions.ContinuousActions[3]);
 
             IsBoosting = boost > _boostThreshold && Stamina.HasStamina;
 
-            // Exhaustion scales available power; drive force slews rather than
+            float dt = Time.fixedDeltaTime;
+            Vector2 forwardAxis = transform.up;
+            Vector2 rightAxis = transform.right;
+
+            // Intent in body frame. Clamped to length 1 so diagonal input cannot
+            // exceed the straight-ahead power budget.
+            Vector2 intent = Vector2.ClampMagnitude(
+                forwardAxis * move + rightAxis * lateral, 1f);
+
+            // Exhaustion scales available power; foot force slews rather than
             // stepping, so direction reversals take human-like time.
             float staminaPower = _tiredPowerFloor + (1f - _tiredPowerFloor) * Stamina.Ratio;
-            float targetDrive = move * _moveForce * (IsBoosting ? _boostMultiplier : 1f) * staminaPower;
-            _drive = Mathf.MoveTowards(_drive, targetDrive, _forceSlewRate * Time.fixedDeltaTime);
+            if (_driveForce <= 0f) CacheDriveForce();
+            Vector2 targetDrive =
+                intent * (_driveForce * (IsBoosting ? _boostMultiplier : 1f) * staminaPower);
+            _driveVec = Vector2.MoveTowards(_driveVec, targetDrive, _forceSlewRate * dt);
 
-            Body.AddForce((Vector2)transform.up * _drive);
+            // Traction budget: everything the feet do - launching, cutting, braking -
+            // shares one friction circle of mu * m * g. This is what makes hard
+            // direction changes cost speed instead of being free.
+            float tractionBudget = _tractionMu * Body.mass * Gravity;
+            Vector2 applied = Vector2.ClampMagnitude(_driveVec, tractionBudget);
+            Body.AddForce(applied);
+
+            // Active braking: with no drive intent the feet arrest residual motion
+            // using whatever traction is left, rather than relying on fake global drag.
+            Vector2 velocity = Body.linearVelocity;
+            if (intent.sqrMagnitude < 0.04f && velocity.sqrMagnitude > 0.0001f)
+            {
+                float spare = Mathf.Max(0f, tractionBudget - applied.magnitude);
+                float stopping = velocity.magnitude * Body.mass / dt;   // force to fully stop this step
+                Body.AddForce(-velocity.normalized * Mathf.Min(spare, stopping));
+            }
+
+            // Anisotropic drag: a body skids far less sideways than it rolls forward.
+            float lateralSpeed = Vector2.Dot(velocity, rightAxis);
+            Body.AddForce(-rightAxis * (lateralSpeed * _lateralDrag * Body.mass));
+
+            // Turning authority falls off with speed - free pivot at rest, almost
+            // none at full sprint.
+            float speed01 = Mathf.Clamp01(velocity.magnitude / Mathf.Max(0.01f, _turnScaleSpeed));
+            float turnCap = Mathf.Lerp(
+                _maxAngularVelocityDeg, _maxAngularVelocityDeg * _sprintTurnFactor, speed01);
             Body.AddTorque(turn * _turnTorque);
-            Body.angularVelocity = Mathf.Clamp(
-                Body.angularVelocity, -_maxAngularVelocityDeg, _maxAngularVelocityDeg);
-            Stamina.Tick(IsBoosting, Time.fixedDeltaTime);
+            Body.angularVelocity = Mathf.Clamp(Body.angularVelocity, -turnCap, turnCap);
 
-            ApplyDenseRewards(move, turn, boost);
+            Stamina.Tick(IsBoosting, dt);
+
+            ApplyDenseRewards(move, lateral, turn, boost);
         }
 
-        void ApplyDenseRewards(float move, float turn, float boost)
+        void ApplyDenseRewards(float move, float lateral, float turn, float boost)
         {
             if (rewards == null || env == null || env.Ball == null) return;
 
@@ -320,10 +404,12 @@ namespace PoSoccer
 
             // Anti-twitch: penalize per-step action change so learned movement is smooth.
             float jitter = (Mathf.Abs(move - _prevActions[0])
-                          + Mathf.Abs(turn - _prevActions[1])
-                          + Mathf.Abs(boost - _prevActions[2])) / 3f;
+                          + Mathf.Abs(lateral - _prevActions[1])
+                          + Mathf.Abs(turn - _prevActions[2])
+                          + Mathf.Abs(boost - _prevActions[3])) / 4f;
             AddReward(-rewards.actionJitterScale * jitter);
-            _prevActions[0] = move; _prevActions[1] = turn; _prevActions[2] = boost;
+            _prevActions[0] = move; _prevActions[1] = lateral;
+            _prevActions[2] = turn; _prevActions[3] = boost;
 
             // Wall aversion: standing in the boundary band produced wall-hug play.
             Vector2 local = Body.position - (Vector2)env.transform.position;
@@ -383,21 +469,23 @@ namespace PoSoccer
                     if (sqr < bestSqr) { bestSqr = sqr; foe = other.Body; }
                 }
 
-                Vector3 a = _bot.ComputeActions(Body, env.Ball,
+                Vector4 a = _bot.ComputeActions(Body, env.Ball,
                     env.GetGoalTransform(Opponent(team)), mate != null ? mate.Body : null, foe);
-                continuous[0] = a.x;
-                continuous[1] = a.y;
-                continuous[2] = a.z;
+                continuous[0] = a.x;   // forward
+                continuous[1] = a.y;   // lateral
+                continuous[2] = a.z;   // turn
+                continuous[3] = a.w;   // boost
                 return;
             }
 
-            // Keyboard fallback for human play-testing (W/S move, A/D turn,
-            // K boost - Shift also works). Input System package only.
+            // Keyboard fallback for human play-testing (W/S drive, Q/E strafe,
+            // A/D turn, K boost - Shift also works). Input System package only.
             var kb = UnityEngine.InputSystem.Keyboard.current;
             if (kb == null) return;
             continuous[0] = (kb.wKey.isPressed ? 1f : 0f) + (kb.sKey.isPressed ? -1f : 0f);
-            continuous[1] = (kb.aKey.isPressed ? 1f : 0f) + (kb.dKey.isPressed ? -1f : 0f);
-            continuous[2] = kb.kKey.isPressed || kb.leftShiftKey.isPressed ? 1f : 0f;
+            continuous[1] = (kb.eKey.isPressed ? 1f : 0f) + (kb.qKey.isPressed ? -1f : 0f);
+            continuous[2] = (kb.aKey.isPressed ? 1f : 0f) + (kb.dKey.isPressed ? -1f : 0f);
+            continuous[3] = kb.kKey.isPressed || kb.leftShiftKey.isPressed ? 1f : 0f;
         }
 
         void OnCollisionEnter2D(Collision2D collision)
