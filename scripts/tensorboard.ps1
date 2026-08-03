@@ -33,6 +33,15 @@ if (Test-Path $results) {
     if ($live.Count -gt $KeepRuns) {
         New-Item -ItemType Directory -Force (Join-Path $results "_archive") | Out-Null
         $live | Select-Object -Skip $KeepRuns | ForEach-Object {
+            # Never archive a run that is referenced by any config or
+            # --initialize-from - the warm-start source (e.g. soccer_v2_standard)
+            # is consumed by future trainings and docs reference it by name.
+            # Pattern matches the documented warm-start source naming
+            # (config/STANDARD_phase1e_resume.yaml uses --initialize-from=soccer_v2_standard).
+            if ($_.Name -match '^soccer_v[12]_(standard|matt|kim|nick)$') {
+                Write-Host "Skipping archive of warm-start source: $($_.Name)"
+                return
+            }
             Write-Host "Archiving old run: $($_.Name)"
             Move-Item $_.FullName (Join-Path $results "_archive\$($_.Name)") -Force
         }
@@ -44,7 +53,8 @@ if (Test-Path $results) {
 #    returning. Stdout/stderr go to results/tensorboard.log so the user can
 #    still tail it (`Get-Content results/tensorboard.log -Wait`).
 $ErrorActionPreference = "Stop"
-$tbExe   = "$root\.venv\Scripts\tensorboard.exe"
+$venv = if (Test-Path "$root\.venv2\Scripts\tensorboard.exe") { "$root\.venv2" } else { "$root\.venv" }
+$tbExe   = "$venv\Scripts\tensorboard.exe"
 $tbLog   = Join-Path $root "results\tensorboard.log"
 if (-not (Test-Path $tbExe)) { throw "TensorBoard not found at $tbExe. Run .\scripts\setup-training-env.ps1 first." }
 $proc = Start-Process -FilePath $tbExe -ArgumentList @("--logdir", $results, "--port", "$Port", "--bind_all") `
