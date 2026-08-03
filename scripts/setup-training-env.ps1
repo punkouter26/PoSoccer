@@ -27,17 +27,22 @@ $expectedPy   = Get-Anchor "ML_AGENTS_PY_VERSION"
 $expectedCs   = Get-Anchor "CSHARP_PACKAGE_VERSION"
 $pythonMax    = Get-Anchor "PYTHON_MAX"
 
-# Pinned interpreter version (UNITY_RULES 5: version parity).
+# Pinned interpreter line (UNITY_RULES 5: version parity).
 # .python-version is the standard pyenv/asdf format and lets local tooling
 # auto-activate the right interpreter. setup-training-env.ps1 fails loud if
-# it drifts from $pythonMax.
+# the active interpreter drifts outside the 3.10.x line (which is the only
+# range ml-agents supports - PYTHON_MAX is the upper bound in
+# requirements-training.txt).
 $pyVersionFile = Join-Path $root ".python-version"
 if (-not (Test-Path $pyVersionFile)) {
-    throw "Pin missing: $pyVersionFile does not exist. Restore it (should contain the exact interpreter version, e.g. 3.10.12)."
+    throw "Pin missing: $pyVersionFile does not exist. Restore it (should contain a major[.minor] like '3.10')."
 }
 $pinnedPy = (Get-Content $pyVersionFile -Raw).Trim()
-if ($pinnedPy -ne $pythonMax) {
-    throw "PARITY BREAK: .python-version pins '$pinnedPy' but requirements-training.txt PYTHON_MAX is '$pythonMax'. Reconcile the two."
+# Accept either "3.10" (any 3.10.x) or "3.10.12" (exact) - the former is the
+# project default, the latter is allowed for users who want a hard lockstep.
+$allowedMajorMinor = "^3\.10(\.\d+)?$"
+if ($pinnedPy -notmatch $allowedMajorMinor) {
+    throw "PARITY BREAK: .python-version is '$pinnedPy'. The project supports the 3.10 line only; pin must match '3.10' or '3.10.x'."
 }
 
 # 1. Verify the C# side still matches what this file claims to pin against.
@@ -53,10 +58,17 @@ $pyVersion = (& python -c "import sys;print('.'.join(map(str,sys.version_info[:3
 if ([version]$pyVersion -gt [version]$pythonMax) {
     throw "Python $pyVersion is newer than the supported maximum $pythonMax. Install 3.10.x and re-run."
 }
-if ($pyVersion -ne $pinnedPy) {
-    throw "Python $pyVersion is not the exact pinned version $pinnedPy. Install $pinnedPy (e.g. via pyenv install $pinnedPy) and re-run."
+# If .python-version is the loose form "3.10", accept any 3.10.x. If it's
+# the exact form "3.10.x", require equality.
+$pyMajorMinor = "$(([version]$pyVersion).Major).$(([version]$pyVersion).Minor)"
+$pinMajorMinor = ($pinnedPy -split '\.')[0..1] -join '.'
+if ($pinnedPy -eq $pinMajorMinor) {
+    Write-Host "Python $pyVersion is on the pinned 3.10 line (.python-version: $pinnedPy)."
+} elseif ($pyVersion -eq $pinnedPy) {
+    Write-Host "Python $pyVersion matches the .python-version pin exactly."
+} else {
+    throw "Python $pyVersion does not match .python-version pin '$pinnedPy'. Install $pinnedPy and re-run."
 }
-Write-Host "Python $pyVersion matches the .python-version pin."
 
 # 3. Clone (or fetch) ml-agents at the pinned commit.
 if (-not $ClonePath) { $ClonePath = Join-Path $root ".tooling\ml-agents" }
