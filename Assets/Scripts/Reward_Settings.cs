@@ -31,21 +31,33 @@ namespace PoSoccer
         [Header("Terminal rewards")]
         public float goalScorer = 0.7f;
         public float assist = 0.3f;
-        public float teamBaselineVictory = 0.2f;
+        public float teamBaselineVictory = 0.1f;
         public float goalConceded = -1.0f;
         public float stalemateTimeout = -0.10f;
 
         [Header("Dense rewards (per decision step)")]
-        public float stepPenalty = -0.0001f;
-        public float ballProximityScale = 0.0004f;
+        [Tooltip("Per-step time cost. v2 changed from -0.0001 to 0 because stepPenalty " +
+                 "washed out the entire reward gradient (O(1) of the episode budget). " +
+                 "Terminal reward already provides temporal credit.")]
+        public float stepPenalty = 0f;
+        [Tooltip("Differential proximity reward scale. v2: replaces absolute proximity " +
+                 "(which rewarded idling near the ball) with (prevDist - curDist) * scale " +
+                 "so an agent approaching faster than its teammate earns positive reward.")]
+        public float ballProximityScale = 0.002f;
+        [Tooltip("Use the v2 differential-proximity mode. Set false for the legacy absolute-proximity mode.")]
+        public bool useDifferentialProximity = true;
         public float facingAlignmentScale = 0.0002f;
         [Tooltip("Reward per step for ball velocity toward the opponent goal (the 'shoot goalward' gradient).")]
         public float ballToGoalVelocityScale = 0.001f;
-        [Tooltip("Penalty scale on per-step action change (anti-twitch; smooth, deliberate movement).")]
-        public float actionJitterScale = 0.001f;
+        [Tooltip("Penalty scale on per-step action change (anti-twitch; smooth, deliberate movement). " +
+                 "v2 halved from 0.001: hard cuts are *correct* for soccer (cutting inside the box) " +
+                 "and the old penalty was teaching the brain to be smooth and idle.")]
+        public float actionJitterScale = 0.0004f;
         [Tooltip("Penalty scale for lingering within 0.8m of a wall (cures wall-hugging).")]
         public float wallProximityPenalty = 0.0005f;
-        [Tooltip("Penalty per step (both teams) while the ball sits inside a corner zone - teaches extraction over pinning.")]
+        [Tooltip("Penalty per step (only for the team that last touched the ball) while the ball sits " +
+                 "inside a corner zone. v2: team-aware - used to bleed both teams regardless of fault, " +
+                 "which let a corner-creator escape penalty while the defender suffered.")]
         public float cornerBallPenalty = 0.0006f;
         [Tooltip("Defender trait: reward for positioning between the ball and own goal (0 = off).")]
         public float defensivePositionScale = 0f;

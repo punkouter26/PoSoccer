@@ -93,6 +93,7 @@ namespace PoSoccer
         Vector2 _driveVec;                             // slew-limited foot force (N), world space
         float _nextWallKick;                           // kick-out cooldown timestamp
         readonly float[] _prevActions = new float[4];  // for the jitter penalty
+        float _prevBallDist = float.PositiveInfinity;  // for differential-proximity reward
 
         /// <summary>Standard gravity, used for the traction budget (mu * m * g).</summary>
         const float Gravity = 9.81f;
@@ -266,6 +267,7 @@ namespace PoSoccer
             _driveVec = Vector2.zero;
             _nextWallKick = 0f;
             System.Array.Clear(_prevActions, 0, _prevActions.Length);
+            _prevBallDist = float.PositiveInfinity;
             Stamina.ResetForEpisode();
             Body.linearVelocity = Vector2.zero;
             Body.angularVelocity = 0f;
@@ -329,8 +331,6 @@ namespace PoSoccer
             float turn = Mathf.Clamp(actions.ContinuousActions[2], -1f, 1f);
             float boost = Mathf.Clamp01(actions.ContinuousActions[3]);
 
-            IsBoosting = boost > _boostThreshold && Stamina.HasStamina;
-
             float dt = Time.fixedDeltaTime;
             Vector2 forwardAxis = transform.up;
             Vector2 rightAxis = transform.right;
@@ -339,6 +339,16 @@ namespace PoSoccer
             // exceed the straight-ahead power budget.
             Vector2 intent = Vector2.ClampMagnitude(
                 forwardAxis * move + rightAxis * lateral, 1f);
+
+            // v2: boost gating - require intent to be at least half-forward before
+            // boost activates. A full strafe with boost would otherwise burn stamina
+            // without accelerating the agent (lateral drag immediately arrests the
+            // boost-supplied motion). The heuristic bot already does this implicitly
+            // (boost only fires when signedAngle < driveAngleDeg).
+            float forwardShare = intent.sqrMagnitude > 0.001f
+                ? Vector2.Dot(intent.normalized, forwardAxis)
+                : 0f;
+            IsBoosting = boost > _boostThreshold && Stamina.HasStamina && forwardShare > 0.5f;
 
             // Exhaustion scales available power; foot force slews rather than
             // stepping, so direction reversals take human-like time.
@@ -386,11 +396,29 @@ namespace PoSoccer
         {
             if (rewards == null || env == null || env.Ball == null) return;
 
+            // v2: stepPenalty default is 0 (was -0.0001) - terminal reward provides temporal credit.
             AddReward(rewards.stepPenalty);
 
             Vector2 toBall = env.Ball.position - Body.position;
             float d = toBall.magnitude;
-            AddReward(rewards.ballProximityScale * (1f / (1f + d)));
+
+            // v2: differential proximity reward. Pure chasing yields ~0 reward (everyone
+            // closes on the ball at similar rates). Approaching *faster than the previous
+            // step* yields positive reward. Cures double-team crowding in 2v2 self-play.
+            // Legacy absolute mode (useDifferentialProximity=false) kept for A/B testing.
+            if (rewards.useDifferentialProximity)
+            {
+                if (!float.IsPositiveInfinity(_prevBallDist))
+                {
+                    float delta = _prevBallDist - d;   // positive = closer this step
+                    AddReward(rewards.ballProximityScale * delta);
+                }
+                _prevBallDist = d;
+            }
+            else
+            {
+                AddReward(rewards.ballProximityScale * (1f / (1f + d)));
+            }
 
             float align = Vector2.Dot(transform.up, toBall.normalized);
             AddReward(rewards.facingAlignmentScale * align);
@@ -403,6 +431,7 @@ namespace PoSoccer
             AddReward(rewards.ballToGoalVelocityScale * Mathf.Clamp(progress * 0.1f, -1f, 1f));
 
             // Anti-twitch: penalize per-step action change so learned movement is smooth.
+            // v2: halved scale (0.001 -> 0.0004) - hard cuts are *correct* for soccer.
             float jitter = (Mathf.Abs(move - _prevActions[0])
                           + Mathf.Abs(lateral - _prevActions[1])
                           + Mathf.Abs(turn - _prevActions[2])
@@ -419,9 +448,11 @@ namespace PoSoccer
             if (wallDist < 0.8f)
                 AddReward(-rewards.wallProximityPenalty * (0.8f - wallDist) / 0.8f);
 
-            // Corner aversion: a ball parked in a corner zone bleeds reward for
-            // everyone on the pitch, so both teams learn extraction over pinning.
-            if (rewards.cornerBallPenalty > 0f)
+            // Corner aversion: v2 team-aware - only the team that last touched the
+            // ball into a corner zone bleeds reward. The defending team is not
+            // punished for the opponent's corner-pin (was the v1 bug).
+            if (rewards.cornerBallPenalty > 0f && env.LastToucher != null
+                && env.LastToucher.team == team)
             {
                 Vector2 ballLocal = env.Ball.position - (Vector2)env.transform.position;
                 float cornerDist = Mathf.Max(
