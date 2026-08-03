@@ -60,7 +60,10 @@ for ($i = 0; $i -lt 20; $i++) {
     try {
         $resp = Invoke-WebRequest -Uri "http://localhost:$Port/" -UseBasicParsing -TimeoutSec 2
         if ($resp.StatusCode -eq 200) { $tbReady = $true; break }
-    } catch { /* still starting or failed */ }
+    } catch {
+        # TB still starting or bind failed - keep polling until the timeout
+        # below. Details are in $tbLog / $tbLog.err if we end up failing.
+    }
 }
 if (-not $tbReady) {
     Write-Warning "TensorBoard did not respond on http://localhost:$Port/ within 10 s. Process $($proc.Id) left running for debugging. See $tbLog.err."

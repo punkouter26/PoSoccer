@@ -1,13 +1,5 @@
 {
   "mcpServers": {
-    "UnityMCP": {
-      "command": "c:/Users/punko/Downloads/PoSoccer/Library/mcp-server/win-x64/gamedev-mcp-server.exe",
-      "args": [
-        "port=8090",
-        "client-transport=stdio"
-      ],
-      "comment": "IvanMurzak Unity-MCP. Port moved 8080 -> 8090: 8080 is owned by the CoplayDev server registered as 'unityMCP' in .claude/settings.json. The Unity-side plugin (UserSettings/AI-Game-Developer-Config.json) is set to connectionMode=Cloud, so it targets the ai-game-developer hub and stays disconnected until that connector is authorized."
-    },
     "ai-game-developer": {
       "type": "http",
       "url": "https://ai-game.dev/mcp/p/161c6ea1"
