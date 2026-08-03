@@ -14,7 +14,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
-& "$root\.venv\Scripts\Activate.ps1"
+# Prefer .venv2 if it exists (the canonical .venv can be locked by Unity at
+# runtime; .venv2 is created out-of-band by uv with the pinned interpreter
+# when .venv is unusable. Both are valid; the newer one wins).
+$venv = if (Test-Path "$root\.venv2\Scripts\Activate.ps1") { "$root\.venv2" } else { "$root\.venv" }
+& "$venv\Scripts\Activate.ps1"
 
 # Optional observability nudge: warn if TensorBoard isn't responding.
 # (UNITY_RULES 4: track active TensorBoard sessions.)
