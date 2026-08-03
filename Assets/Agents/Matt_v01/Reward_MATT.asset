@@ -11,16 +11,17 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: af179823a658aab41bd1d23c428ab770, type: 3}
   m_Name: Reward_MATT
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   playerName: MATT
+  personalityNotes: 'THE STRIKER. Glory hunter: biggest scoring reward and shoot
+    gradient on the roster, lowest fear of conceding, hates draws, presses with urgency
+    (loose jitter rein, high step cost). Same total incentive budget as everyone
+    (2.2 terminal / 0.0016 dense) - just spent on attack. Weakness by design: last
+    home when defending.'
   playerColor: {r: 1, g: 0.5, b: 0.12, a: 1}
+  brainModel: {fileID: 5022602860645237092, guid: 8990815309d227843b396bc6626a3f8e, type: 3}
   bodyScale: 1.25
   bodyMass: 117
-  personalityNotes: 'THE STRIKER. Glory hunter: biggest scoring reward and shoot
-    gradient on the roster, lowest fear of conceding, hates draws, presses with
-    urgency (loose jitter rein, high step cost). Same total incentive budget as
-    everyone (2.2 terminal / 0.0016 dense) - just spent on attack. Weakness by
-    design: last home when defending.'
   goalScorer: 1
   assist: 0.15
   teamBaselineVictory: 0.15
@@ -32,6 +33,7 @@ MonoBehaviour:
   ballToGoalVelocityScale: 0.0011
   actionJitterScale: 0.0005
   wallProximityPenalty: 0.0005
+  cornerBallPenalty: 0.0006
   defensivePositionScale: 0
   possessionScale: 0
   ballContact: 0.05

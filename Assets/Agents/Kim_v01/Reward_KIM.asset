@@ -11,17 +11,18 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: af179823a658aab41bd1d23c428ab770, type: 3}
   m_Name: Reward_KIM
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   playerName: KIM
-  playerColor: {r: 0.16, g: 0.75, b: 0.85, a: 1}
-  bodyScale: 0.9
-  bodyMass: 61
   personalityNotes: 'THE WALL. Deepest conceding fear on the roster; screening the
     lane between ball and own goal pays continuously (defensivePositionScale, her
     signature trait). Patient - a draw barely stings, does not swarm, comfortable
     near the goal line (low wall penalty), disciplined smooth movement. Same total
-    incentive budget as everyone (2.2 / 0.0016) - spent on defense. Weakness by
-    design: scores rarely.'
+    incentive budget as everyone (2.2 / 0.0016) - spent on defense. Weakness by design:
+    scores rarely.'
+  playerColor: {r: 0.16, g: 0.75, b: 0.85, a: 1}
+  brainModel: {fileID: 5022602860645237092, guid: f322f18faef299942b3b27d707884dad, type: 3}
+  bodyScale: 0.9
+  bodyMass: 61
   goalScorer: 0.45
   assist: 0.35
   teamBaselineVictory: 0.2
@@ -33,6 +34,7 @@ MonoBehaviour:
   ballToGoalVelocityScale: 0.0006
   actionJitterScale: 0.002
   wallProximityPenalty: 0.0002
+  cornerBallPenalty: 0.0006
   defensivePositionScale: 0.0006
   possessionScale: 0
   ballContact: 0.05

@@ -100,3 +100,12 @@ desktop.ini
 
 # Claude Code session scratch
 /.claude/state/
+
+# =========================================
+# Unity test runner transient artifacts
+# =========================================
+# PerformanceTestRunInfo.json + PerformanceTestRunSettings.json are written by
+# the Test Runner before every play-mode run and hold the test filter / stdout
+# capture config, not project state. Regenerated on demand.
+/[Aa]ssets/Resources/PerformanceTestRun*.json
+/[Aa]ssets/Resources/PerformanceTestRun*.json.meta

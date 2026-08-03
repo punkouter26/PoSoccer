@@ -11,16 +11,17 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: af179823a658aab41bd1d23c428ab770, type: 3}
   m_Name: Reward_NICK
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   playerName: NICK
-  playerColor: {r: 0.66, g: 0.4, b: 0.92, a: 1}
-  bodyScale: 0.85
-  bodyMass: 54
   personalityNotes: 'THE MIDFIELDER. Possession is the point: continuous reward for
     keeping the ball within 1.2m (possessionScale, his signature trait), loves the
-    assist as much as the goal. Stays central (high wall penalty), tidy on the
-    controls. Same total incentive budget as everyone (2.2 / 0.0016) - spent on
-    keeping and moving the ball. Weakness by design: passes up shots.'
+    assist as much as the goal. Stays central (high wall penalty), tidy on the controls.
+    Same total incentive budget as everyone (2.2 / 0.0016) - spent on keeping and
+    moving the ball. Weakness by design: passes up shots.'
+  playerColor: {r: 0.66, g: 0.4, b: 0.92, a: 1}
+  brainModel: {fileID: 5022602860645237092, guid: abd6c029c5fdace4db256214d1c3c83c, type: 3}
+  bodyScale: 0.85
+  bodyMass: 54
   goalScorer: 0.5
   assist: 0.5
   teamBaselineVictory: 0.2
@@ -32,6 +33,7 @@ MonoBehaviour:
   ballToGoalVelocityScale: 0.0004
   actionJitterScale: 0.0015
   wallProximityPenalty: 0.001
+  cornerBallPenalty: 0.0006
   defensivePositionScale: 0
   possessionScale: 0.0006
   ballContact: 0.05
