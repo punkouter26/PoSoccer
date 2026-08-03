@@ -28,10 +28,23 @@ namespace PoSoccer
         float _flankSide = 1f;
         float _unstickJitter;
 
+        // v2: strength knob for curriculum training. POSOCCER_BOT_STRENGTH
+        // env-var scales drive power, boost aggression, and turns off the
+        // support-positioning logic at low values so the brain gets a soft
+        // curriculum instead of a single deterministic strong opponent.
+        float _strength = 1f;
+
         void Awake()
         {
             // Desynchronize unstick timing between bots so they don't re-jam together.
             _unstickJitter = (GetHashCode() & 3) * 0.3f;
+
+            // Curriculum strength (v2): scale everything by POSOCCER_BOT_STRENGTH.
+            // Clamped to [0, 1]; default 1.0 = full strength (v1 behaviour).
+            // Training scripts set this via env var before launching the player.
+            string raw = System.Environment.GetEnvironmentVariable("POSOCCER_BOT_STRENGTH");
+            if (!string.IsNullOrEmpty(raw) && float.TryParse(raw, out float parsed))
+                _strength = Mathf.Clamp01(parsed);
         }
 
         /// <summary>Compute [move, turn, boost] for the given agent state.</summary>
@@ -45,7 +58,9 @@ namespace PoSoccer
 
             // Closest man presses: if the teammate is clearly nearer the ball, take a
             // support position between the ball and our own goal instead of piling in.
-            if (teammate != null && opponentGoal != null)
+            // v2: disabled when strength < 0.5 so a weak bot double-teams with its
+            // teammate, leaving the brain's chosen attacker one-on-one with the ball.
+            if (_strength >= 0.5f && teammate != null && opponentGoal != null)
             {
                 float myDist = toBall.magnitude;
                 float mateDist = Vector2.Distance(teammate.position, ball.position);
@@ -65,7 +80,8 @@ namespace PoSoccer
             // wedges the ball). Approach from behind the ball ALONG the wall and
             // sweep it toward open field, preferring the exit that also moves play
             // toward the goal we attack.
-            if (opponentGoal != null)
+            // v2: disabled at low strength - weak bot just chases.
+            if (opponentGoal != null && _strength >= 0.5f)
             {
                 Vector2 center = opponentGoal.parent != null
                     ? (Vector2)opponentGoal.parent.position : Vector2.zero;
@@ -88,7 +104,8 @@ namespace PoSoccer
 
             // Boost-shot: already behind the ball on the ball->goal axis and facing
             // it - burst through the contact so body speed becomes shot speed.
-            if (opponentGoal != null && toBall.magnitude < 1.1f)
+            // v2: requires full strength - weak bot can't execute the timing.
+            if (opponentGoal != null && toBall.magnitude < 1.1f && _strength >= 0.8f)
             {
                 Vector2 goalDir = ((Vector2)opponentGoal.position - ball.position).normalized;
                 bool behindBall = Vector2.Dot(toBall.normalized, goalDir) > 0.75f;
@@ -151,7 +168,10 @@ namespace PoSoccer
             float dist = toTarget.magnitude;
             float signedAngle = Vector2.SignedAngle(self.transform.up, toTarget);
 
-            float turn = Mathf.Clamp(signedAngle / 45f, -1f, 1f);
+            // v2: at low strength, the bot's turning is sloppy and imprecise.
+            // Turn authority scales with strength so a 0.3-strength bot is beatable
+            // even when the brain has converged on its v1 plateau strategy.
+            float turn = Mathf.Clamp(signedAngle / 45f * _strength, -1f, 1f);
 
             // Drive is still primarily forward - sideways travel is genuinely slower
             // for a real body, so strafing is a correction, not a travel mode.
@@ -166,8 +186,13 @@ namespace PoSoccer
             forward *= approach;
             lateral *= approach;
 
+            // v2: drive authority scales with strength. A 0.3-strength bot coasts
+            // around at half speed, easy for the brain to push past.
+            forward *= _strength;
+            lateral *= _strength;
+
             float boost = allowBoost && Mathf.Abs(signedAngle) < driveAngleDeg && dist > 2f
-                ? boostAggression : 0f;
+                ? boostAggression * _strength : 0f;
 
             return new Vector4(forward, lateral, turn, boost);
         }

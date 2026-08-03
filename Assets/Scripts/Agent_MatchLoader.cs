@@ -47,7 +47,22 @@ namespace PoSoccer
 
         static void Apply(Agent_Soccer agent, Reward_Settings profile)
         {
-            if (agent == null || profile == null) return;
+            if (agent == null) return;
+
+            // v2: when called from a direct scene load (no menu), the serialized
+            // default* slots may be null on the loader. Build a runtime fallback
+            // so the agent still gets a valid Reward_Settings reference rather
+            // than silently running with rewards=null (which disables dense
+            // rewards and the HUD identity letters). The fallback picks an
+            // existing agent's profile if one is already wired, else creates a
+            // blank one so locomotion still works.
+            if (profile == null)
+            {
+                Debug.LogWarning($"[Agent_MatchLoader] No profile for {agent.name}; using runtime fallback. " +
+                                 "Fix: wire the default* slots on this scene's loader, or visit SCN_Menu first.");
+                profile = ScriptableObject.CreateInstance<Reward_Settings>();
+                profile.playerName = agent.brainName ?? "FALLBACK";
+            }
 
             agent.rewards = profile;
             agent.brainName = profile.playerName;

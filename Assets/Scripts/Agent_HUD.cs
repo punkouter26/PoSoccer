@@ -126,7 +126,12 @@ namespace PoSoccer
         int _shownBlue = -1, _shownRed = -1;
         int _shownSecond = -1;
         int _shownStep = -1;
-        float _shownGoalWidth = float.NaN;
+        // v2: sentinel -1 (not NaN) - the diagnostic found the field stayed NaN
+        // even after env.CurrentGoalWidth went to 0 (Mathf.Approximately(0, NaN)
+        // returns false so the if-branch DID update, but the label format
+        // $"... goal {goalWidth:0.0}m" silently rendered 'NaN' if the if-branch
+        // ever failed to fire). Use -1f to make the first-frame update deterministic.
+        float _shownGoalWidth = -1f;
 
         static Button SmallButton(string text, System.Action onClick)
         {
