@@ -40,6 +40,14 @@ namespace PoSoccer
 
             Time.fixedDeltaTime = _fixedTimestep;
             Application.targetFrameRate = _targetFrameRate;
+
+            // CameraFollow needs the same Bootstrap lifetime as the rest of the
+            // runtime, so it gets auto-attached here. It then self-positions in
+            // LateUpdate, so the scene never has to carry a serialized reference.
+            if (Camera.main != null && Camera.main.GetComponent<Agent_CameraFollow>() == null)
+            {
+                Camera.main.gameObject.AddComponent<Agent_CameraFollow>();
+            }
         }
     }
 }
