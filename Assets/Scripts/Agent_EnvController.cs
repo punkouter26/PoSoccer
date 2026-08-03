@@ -58,6 +58,14 @@ namespace PoSoccer
         /// </summary>
         public event System.Action<Agent_Soccer.Team?> EpisodeEnded;
 
+        /// <summary>
+        /// Fires after ApplyGoalWidth has changed the goal mouth width during
+        /// ResetPitch. Listeners (GoalFrame, HUD readout) can re-read the new
+        /// CurrentGoalWidth and re-render. Arg is the goal transform that was
+        /// resized (or null if both).
+        /// </summary>
+        public static event System.Action<Transform> PitchReconfigured;
+
         /// <summary>Most recent ball toucher (the scorer credit holder), for UI.</summary>
         public Agent_Soccer LastToucher => _lastToucher;
 
@@ -134,6 +142,15 @@ namespace PoSoccer
             }
             _ballSpawn = ball != null ? ball.transform.position : transform.position;
 
+            // Goal-line frames: red frame around the blue goal (the one Red defends),
+            // blue frame around the red goal. Tints match the team that OWN-EYE
+            // sees the goal as their own net - so the UI reads "my goal = my color"
+            // even though the ball goes in the opposite color's net to score.
+            // Convention: redGoal is the goal Red scores into, blueGoal is what Blue scores into.
+            // A red frame around redGoal reads as "where Red has to put the ball".
+            EnsureGoalFrame(blueGoal, new Color(0.2f, 0.5f, 1f, 1f));    // Blue team color
+            EnsureGoalFrame(redGoal, new Color(1f, 0.25f, 0.2f, 1f));     // Red team color
+
             bool useGroups = TeamSize(Agent_Soccer.Team.Blue) > 1 || TeamSize(Agent_Soccer.Team.Red) > 1;
             if (useGroups)
             {
@@ -153,8 +170,9 @@ namespace PoSoccer
                 : rewards != null ? rewards.maxEnvironmentSteps : 5000;
             if (StepCount >= cap)
                 OnStalemate();
-            else if (AnythingOutOfBounds())
-                OnOutOfBounds();
+            // OOB watchdog intentionally removed (bouncier walls in Agent_PitchGuard
+            // now keep play contained, so a match should never need to be reset for
+            // an escape - gameplay never stops).
 
             // Magnus-lite: spinning balls curve. angularVelocity is deg/s in 2D.
             if (ball != null && magnusScale > 0f)
@@ -163,44 +181,6 @@ namespace PoSoccer
                 float spin = ball.angularVelocity * Mathf.Deg2Rad;
                 ball.AddForce(magnusScale * spin * new Vector2(-v.y, v.x));
             }
-        }
-
-        // Containment watchdog: high-speed boost collisions can depenetrate bodies
-        // through walls; a match stuck outside the pitch would otherwise freeze
-        // forever and poison training/eval episodes.
-        bool AnythingOutOfBounds()
-        {
-            const float margin = 1.5f;
-            Vector2 center = transform.position;
-            bool Out(Vector2 p) =>
-                Mathf.Abs(p.x - center.x) > pitchHalfExtents.x + margin ||
-                Mathf.Abs(p.y - center.y) > pitchHalfExtents.y + margin;
-
-            if (ball != null && Out(ball.position)) return true;
-            foreach (var agent in agents)
-                if (agent != null && Out(agent.Body.position)) return true;
-            return false;
-        }
-
-        void OnOutOfBounds()
-        {
-            if (_episodeEnding) return;
-            _episodeEnding = true;
-
-            Debug.LogWarning("[Env] Out-of-bounds detected - resetting pitch (no rewards applied).");
-            EpisodeEnded?.Invoke(null);   // counts as a drawn episode for eval stats
-
-            if (_blueGroup != null)
-            {
-                _blueGroup.GroupEpisodeInterrupted();
-                _redGroup.GroupEpisodeInterrupted();
-            }
-            else
-            {
-                foreach (var agent in agents) agent.EpisodeInterrupted();
-            }
-
-            ResetPitch();
         }
 
         // ── Goal / touch bookkeeping ────────────────────────────────────────
@@ -336,6 +316,7 @@ namespace PoSoccer
             Vector3 s = goal.localScale;
             // Goal mouths span local X (pitch runs along Y for mobile portrait).
             goal.localScale = new Vector3(width, s.y, s.z);
+            PitchReconfigured?.Invoke(goal);
         }
 
         // ── Queries used by agent observations ──────────────────────────────
@@ -364,5 +345,15 @@ namespace PoSoccer
 
         SimpleMultiAgentGroup GroupFor(Agent_Soccer.Team t) =>
             t == Agent_Soccer.Team.Blue ? _blueGroup : _redGroup;
+
+        // Idempotent GoalFrame attach: ensures the colored mouth frame is present
+        // on a goal transform without ever leaving duplicates across scene reloads.
+        static void EnsureGoalFrame(Transform goal, Color tint)
+        {
+            if (goal == null) return;
+            var frame = goal.GetComponent<Agent_GoalFrame>();
+            if (frame == null) frame = goal.gameObject.AddComponent<Agent_GoalFrame>();
+            frame.SetColor(tint);
+        }
     }
 }

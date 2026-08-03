@@ -129,6 +129,13 @@ namespace PoSoccer
         /// </summary>
         public const int ContinuousActionCount = 4;
 
+        // Team frame (the colored border drawn around each player) - server-side
+        // tunable so the designer can thicken or thin it without recompiling.
+        [Header("Team Frame")]
+        [SerializeField] private float _frameInset = 0.18f;     // how far OUTSIDE the body sprite the frame sits
+        [SerializeField] private float _frameThickness = 0.10f;  // line width
+        [SerializeField] private float _frameZ = 0.01f;          // behind the body, in front of the pitch
+
         protected override void Awake()
         {
             base.Awake();
@@ -230,17 +237,14 @@ namespace PoSoccer
             if (eye != null && eye.TryGetComponent(out SpriteRenderer eyeRenderer))
                 eyeRenderer.color = teamColor;
 
-            // Thick team-colored outline: a slightly larger frame sprite behind the body.
-            if (body != null && body.sprite != null && transform.Find("TeamOutline") == null)
+            // Thick team-colored frame around the body: a 4-line LineRenderer
+            // drawn just outside the body sprite so the team reads at a glance,
+            // even on the small portrait phone view. We use a LineRenderer per
+            // border instead of a 1.3x halo so the outline always looks line-shaped
+            // and stays solid even when the sprite shape is non-square.
+            if (body != null && body.sprite != null && transform.Find("TeamFrame_Top") == null)
             {
-                var outlineGo = new GameObject("TeamOutline");
-                outlineGo.transform.SetParent(transform, false);
-                outlineGo.transform.localScale = new Vector3(1.3f, 1.3f, 1f);
-                var outline = outlineGo.AddComponent<SpriteRenderer>();
-                outline.sprite = body.sprite;
-                outline.sharedMaterial = body.sharedMaterial;
-                outline.color = teamColor;
-                outline.sortingOrder = body.sortingOrder - 1;
+                BuildTeamFrame(transform, body, teamColor, _frameInset, _frameThickness, -_frameZ);
             }
 
             // Identity letter (S/M/K/N) on the body, driven by the assigned profile.
@@ -335,6 +339,75 @@ namespace PoSoccer
                 sensor.AddObservation(Vector2.zero);
                 sensor.AddObservation(Vector2.zero);
             }
+        }
+
+        /// <summary>
+        /// Draws a 4-line, team-colored rectangle around the body sprite so the
+        /// team reads at a glance even on the small portrait phone view. One
+        /// LineRenderer per border (4 child GameObjects) is the cleanest way to
+        /// get a closed, filled-edge frame that scales with the body sprite.
+        /// Sits behind the body (sortingOrder = -2) so it never covers the eye
+        /// or the identity letter.
+        /// </summary>
+        static void BuildTeamFrame(Transform parent, SpriteRenderer body, Color color,
+            float inset, float thickness, float zOffset)
+        {
+            // Read the sprite's local bounds. SpriteRenderer.bounds is world-space;
+            // we want the half-extents in the body's LOCAL space so the frame
+            // follows rotation and scale exactly.
+            Bounds b = body.sprite.bounds;
+            // body-local size = (bounds * 2) * transform.localScale (per axis).
+            Vector3 bodyScale = body.transform.localScale;
+            float halfW = b.extents.x * Mathf.Abs(bodyScale.x) + inset;
+            float halfH = b.extents.y * Mathf.Abs(bodyScale.y) + inset;
+
+            BuildTeamFrameEdge(parent, "TeamFrame_Top",
+                new Vector3(-halfW, halfH, zOffset),
+                new Vector3(halfW, halfH, zOffset),
+                color, thickness, body.sortingLayerName, body.sortingOrder - 2);
+            BuildTeamFrameEdge(parent, "TeamFrame_Bottom",
+                new Vector3(-halfW, -halfH, zOffset),
+                new Vector3(halfW, -halfH, zOffset),
+                color, thickness, body.sortingLayerName, body.sortingOrder - 2);
+            BuildTeamFrameEdge(parent, "TeamFrame_Left",
+                new Vector3(-halfW, -halfH, zOffset),
+                new Vector3(-halfW, halfH, zOffset),
+                color, thickness, body.sortingLayerName, body.sortingOrder - 2);
+            BuildTeamFrameEdge(parent, "TeamFrame_Right",
+                new Vector3(halfW, -halfH, zOffset),
+                new Vector3(halfW, halfH, zOffset),
+                color, thickness, body.sortingLayerName, body.sortingOrder - 2);
+        }
+
+        static void BuildTeamFrameEdge(Transform parent, string name, Vector3 localA,
+            Vector3 localB, Color color, float thickness, string sortingLayerName,
+            int sortingOrder)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            var lr = go.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.positionCount = 2;
+            lr.SetPosition(0, localA);
+            lr.SetPosition(1, localB);
+            lr.startWidth = thickness;
+            lr.endWidth = thickness;
+            lr.numCornerVertices = 0;
+            lr.numCapVertices = 0;
+            lr.alignment = LineAlignment.View;
+            lr.startColor = color;
+            lr.endColor = color;
+            // Use the URP unlit sprite material so the team color stays bright even
+            // under the GoalGlow point lights; fall back to Sprites/Default if the
+            // project doesn't ship the URP 2D unlit shader.
+            var mat = new Material(Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default")
+                ?? Shader.Find("Sprites/Default"));
+            mat.color = color;
+            lr.sharedMaterial = mat;
+            lr.sortingLayerName = sortingLayerName;
+            lr.sortingOrder = sortingOrder;
         }
 
         public override void OnActionReceived(ActionBuffers actions)
