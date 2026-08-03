@@ -38,9 +38,13 @@ namespace PoSoccer
         [Tooltip("Coefficient of friction, studs on turf (~1.0-1.5). Total foot force is " +
                  "capped at mu * m * g, so cuts, launches and braking are all traction-limited.")]
         [SerializeField] private float _tractionMu = 1.2f;
-        [Tooltip("Extra sideways damping. A real body skids far less laterally than it rolls " +
-                 "forward; isotropic drag made strafing feel frictionless.")]
-        [SerializeField] private float _lateralDrag = 1.5f;
+        [Tooltip("Extra sideways damping (body-frame). A real body skids less laterally than " +
+                 "it rolls forward, but at the original 1.5 the drag was overwhelming the drive " +
+                 "force for any action with a strafe component (lateral drag = 2.1x linear drag, " +
+                 "so even a brain intent of magnitude 0.4 with mostly-lateral split could not " +
+                 "accelerate). 0.4 keeps strafing slower than running (~64% of forward) without " +
+                 "stranding cautious-trained brains at <0.3 m/s.")]
+        [SerializeField] private float _lateralDrag = 0.4f;
         [Tooltip("Fraction of the standing turn rate still available at full sprint. " +
                  "Humans pivot freely at rest and barely at all at top speed.")]
         [Range(0.05f, 1f)]
@@ -128,6 +132,15 @@ namespace PoSoccer
         protected override void Awake()
         {
             base.Awake();
+            // Sensor_Vision owns the RayPerceptionSensor2D config (11 rays, 2-4
+            // detectable tags) that produces the obs_0 slot the trained brains
+            // were taught on. DefaultExecutionOrder(-100) on Sensor_Vision guarantees
+            // its Awake runs before Agent initialization, so the RayPerceptionSensor
+            // is attached + configured before DecisionRequester fires.
+            if (GetComponent<Sensor_Vision>() == null)
+            {
+                gameObject.AddComponent<Sensor_Vision>();
+            }
             // Configure the policy contract in code (runs before Agent.OnEnable
             // initializes the policy) so scene serialization can never drift from it.
             _behavior = GetComponent<BehaviorParameters>();
@@ -326,9 +339,17 @@ namespace PoSoccer
 
         public override void OnActionReceived(ActionBuffers actions)
         {
-            float move = Mathf.Clamp(actions.ContinuousActions[0], -1f, 1f);
-            float lateral = Mathf.Clamp(actions.ContinuousActions[1], -1f, 1f);
-            float turn = Mathf.Clamp(actions.ContinuousActions[2], -1f, 1f);
+            // Action gain: trained brains converged on cautious magnitudes
+            // (~0.1-0.5; anti-twitch reward + small ball-proximity gradient
+            // rewards trained them to creep). Raw drive force scaled by those
+            // magnitudes (driveForce * intentMag) gets killed by linear + lateral
+            // drag before the body builds visible speed. 1.6x lifts a 0.3 brain
+            // output to 0.48 (well above the brake/drag cutoff) while still
+            // saturating at 1 for full-throttle decisions - no contract change.
+            const float ActionGain = 1.6f;
+            float move = Mathf.Clamp(actions.ContinuousActions[0] * ActionGain, -1f, 1f);
+            float lateral = Mathf.Clamp(actions.ContinuousActions[1] * ActionGain, -1f, 1f);
+            float turn = Mathf.Clamp(actions.ContinuousActions[2] * ActionGain, -1f, 1f);
             float boost = Mathf.Clamp01(actions.ContinuousActions[3]);
 
             float dt = Time.fixedDeltaTime;
@@ -365,13 +386,24 @@ namespace PoSoccer
             Vector2 applied = Vector2.ClampMagnitude(_driveVec, tractionBudget);
             Body.AddForce(applied);
 
-            // Active braking: with no drive intent the feet arrest residual motion
-            // using whatever traction is left, rather than relying on fake global drag.
+            // Active braking: when the brain is genuinely idle the feet arrest
+            // residual motion using whatever traction is left, rather than
+            // relying on fake global drag. Threshold is intentionally TIGHT
+            // (intent magnitude < 0.05) so cautious-trained actions
+            // (intent ~0.1-0.3) can still build speed - the old 0.2-magnitude
+            // threshold insta-stopped any body whose trained brain wasn't
+            // pinned at full throttle (net force ~-480 N against a ~45 N drive
+            // when STANDARD produced forward=0.11, lateral=-0.16). The brake
+            // itself also decelerates over ~0.5s rather than one timestep so
+            // residual motion drifts a little (human coast, not instant snap).
+            const float BrakeIntentMag = 0.05f;
+            const float BrakeStopSeconds = 0.5f;
             Vector2 velocity = Body.linearVelocity;
-            if (intent.sqrMagnitude < 0.04f && velocity.sqrMagnitude > 0.0001f)
+            float intentMag = intent.magnitude;
+            if (intentMag < BrakeIntentMag && velocity.sqrMagnitude > 0.0001f)
             {
                 float spare = Mathf.Max(0f, tractionBudget - applied.magnitude);
-                float stopping = velocity.magnitude * Body.mass / dt;   // force to fully stop this step
+                float stopping = velocity.magnitude * Body.mass / BrakeStopSeconds;
                 Body.AddForce(-velocity.normalized * Mathf.Min(spare, stopping));
             }
 
