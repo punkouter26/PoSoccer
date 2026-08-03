@@ -27,6 +27,19 @@ $expectedPy   = Get-Anchor "ML_AGENTS_PY_VERSION"
 $expectedCs   = Get-Anchor "CSHARP_PACKAGE_VERSION"
 $pythonMax    = Get-Anchor "PYTHON_MAX"
 
+# Pinned interpreter version (UNITY_RULES 5: version parity).
+# .python-version is the standard pyenv/asdf format and lets local tooling
+# auto-activate the right interpreter. setup-training-env.ps1 fails loud if
+# it drifts from $pythonMax.
+$pyVersionFile = Join-Path $root ".python-version"
+if (-not (Test-Path $pyVersionFile)) {
+    throw "Pin missing: $pyVersionFile does not exist. Restore it (should contain the exact interpreter version, e.g. 3.10.12)."
+}
+$pinnedPy = (Get-Content $pyVersionFile -Raw).Trim()
+if ($pinnedPy -ne $pythonMax) {
+    throw "PARITY BREAK: .python-version pins '$pinnedPy' but requirements-training.txt PYTHON_MAX is '$pythonMax'. Reconcile the two."
+}
+
 # 1. Verify the C# side still matches what this file claims to pin against.
 $pkgJson = Join-Path $root "Packages\com.unity.ml-agents\package.json"
 $csVersion = (Get-Content $pkgJson -Raw | ConvertFrom-Json).version
@@ -40,7 +53,10 @@ $pyVersion = (& python -c "import sys;print('.'.join(map(str,sys.version_info[:3
 if ([version]$pyVersion -gt [version]$pythonMax) {
     throw "Python $pyVersion is newer than the supported maximum $pythonMax. Install 3.10.x and re-run."
 }
-Write-Host "Python $pyVersion is within the supported range (<= $pythonMax)."
+if ($pyVersion -ne $pinnedPy) {
+    throw "Python $pyVersion is not the exact pinned version $pinnedPy. Install $pinnedPy (e.g. via pyenv install $pinnedPy) and re-run."
+}
+Write-Host "Python $pyVersion matches the .python-version pin."
 
 # 3. Clone (or fetch) ml-agents at the pinned commit.
 if (-not $ClonePath) { $ClonePath = Join-Path $root ".tooling\ml-agents" }

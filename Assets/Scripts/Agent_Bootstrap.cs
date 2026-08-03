@@ -32,6 +32,11 @@ namespace PoSoccer
             Physics2D.gravity = Vector2.zero;
             Physics2D.velocityIterations = _velocityIterations;
             Physics2D.positionIterations = _positionIterations;
+            // Keep CCD sensitive for fast, small colliders (FIFA ball r=0.11 m
+            // can hit ~22 m/s relative at sprint speeds, > the default contact
+            // threshold's tunnel window at 100 Hz). 0.005 m ~ 2x the smallest
+            // collider radius in the project.
+            Physics2D.contactThreshold = 0.005f;
 
             Time.fixedDeltaTime = _fixedTimestep;
             Application.targetFrameRate = _targetFrameRate;

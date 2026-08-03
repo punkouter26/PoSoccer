@@ -77,3 +77,34 @@ created from it and pushed. Changing the *default* branch on GitHub and
 retiring `main` must be done in the repository settings on github.com — it
 cannot be done from the working tree, and doing it breaks existing clones
 until they re-point. See the note in the session that created `master`.
+
+---
+
+## 4. Wear-and-tear has no recovery path (Rule 2) — DELIBERATE TRADE-OFF
+
+**Rule:** "Implement exertion degradation so agents experience stamina
+loss/wear-and-tear over continuous evaluation cycles during game play."
+
+**What the project does:** `Agent_Stamina.Wear` accumulates at
+`wearPerBoostSecond` (0.002/s) whenever the agent is boosting, shrinks the
+effective max stamina ceiling, and is floored at 60% of the configured max
+(`wearFloor`). Wear persists across matches — `resetWearOnEpisode` defaults
+to `false`. There is no off-pitch or post-match recovery: once an agent hits
+the floor it stays there until the Unity domain reloads (editor scene
+switch).
+
+**Why no recovery yet:** wear is currently a *diagnostic* signal that lets
+players feel that sustained boost use has consequences, not a balancing
+lever that needs to be tuned per match. Adding recovery (rest button, time-
+based decay, kit recharge) is design-side work that affects HUD scope,
+match-flow code, and reward signal shape — none of which can be safely
+folded into a rule-compliance pass.
+
+**Rule status:** the rule's letter ("agents experience wear-and-tear over
+continuous cycles") is met. The rule's spirit (a complete stamina loop
+with recovery) is not, by design.
+
+**Scope if implemented:** HUD readout for current wear, a match-flow hook
+to reset wear on main-menu return (or after N seconds idle in the menu),
+possible Agent_Stamina API addition `DecayWear(float amount)` and a
+recovery invocation site in `Agent_HUD` or a new `Agent_Roster` system.

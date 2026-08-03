@@ -16,6 +16,14 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 & "$root\.venv\Scripts\Activate.ps1"
 
+# Optional observability nudge: warn if TensorBoard isn't responding.
+# (UNITY_RULES 4: track active TensorBoard sessions.)
+try {
+    $null = Invoke-WebRequest -Uri "http://localhost:6006/" -UseBasicParsing -TimeoutSec 2
+} catch {
+    Write-Warning "TensorBoard is not reachable on :6006. Run .\scripts\tensorboard.ps1 in another terminal to watch reward convergence / policy entropy / value loss. Training will continue."
+}
+
 $mlArgs = @("$root\config\$Config",
           "--run-id=$RunId", "--base-port=$BasePort", "--results-dir=$root\results")
 if ($EnvPath) { $mlArgs += @("--env=$root\$EnvPath", "--no-graphics", "--num-envs=$NumEnvs") }
