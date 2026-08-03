@@ -6,10 +6,16 @@ namespace PoSoccer
     /// <summary>
     /// Corner-jam prevention, built at runtime on every pitch (grid clones included):
     /// smooth quarter-circle corner colliders (no wedge pockets), a zero-friction
-    /// wall material so the ball slides along boundaries instead of being pinned,
-    /// and bouncy corner pads that eject a settling ball. The arcs sit just inside
-    /// the 45-degree bevel sprites and overlap the walls at both ends, so there are
-    /// no collider seams for the ball to lodge in.
+    /// bouncy wall material so the ball reflects cleanly off all 4 sides instead of
+    /// depenetrating into the out-of-bounds zone, and extra-bouncy corner arcs that
+    /// eject a settling ball. The arcs sit just inside the 45-degree bevel sprites
+    /// and overlap the walls at both ends, so there are no collider seams for the
+    /// ball to lodge in.
+    ///
+    /// Bounciness is high enough (0.85 sides, 0.95 corners) that high-speed impacts
+    /// keep play inside the pitch reliably, which is what allows
+    /// <see cref="Agent_EnvController"/> to drop its containment watchdog: a
+    /// train-and-play convention in this project (no OOB resets, ever).
     /// </summary>
     public static class Agent_PitchGuard
     {
@@ -28,8 +34,12 @@ namespace PoSoccer
 
             // Box2D combines friction as sqrt(a*b) and bounciness as max(a,b):
             // friction 0 on the wall wins regardless of the ball's material.
-            _slickWall ??= new PhysicsMaterial2D("SlickWall") { friction = 0f, bounciness = 0.25f };
-            _bouncyCorner ??= new PhysicsMaterial2D("BouncyCorner") { friction = 0f, bounciness = 0.75f };
+            // Bounciness was raised so a slammed ball reflects back into play
+            // instead of depenetrating through the wall (which used to trigger
+            // the OOB reset in the env controller). 0.85 sides + 0.95 corners
+            // covers every realistic shot/trap speed.
+            _slickWall ??= new PhysicsMaterial2D("SlickWall") { friction = 0f, bounciness = 0.85f };
+            _bouncyCorner ??= new PhysicsMaterial2D("BouncyCorner") { friction = 0f, bounciness = 0.95f };
 
             foreach (var col in env.GetComponentsInChildren<Collider2D>())
                 if (col.CompareTag("Wall") && !col.isTrigger)

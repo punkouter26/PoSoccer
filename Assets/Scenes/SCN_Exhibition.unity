@@ -644,8 +644,6 @@ GameObject:
   - component: {fileID: 219326537}
   - component: {fileID: 219326536}
   - component: {fileID: 219326535}
-  - component: {fileID: 219326534}
-  - component: {fileID: 219326533}
   - component: {fileID: 219326532}
   m_Layer: 0
   m_Name: AgentBlue2
@@ -687,32 +685,6 @@ MonoBehaviour:
   boostAggression: 0.5
   interiorHalfExtents: {x: 17, y: 26}
   unstickAfter: 1.25
---- !u!114 &219326533
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 219326530}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 36af2364527786e40b95967763b5758d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Agent_DebugGizmos
-  drawVisionArc: 1
-  drawFacing: 1
---- !u!114 &219326534
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 219326530}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 597b9ff63360fbd4bb0d20c4ee98e284, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Sensor_Vision
 --- !u!114 &219326535
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1627,6 +1599,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Agent_EnvController
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
+  profileRoster: []
   ball: {fileID: 2082574069}
   blueGoal: {fileID: 2006005700}
   redGoal: {fileID: 2039853467}
@@ -2304,8 +2277,6 @@ GameObject:
   - component: {fileID: 1579506621}
   - component: {fileID: 1579506620}
   - component: {fileID: 1579506619}
-  - component: {fileID: 1579506618}
-  - component: {fileID: 1579506617}
   - component: {fileID: 1579506626}
   m_Layer: 0
   m_Name: AgentBlue
@@ -2330,32 +2301,6 @@ Transform:
   - {fileID: 129649023}
   m_Father: {fileID: 588775818}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1579506617
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1579506615}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 36af2364527786e40b95967763b5758d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Agent_DebugGizmos
-  drawVisionArc: 1
-  drawFacing: 1
---- !u!114 &1579506618
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1579506615}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 597b9ff63360fbd4bb0d20c4ee98e284, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Sensor_Vision
 --- !u!114 &1579506619
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2621,8 +2566,6 @@ GameObject:
   - component: {fileID: 1593781675}
   - component: {fileID: 1593781674}
   - component: {fileID: 1593781673}
-  - component: {fileID: 1593781672}
-  - component: {fileID: 1593781671}
   - component: {fileID: 1593781670}
   m_Layer: 0
   m_Name: AgentRed
@@ -2664,32 +2607,6 @@ MonoBehaviour:
   boostAggression: 0.5
   interiorHalfExtents: {x: 17, y: 26}
   unstickAfter: 1.25
---- !u!114 &1593781671
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1593781668}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 36af2364527786e40b95967763b5758d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Agent_DebugGizmos
-  drawVisionArc: 1
-  drawFacing: 1
---- !u!114 &1593781672
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1593781668}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 597b9ff63360fbd4bb0d20c4ee98e284, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Sensor_Vision
 --- !u!114 &1593781673
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2938,8 +2855,6 @@ GameObject:
   - component: {fileID: 1785677907}
   - component: {fileID: 1785677906}
   - component: {fileID: 1785677905}
-  - component: {fileID: 1785677904}
-  - component: {fileID: 1785677903}
   - component: {fileID: 1785677902}
   m_Layer: 0
   m_Name: AgentRed2
@@ -2981,32 +2896,6 @@ MonoBehaviour:
   boostAggression: 0.5
   interiorHalfExtents: {x: 17, y: 26}
   unstickAfter: 1.25
---- !u!114 &1785677903
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1785677900}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 36af2364527786e40b95967763b5758d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Agent_DebugGizmos
-  drawVisionArc: 1
-  drawFacing: 1
---- !u!114 &1785677904
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1785677900}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 597b9ff63360fbd4bb0d20c4ee98e284, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Sensor_Vision
 --- !u!114 &1785677905
 MonoBehaviour:
   m_ObjectHideFlags: 0

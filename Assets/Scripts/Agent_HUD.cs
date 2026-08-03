@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
@@ -7,9 +6,9 @@ namespace PoSoccer
 {
     /// <summary>
     /// Match HUD (UI Toolkit, portrait, safe-area). Uses the dead bands above and
-    /// below the pitch: scoreboard on top, per-player identity chips with stamina
-    /// on the bottom - nothing ever covers the play area. Includes a goal toast,
-    /// a MENU button, and a first-to-N end panel (match flow off in training).
+    /// below the pitch: scoreboard on top, ball-control meter + identity chips on
+    /// the bottom - nothing ever covers the play area. Includes a goal toast, a
+    /// MENU button, and a first-to-N end panel (match flow off in training).
     /// Styling comes from Agent_UIStyle so menu and HUD stay consistent.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
@@ -24,8 +23,8 @@ namespace PoSoccer
 
         UIDocument _doc;
         Label _score, _stepLabel, _toast;
-        VisualElement _root, _endPanel;
-        readonly List<(Agent_Soccer agent, VisualElement fill)> _chips = new();
+        VisualElement _root, _endPanel, _blueChips, _redChips;
+        VisualElement _ballControlBlue, _ballControlRed;   // halves of the meter
         int _blueScore, _redScore;
         float _toastUntil;
         bool _ended;
@@ -89,49 +88,84 @@ namespace PoSoccer
         VisualElement BuildBottomBand()
         {
             var band = new VisualElement();
-            band.style.flexDirection = FlexDirection.Row;
-            band.style.justifyContent = Justify.SpaceBetween;
             band.style.alignItems = Align.Center;
             Agent_UIStyle.PadAll(band);
+
+            // Ball-control meter: a single bar split blue (left) / red (right).
+            // Each half's width is proportional to that team's proximity to the
+            // ball - the team that's pressing reads as the wider side. Simpler
+            // and more readable than 4 mini stamina bars the eye can't resolve
+            // during play.
+            var meterBg = new VisualElement();
+            meterBg.style.flexDirection = FlexDirection.Row;
+            meterBg.style.width = 600;
+            meterBg.style.height = 14;
+            meterBg.style.marginBottom = 16;
+            meterBg.style.backgroundColor = new Color(1f, 1f, 1f, 0.15f);
+            Agent_UIStyle.Round(meterBg, 7);
+
+            _ballControlBlue = new VisualElement();
+            _ballControlBlue.style.height = 14;
+            _ballControlBlue.style.backgroundColor = Agent_UIStyle.BlueTeam;
+            _ballControlBlue.style.borderTopLeftRadius = 7;
+            _ballControlBlue.style.borderBottomLeftRadius = 7;
+            _ballControlBlue.style.width = Length.Percent(50);
+
+            _ballControlRed = new VisualElement();
+            _ballControlRed.style.height = 14;
+            _ballControlRed.style.backgroundColor = Agent_UIStyle.RedTeam;
+            _ballControlRed.style.borderTopRightRadius = 7;
+            _ballControlRed.style.borderBottomRightRadius = 7;
+            _ballControlRed.style.width = Length.Percent(50);
+
+            meterBg.Add(_ballControlBlue);
+            meterBg.Add(_ballControlRed);
+            band.Add(meterBg);
 
             _blueChips = new VisualElement { style = { flexDirection = FlexDirection.Row } };
             _redChips = new VisualElement { style = { flexDirection = FlexDirection.Row } };
 
-            var center = new VisualElement();
-            center.style.alignItems = Align.Center;
-            center.Add(SmallButton("MENU",
-                () => { Time.timeScale = 1f; SceneManager.LoadScene(menuScene); }));
-            Button mute = null;
-            mute = SmallButton(Agent_Audio.Muted ? "SND OFF" : "SND ON", () =>
-            {
-                Agent_Audio.Muted = !Agent_Audio.Muted;
-                mute.text = Agent_Audio.Muted ? "SND OFF" : "SND ON";
-            });
-            mute.style.marginTop = 10;
-            center.Add(mute);
-            center.style.display = enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
+            var chipRow = new VisualElement();
+            chipRow.style.flexDirection = FlexDirection.Row;
+            chipRow.style.justifyContent = Justify.SpaceBetween;
+            chipRow.style.alignItems = Align.Center;
+            chipRow.style.width = 900;
+            chipRow.Add(_blueChips);
+            chipRow.Add(_redChips);
+            band.Add(chipRow);
 
-            band.Add(_blueChips);
-            band.Add(center);
-            band.Add(_redChips);
+            if (enableMatchFlow)
+            {
+                var controls = new VisualElement();
+                controls.style.flexDirection = FlexDirection.Row;
+                controls.style.marginTop = 12;
+
+                var menu = SmallButton("MENU", () =>
+                {
+                    Time.timeScale = 1f;
+                    SceneManager.LoadScene(menuScene);
+                });
+                var sound = Agent_UIStyle.SoundToggleButton();
+                sound.style.marginLeft = 12;
+                controls.Add(menu);
+                controls.Add(sound);
+                band.Add(controls);
+            }
+
             return band;
         }
 
-        VisualElement _blueChips, _redChips;
         float _matchSeconds;
 
-        // Update runs at 60 fps but these labels change a few times a match (score)
-        // or once a second (clock). Cache the last rendered values so the string is
-        // rebuilt only on change - see .claude/rules/performance.md (zero alloc in Update).
+        // Update runs at 60 fps but these labels change a few times a match
+        // (score) or once a second (clock). Cache the last rendered values so the
+        // string is rebuilt only on change - see .claude/rules/performance.md
+        // (zero alloc in Update).
         int _shownBlue = -1, _shownRed = -1;
         int _shownSecond = -1;
         int _shownStep = -1;
-        // v2: sentinel -1 (not NaN) - the diagnostic found the field stayed NaN
-        // even after env.CurrentGoalWidth went to 0 (Mathf.Approximately(0, NaN)
-        // returns false so the if-branch DID update, but the label format
-        // $"... goal {goalWidth:0.0}m" silently rendered 'NaN' if the if-branch
-        // ever failed to fire). Use -1f to make the first-frame update deterministic.
-        float _shownGoalWidth = -1f;
+        float _shownGoalWidth = -1f;     // first-frame sentinel for goal-width label
+        float _shownRedShare = -1f;      // first-frame sentinel for ball-control meter
 
         static Button SmallButton(string text, System.Action onClick)
         {
@@ -161,6 +195,9 @@ namespace PoSoccer
 
         void BuildChips()
         {
+            if (_blueChips == null) return;
+            _blueChips.Clear();
+            _redChips.Clear();
             foreach (var agent in env.agents)
             {
                 if (agent == null || agent.rewards == null) continue;
@@ -184,19 +221,7 @@ namespace PoSoccer
                 square.style.borderBottomColor = teamColor;
                 chip.Add(square);
 
-                var barBg = new VisualElement();
-                barBg.style.width = 84; barBg.style.height = 18;
-                barBg.style.marginTop = 8;
-                barBg.style.backgroundColor = new Color(1f, 1f, 1f, 0.15f);
-                Agent_UIStyle.Round(barBg, 9);
-                var fill = new VisualElement();
-                fill.style.height = 18;
-                Agent_UIStyle.Round(fill, 9);
-                barBg.Add(fill);
-                chip.Add(barBg);
-
                 (agent.team == Agent_Soccer.Team.Blue ? _blueChips : _redChips).Add(chip);
-                _chips.Add((agent, fill));
             }
         }
 
@@ -208,7 +233,7 @@ namespace PoSoccer
 
             if (winner == null)
             {
-                // Stalemate or out-of-bounds: announce the reset so it reads as intended.
+                // Stalemate: announce the reset so it reads as intended.
                 _toast.text = "RESET";
                 _toast.style.color = Agent_UIStyle.TextMuted;
                 _toast.style.display = DisplayStyle.Flex;
@@ -284,7 +309,7 @@ namespace PoSoccer
         void Update()
         {
             if (env == null || _score == null) return;
-            if (_chips.Count == 0 && env.agents.Count > 0) BuildChips();
+            if (_blueChips != null && _blueChips.childCount == 0 && env.agents.Count > 0) BuildChips();
 
             if (enableMatchFlow)
             {
@@ -320,13 +345,27 @@ namespace PoSoccer
             if (_toast.style.display == DisplayStyle.Flex && Time.unscaledTime > _toastUntil)
                 _toast.style.display = DisplayStyle.None;
 
-            foreach (var (agent, fill) in _chips)
+            UpdateBallControlMeter();
+        }
+
+        // Ball-control meter: the team whose goal the ball is closer to is
+        // winning the pressing battle, so its half of the meter widens. Cached
+        // ratio keeps Update alloc-free when nothing changes.
+        void UpdateBallControlMeter()
+        {
+            if (_ballControlBlue == null || _ballControlRed == null || env == null || env.Ball == null) return;
+            Vector2 ball = env.Ball.position;
+            float dBlue = Vector2.Distance(ball, env.GetGoalPosition(Agent_Soccer.Team.Blue));
+            float dRed = Vector2.Distance(ball, env.GetGoalPosition(Agent_Soccer.Team.Red));
+            float total = dBlue + dRed;
+            if (total < 0.001f) return;
+            // Closer to red goal = red is defending/pressing harder = red half grows.
+            float redShare = dBlue / total;
+            if (!Mathf.Approximately(redShare, _shownRedShare))
             {
-                if (agent == null) continue;
-                float ratio = agent.Stamina != null ? agent.Stamina.Ratio : 0f;
-                fill.style.width = Length.Percent(ratio * 100f);
-                fill.style.backgroundColor = Color.Lerp(
-                    Agent_UIStyle.StaminaLow, Agent_UIStyle.StaminaHigh, ratio);
+                _ballControlBlue.style.width = Length.Percent((1f - redShare) * 100f);
+                _ballControlRed.style.width = Length.Percent(redShare * 100f);
+                _shownRedShare = redShare;
             }
         }
     }

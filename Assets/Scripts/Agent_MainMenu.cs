@@ -6,7 +6,8 @@ namespace PoSoccer
 {
     /// <summary>
     /// Opening menu (UI Toolkit, mobile portrait, safe-area): pick the Blue and
-    /// Red player from the roster, then launch the match scene. The whole tree is
+    /// Red players from the four-personality roster, then launch the match scene.
+    /// Always 2v2 — the previous 1v1 mode toggle was removed. The whole tree is
     /// built in code so no UXML wiring is needed.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
@@ -21,11 +22,7 @@ namespace PoSoccer
         [Header("Flow")]
         public string matchScene = "SCN_Exhibition";
 
-        Reward_Settings[] _roster;
-        bool _twoVTwo = true;
-        Button _btn1v1, _btn2v2;
         readonly Reward_Settings[] _picks = new Reward_Settings[4];   // B1, B2, R1, R2
-        readonly VisualElement[] _slotSections = new VisualElement[4];
         readonly System.Collections.Generic.List<Button>[] _slotButtons =
         {
             new(), new(), new(), new(),
@@ -41,14 +38,15 @@ namespace PoSoccer
                 return;
             }
 
-            _roster = new[] { standard, matt, kim, nick };
+            // Roster is local — built once per activation and never mutated.
+            var roster = new[] { standard, matt, kim, nick };
             _picks[0] = standard; _picks[1] = nick;   // Blue: STANDARD + NICK
             _picks[2] = matt;     _picks[3] = kim;    // Red:  MATT + KIM
 
             root.Clear();
             var safe = new VisualElement();
             safe.style.flexGrow = 1;
-            ApplySafeArea(safe);
+            Agent_UIStyle.ApplySafeArea(safe);
             safe.style.backgroundColor = Agent_UIStyle.Background;
             safe.style.alignItems = Align.Center;
             safe.style.justifyContent = Justify.Center;
@@ -67,24 +65,22 @@ namespace PoSoccer
             var subtitle = new Label("pick the matchup");
             subtitle.style.fontSize = Agent_UIStyle.FontM;
             subtitle.style.color = Agent_UIStyle.TextMuted;
-            subtitle.style.marginBottom = 70;
+            subtitle.style.marginBottom = 60;
             safe.Add(subtitle);
 
-            safe.Add(BuildModeRow());
-
-            var blue = Agent_UIStyle.BlueTeam;
-            var red = Agent_UIStyle.RedTeam;
-            _slotSections[0] = BuildPickerRow("BLUE 1", blue, _slotButtons[0], p => { _picks[0] = p; Restyle(); });
-            _slotSections[1] = BuildPickerRow("BLUE 2", blue, _slotButtons[1], p => { _picks[1] = p; Restyle(); });
-            _slotSections[2] = BuildPickerRow("RED 1", red, _slotButtons[2], p => { _picks[2] = p; Restyle(); });
-            _slotSections[3] = BuildPickerRow("RED 2", red, _slotButtons[3], p => { _picks[3] = p; Restyle(); });
-            foreach (var section in _slotSections) safe.Add(section);
-            ApplyMode();
+            _slotButtons[0].Clear();
+            safe.Add(BuildPickerRow("BLUE 1", Agent_UIStyle.BlueTeam, _slotButtons[0], roster, p => { _picks[0] = p; Restyle(); }));
+            _slotButtons[1].Clear();
+            safe.Add(BuildPickerRow("BLUE 2", Agent_UIStyle.BlueTeam, _slotButtons[1], roster, p => { _picks[1] = p; Restyle(); }));
+            _slotButtons[2].Clear();
+            safe.Add(BuildPickerRow("RED 1", Agent_UIStyle.RedTeam, _slotButtons[2], roster, p => { _picks[2] = p; Restyle(); }));
+            _slotButtons[3].Clear();
+            safe.Add(BuildPickerRow("RED 2", Agent_UIStyle.RedTeam, _slotButtons[3], roster, p => { _picks[3] = p; Restyle(); }));
 
             var play = new Button(StartMatch) { text = "PLAY" };
             play.style.fontSize = 72;
             play.style.unityFontStyleAndWeight = FontStyle.Bold;
-            play.style.marginTop = 80;
+            play.style.marginTop = 60;
             play.style.paddingLeft = 120; play.style.paddingRight = 120;
             play.style.paddingTop = 28; play.style.paddingBottom = 28;
             play.style.backgroundColor = Agent_UIStyle.Accent;
@@ -92,84 +88,44 @@ namespace PoSoccer
             Agent_UIStyle.Round(play);
             safe.Add(play);
 
-            Button sound = null;
-            sound = new Button(() =>
-            {
-                Agent_Audio.Muted = !Agent_Audio.Muted;
-                sound.text = Agent_Audio.Muted ? "SOUND: OFF" : "SOUND: ON";
-            })
-            { text = Agent_Audio.Muted ? "SOUND: OFF" : "SOUND: ON" };
-            sound.style.fontSize = Agent_UIStyle.FontS;
+            var sound = Agent_UIStyle.SoundToggleButton();
             sound.style.color = Agent_UIStyle.TextMuted;
-            sound.style.backgroundColor = Agent_UIStyle.PanelBg;
-            Agent_UIStyle.Round(sound);
             sound.style.marginTop = 28;
-            sound.style.paddingLeft = 40; sound.style.paddingRight = 40;
-            sound.style.paddingTop = 14; sound.style.paddingBottom = 14;
             safe.Add(sound);
 
             Restyle();
         }
 
-        VisualElement BuildModeRow()
-        {
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.marginBottom = 36;
-
-            Button Make(string text, bool mode)
-            {
-                var b = new Button(() => { _twoVTwo = mode; ApplyMode(); }) { text = text };
-                b.style.fontSize = Agent_UIStyle.FontM;
-                b.style.unityFontStyleAndWeight = FontStyle.Bold;
-                b.style.width = 220; b.style.height = 96;
-                b.style.marginLeft = 12; b.style.marginRight = 12;
-                Agent_UIStyle.Round(b);
-                row.Add(b);
-                return b;
-            }
-            _btn1v1 = Make("1 v 1", false);
-            _btn2v2 = Make("2 v 2", true);
-            return row;
-        }
-
-        void ApplyMode()
-        {
-            void Style(Button b, bool selected)
-            {
-                b.style.backgroundColor = selected ? Agent_UIStyle.Accent : Agent_UIStyle.PanelBg;
-                b.style.color = selected ? Agent_UIStyle.TextPrimary : Agent_UIStyle.TextMuted;
-            }
-            Style(_btn1v1, !_twoVTwo);
-            Style(_btn2v2, _twoVTwo);
-
-            // Slots 1 and 3 are the second players - only shown in 2v2.
-            if (_slotSections[1] != null)
-                _slotSections[1].style.display = _twoVTwo ? DisplayStyle.Flex : DisplayStyle.None;
-            if (_slotSections[3] != null)
-                _slotSections[3].style.display = _twoVTwo ? DisplayStyle.Flex : DisplayStyle.None;
-        }
-
         VisualElement BuildPickerRow(string teamLabel, Color teamColor,
             System.Collections.Generic.List<Button> buttons,
+            Reward_Settings[] roster,
             System.Action<Reward_Settings> onPick)
         {
             var section = new VisualElement();
-            section.style.marginBottom = 44;
+            section.style.marginBottom = 36;
             section.style.alignItems = Align.Center;
+
+            // Team-color band above the row so players know BLUE 1/2 vs RED 1/2
+            // without reading the label.
+            var band = new VisualElement();
+            band.style.height = 6; band.style.width = 220;
+            band.style.backgroundColor = teamColor;
+            band.style.marginBottom = 12;
+            Agent_UIStyle.Round(band, 3);
+            section.Add(band);
 
             var header = new Label(teamLabel);
             header.style.fontSize = 48;
             header.style.color = teamColor;
             header.style.unityFontStyleAndWeight = FontStyle.Bold;
-            header.style.marginBottom = 18;
+            header.style.marginBottom = 14;
             section.Add(header);
 
             var row = new VisualElement();
             row.style.flexDirection = FlexDirection.Row;
             section.Add(row);
 
-            foreach (var profile in _roster)
+            foreach (var profile in roster)
             {
                 if (profile == null) continue;
                 var captured = profile;
@@ -212,21 +168,11 @@ namespace PoSoccer
         void StartMatch()
         {
             Agent_MatchSetup.Applied = true;
-            Agent_MatchSetup.TwoVTwo = _twoVTwo;
             Agent_MatchSetup.BluePlayer = _picks[0];
-            Agent_MatchSetup.BluePlayer2 = _twoVTwo ? _picks[1] : null;
+            Agent_MatchSetup.BluePlayer2 = _picks[1];
             Agent_MatchSetup.RedPlayer = _picks[2];
-            Agent_MatchSetup.RedPlayer2 = _twoVTwo ? _picks[3] : null;
+            Agent_MatchSetup.RedPlayer2 = _picks[3];
             SceneManager.LoadScene(matchScene);
-        }
-
-        static void ApplySafeArea(VisualElement element)
-        {
-            Rect safe = Screen.safeArea;
-            element.style.paddingTop = Screen.height - safe.yMax;
-            element.style.paddingBottom = safe.yMin;
-            element.style.paddingLeft = safe.xMin;
-            element.style.paddingRight = Screen.width - safe.xMax;
         }
     }
 }

@@ -53,5 +53,28 @@ namespace PoSoccer
             element.style.paddingLeft = safe.xMin;
             element.style.paddingRight = Screen.width - safe.xMax;
         }
+
+        /// <summary>
+        /// Builds a small "SND ON" / "SND OFF" toggle button bound to
+        /// <see cref="Agent_Audio.Muted"/>. Both the main menu and the match HUD
+        /// use this so the toggle stays visually consistent.
+        /// </summary>
+        public static Button SoundToggleButton()
+        {
+            Button b = null;
+            b = new Button(() =>
+            {
+                Agent_Audio.Muted = !Agent_Audio.Muted;
+                b.text = Agent_Audio.Muted ? "SND OFF" : "SND ON";
+            })
+            { text = Agent_Audio.Muted ? "SND OFF" : "SND ON" };
+            b.style.fontSize = FontS;
+            b.style.color = TextPrimary;
+            b.style.backgroundColor = PanelBg;
+            Round(b);
+            b.style.paddingLeft = 28; b.style.paddingRight = 28;
+            b.style.paddingTop = 14; b.style.paddingBottom = 14;
+            return b;
+        }
     }
 }

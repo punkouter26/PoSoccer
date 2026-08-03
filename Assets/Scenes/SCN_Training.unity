@@ -1811,32 +1811,6 @@ Transform:
   - {fileID: 129649023}
   m_Father: {fileID: 588775818}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1579506617
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1579506615}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 36af2364527786e40b95967763b5758d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Agent_DebugGizmos
-  drawVisionArc: 1
-  drawFacing: 1
---- !u!114 &1579506618
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1579506615}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 597b9ff63360fbd4bb0d20c4ee98e284, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Sensor_Vision
 --- !u!114 &1579506619
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2145,32 +2119,6 @@ MonoBehaviour:
   boostAggression: 0.5
   interiorHalfExtents: {x: 17, y: 26}
   unstickAfter: 1.25
---- !u!114 &1593781671
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1593781668}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 36af2364527786e40b95967763b5758d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Agent_DebugGizmos
-  drawVisionArc: 1
-  drawFacing: 1
---- !u!114 &1593781672
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1593781668}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 597b9ff63360fbd4bb0d20c4ee98e284, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PoSoccer.Sensor_Vision
 --- !u!114 &1593781673
 MonoBehaviour:
   m_ObjectHideFlags: 0
