@@ -99,6 +99,25 @@ if (-not (Test-Path $envExe)) { throw "No player build at $envExe - build SCN_Tr
 # build-headless.ps1 drives Unity's CLI, which refuses to open a project another
 # editor already has locked. Close politely, then force.
 function Close-UnityEditor {
+    # A batchmode Unity is somebody's build (scripts/build-android.ps1,
+    # build-headless.ps1), not an interactive editor. Killing it destroys a
+    # 20-minute IL2CPP build and leaves a half-written artifact, so wait it out
+    # instead - up to 40 minutes, which is longer than any build here takes.
+    $waited = 0
+    while ($true) {
+        $batch = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                   Where-Object { $_.Name -eq "Unity.exe" -and $_.CommandLine -match "-batchmode" })
+        if (-not $batch) { break }
+        if ($waited -ge 2400) {
+            Say "WARNING: a batchmode Unity build has been running 40 min; proceeding anyway."
+            break
+        }
+        if ($waited -eq 0) { Say "A batchmode Unity build is running (PID $($batch[0].ProcessId)). Waiting for it rather than killing it." }
+        Start-Sleep -Seconds 30
+        $waited += 30
+    }
+    if ($waited -gt 0) { Say "Batchmode build finished after $([int]($waited/60)) min of waiting." }
+
     $procs = @(Get-Process Unity -ErrorAction SilentlyContinue)
     if (-not $procs) { return $true }
     Say "Closing $($procs.Count) Unity editor process(es) so the headless build can take the project lock."
