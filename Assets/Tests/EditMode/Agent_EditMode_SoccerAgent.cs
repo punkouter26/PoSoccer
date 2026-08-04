@@ -57,7 +57,11 @@ namespace PoSoccer.Tests
             // it tracks the code. Values updated 2026-08-04 after the suite was found
             // failing on three v2-era changes that predate this session.
             var r = ScriptableObject.CreateInstance<Reward_Settings>();
-            Assert.AreEqual(0.7f, r.goalScorer);
+            // v4: scoring must out-pay conceding or stalling is the optimal policy.
+            Assert.AreEqual(1.2f, r.goalScorer);
+            Assert.Greater(r.goalScorer, Mathf.Abs(r.goalConceded),
+                "a 50/50 goal trade must beat stalling, or the policy learns to stall");
+            Assert.Less(r.stalemateTimeout, -0.5f, "stalling must not be a safe harbour");
             Assert.AreEqual(0.3f, r.assist);
             Assert.AreEqual(0.1f, r.teamBaselineVictory);
             Assert.AreEqual(-1.0f, r.goalConceded);
@@ -68,7 +72,7 @@ namespace PoSoccer.Tests
             Assert.AreEqual(0.0002f, r.facingAlignmentScale, 1e-6f);
             // v3: 0.05 -> 0.005. At 0.05, 14 touches outscored a goal (0.7).
             Assert.AreEqual(0.005f, r.ballContact);
-            Assert.AreEqual(-0.10f, r.stalemateTimeout, 1e-6f);
+            Assert.AreEqual(-0.6f, r.stalemateTimeout, 1e-6f);
             Assert.AreEqual(5000, r.maxEnvironmentSteps);
             Object.DestroyImmediate(r);
         }

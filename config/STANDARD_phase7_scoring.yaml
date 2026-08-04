@@ -1,0 +1,123 @@
+# Phase 7: fix the incentive to stall. SINGLE-VARIABLE experiment.
+#
+# Phase 6 added opponent observations (obs 18 -> 26), fixed ballContact and
+# tightened the curriculum gate, trained 20M steps, and graded 17.1% over 1000
+# episodes. The previous brain graded 16.2% over 1000. No improvement.
+#
+# The diagnostic that explains it: the SAME p6 policy was graded against a
+# half-strength bot (bot_strength 0.5, the level it actually trained on):
+#
+#            bot 1.0     bot 0.5
+#   wins      17.1%       17.4%    <- unchanged
+#   losses    65.9%       34.4%
+#   stales    17.0%       48.2%    <- every game it stopped losing became a draw
+#
+# Its scoring rate is pinned near 17% regardless of opponent. That is an OFFENSE
+# problem, not perception and not opponent strength. Cause: goalScorer 0.7 vs
+# goalConceded -1.0 vs stalemateTimeout -0.1 made stalling optimal. EV(stall) =
+# -0.1; EV(attack, 50/50) = -0.15. A policy needed >53% win rate before attacking
+# beat parking the bus, and it wins ~17%. It was behaving optimally for the table
+# it was given.
+#
+# Fixed in the Reward_*.asset profiles (config-only, no contract break, every
+# 26-obs .onnx stays valid): goalScorer 1.2, stalemateTimeout -0.6. Attacking now
+# beats stalling even at a 30% win rate (-0.34 vs -0.60).
+#
+# Everything else is IDENTICAL to phase 6 on purpose - curriculum, hyperparameters,
+# step budget. Phase 6 shipped an untested hypothesis and burned 3 hours; this run
+# changes one variable so its result is attributable. From scratch, not warm-started
+# from p6: that policy is optimised for stalling and would have to unlearn it.
+#
+# The 0.50 lesson threshold still means genuine dominance under the new scale
+# (~70% wins / 20% losses / 10% draws = +0.58).
+#
+# Grade with -Episodes 1000. A 100-episode eval has SD ~3.7 points.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 20000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 500000
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # One flat threshold, applied to every lesson: the policy must be genuinely
+  # winning (goalScorer 0.7 vs goalConceded -1.0, so a sustained +0.5 mean means
+  # scoring materially more than it concedes) before the opponent gets stronger.
+  # min_lesson_length 1000 makes a lucky streak far too expensive to fake.
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.35
+      # Support positioning and corner craft switch on at 0.5 - the first real step up.
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.65
+      # The boost-shot switches on at 0.8.
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  num_envs: 1
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

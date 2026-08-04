@@ -44,11 +44,22 @@ namespace PoSoccer
         public float bodyMass = 75f;
 
         [Header("Terminal rewards")]
-        public float goalScorer = 0.7f;
+        // v4 (2026-08-04): goalScorer 0.7 -> 1.2 and stalemateTimeout -0.1 -> -0.6.
+        // MEASURED: with 0.7/-1.0/-0.1, stalling was the OPTIMAL policy. Expected value
+        // of stalling every episode was -0.1; of attacking and trading goals 50/50,
+        // (0.7-1.0)/2 = -0.15. A policy had to win >53% of contested games before
+        // attacking beat parking the bus - and it wins ~17%. So it learned not to lose
+        // instead of to score, which is exactly what this table paid for.
+        // The proof: halving bot_strength (1.0 -> 0.5) left the win rate flat at ~17%
+        // and converted 31 points of losses into stalemates (17% -> 48%). Scoring rate
+        // was pinned regardless of opponent - an offense problem, not a perception one.
+        // Now goalScorer must exceed |goalConceded| so attacking beats stalling at any
+        // competitive rate, and the stalemate penalty removes the safe harbour.
+        public float goalScorer = 1.2f;
         public float assist = 0.3f;
         public float teamBaselineVictory = 0.1f;
         public float goalConceded = -1.0f;
-        public float stalemateTimeout = -0.10f;
+        public float stalemateTimeout = -0.6f;
 
         [Header("Dense rewards (per decision step)")]
         [Tooltip("Per-step time cost. v2 changed from -0.0001 to 0 because stepPenalty " +

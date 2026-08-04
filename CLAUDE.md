@@ -15,7 +15,7 @@ PoSoccer: a top-down 2D physics soccer game + **ML-Agents training benchmark**. 
 - UI Toolkit only (runtime, code-built, shared `PanelSettings` at ScaleWithScreenSize **1080×1920** (9:16) match-width; style constants in `Agent_UIStyle`). Fixed timestep 0.01s, portrait **locked** (`defaultScreenOrientation: 0`, landscape autorotate off).
 - **Version parity**: embedded `Packages/com.unity.ml-agents` (4.1.0 @ ab179e18, protobuf-swapped — see landmines) must match Python `mlagents` 1.2.0.dev0. Pins live in `requirements-training.txt`; `scripts/setup-training-env.ps1` builds `.venv` from that commit and **fails loudly on drift**. Python ≤3.10.12.
 - Trained `.onnx` overwrites happen **in place** (GUID-stable slot per personality: `Assets/Agents/<Name>_v01/<NAME>.onnx`). Kill orphaned trainers after runs; TensorBoard restarts prune/archive runs.
-- **Git branch: `master`.** Do not create other branches unless explicitly asked. (`main` still exists on the remote; the GitHub default has not been flipped yet.)
+- **Git branch: `master`.** Do not create other branches unless explicitly asked. `master` is the only branch, local and remote, and is the GitHub default (2026-08-04: `main` held no unique commits and was deleted).
 - Deliberate departures from these rules are recorded in `docs/rules-exemptions.md` — an audit finding not on that page is a real defect.
 
 ## Commands
@@ -124,7 +124,24 @@ Bot-vs-bot is symmetric, so the harness is fair and the brains really are **wors
 
 **Why the bot wins: the agent cannot see it.** `Agent_Soccer.CollectObservations` is Self(4) + Stamina(1) + Ball(4) + Goals(5) + Teammate(4) = 18 — **there is no opponent term at all**. The policy's only opponent channel is `Sensor_Vision`: 11 rays, 30° apart (300° arc ⇒ a 60° blind wedge behind), 24 range, spherecast radius 0.1, and every player is tagged `Agent` so the rays cannot even separate teammate from opponent. Agents are 0.8 units wide, so effective detection half-width is 0.4 + 0.1 = 0.5, while the blind gap between adjacent rays grows as `d·sin15° = 0.259d` — an opponent is **guaranteed visible only within ~1.9 units**, and beyond that can sit entirely between two rays. On the 36×54 pitch (both `SCN_Training` and `SCN_Exhibition`) that reliable disc is ~12 of 1944 sq units ≈ **0.6% of the pitch**; ray length 24 is itself shorter than the 54-unit pitch length. `Agent_HeuristicBot.ComputeActions` meanwhile receives `nearestOpponent` as a live `Rigidbody2D` — exact position *and* velocity, unlimited range, no angular quantization, no occlusion. The 120°→300° widening (commit `7e03878`) traded angular resolution for coverage and moved the result 0 points, which is consistent with this: the gap is opponent *state*, not arc.
 
-**Fixes applied 2026-08-04 — all four are untested against a trained policy; phase 6 is the experiment that grades them:**
+**RESULT — phase 6 changed nothing, and the diagnostic found the real cause.** `soccer_p6_seeing_00` (20.0M steps, 26 obs) graded **17.1%** over 1000 episodes against the previous brain's **16.2%** over 1000 — a 0.9-point difference against ±1.8 combined uncertainty, i.e. no improvement. Stalemates rose 14.6% → 17.0%. Training reward went from −0.045 to +0.45 and **none of it transferred**.
+
+**The decisive experiment** graded the *same* p6 policy against the half-strength bot it actually trained on:
+
+| | bot 1.0 | bot 0.5 |
+|---|---|---|
+| Blue wins | 17.1% | **17.4%** |
+| Red wins | 65.9% | 34.4% |
+| Stalemates | 17.0% | **48.2%** |
+| Mean steps | 4,524 | 6,358 |
+
+Halving the opponent left the win rate **flat** and converted 31 points of losses into draws, one-for-one. The scoring rate is pinned near 17% regardless of opponent — an **offense** problem, not perception and not opponent strength.
+
+**Cause: the reward table made stalling optimal.** With `goalScorer 0.7 / goalConceded -1.0 / stalemateTimeout -0.1`, EV(stall) = −0.1 while EV(attack, 50/50) = −0.15. A policy needed a **>53% win rate before attacking beat parking the bus**, and it wins ~17%. It learned not to lose because that is what the table paid for. Fixed 2026-08-04 in all five profiles: `goalScorer` 1.2 (MATT 1.4, KIM 1.3), `stalemateTimeout` −0.6 — attacking now beats stalling even at a 30% win rate (−0.34 vs −0.60). Config-only; every 26-obs `.onnx` stays valid. `config/STANDARD_phase7_scoring.yaml` is the single-variable test.
+
+**Process lesson: the perception thesis below was diagnosed from code inspection and never tested before committing 3 hours of compute to it.** The 10-minute reduced-strength eval would have falsified it up front. Run the cheap discriminating experiment *before* the expensive fix.
+
+**Fixes applied 2026-08-04 — the perception/reward/curriculum set that phase 6 tested and found insufficient:**
 1. **Opponent observations** — obs 18 → 26 (`Agent_EnvController.GetOpponents`, zero-alloc, nearest-first). Removes the perception asymmetry above. Obsoletes every `.onnx`.
 2. **`ballContact` 0.05 → 0.005** — at 0.05, **14 touches outscored a goal** (0.7), so over a ~4400-step episode the optimal policy was to poke the ball rather than finish. Matches the stubborn 12–18% stalemate rate. Now 140 touches per goal.
 3. **Curriculum gate** — `config/STANDARD_phase6_seeing.yaml`: one flat mastery threshold (0.50) on every lesson and `min_lesson_length` 200 → 1000, replacing the falling ladder that let p5 graduate on noise.

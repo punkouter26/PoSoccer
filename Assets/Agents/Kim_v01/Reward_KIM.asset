@@ -28,11 +28,11 @@ MonoBehaviour:
   evalEpisodes: 0
   bodyScale: 0.9
   bodyMass: 61
-  goalScorer: 0.45
+  goalScorer: 1.3
   assist: 0.35
   teamBaselineVictory: 0.2
   goalConceded: -1.2
-  stalemateTimeout: -0.02
+  stalemateTimeout: -0.6
   stepPenalty: -0.00003
   ballProximityScale: 0.0002
   useDifferentialProximity: 1
