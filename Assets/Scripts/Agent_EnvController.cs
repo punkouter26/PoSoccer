@@ -33,6 +33,10 @@ namespace PoSoccer
         [Header("Curriculum")]
         [Tooltip("Fallback goal width when no trainer curriculum is driving 'goal_width'.")]
         public float defaultGoalWidth = 6.0f;
+        [Tooltip("Fallback opponent difficulty when no trainer curriculum is driving 'bot_strength'. " +
+                 "1 = full-strength bot, which is what evaluation always faces.")]
+        [Range(0f, 1f)]
+        public float defaultBotStrength = 1.0f;
         [Tooltip("Episode step cap override for exhibition scenes (0 = use the reward profile's cap).")]
         public int stepCapOverride = 0;
 
@@ -50,6 +54,8 @@ namespace PoSoccer
         public Vector2 PitchHalfExtents => pitchHalfExtents;
         public int StepCount { get; private set; }
         public float CurrentGoalWidth { get; private set; }
+        /// <summary>Opponent difficulty applied at the last kickoff (curriculum readout).</summary>
+        public float CurrentBotStrength { get; private set; }
 
         /// <summary>
         /// Fires once per episode after terminal rewards are applied but BEFORE
@@ -73,6 +79,7 @@ namespace PoSoccer
         SimpleMultiAgentGroup _redGroup;
         Agent_Soccer _lastToucher;
         Agent_Soccer _previousToucher;
+        readonly List<Agent_HeuristicBot> _bots = new();
         readonly Dictionary<Agent_Soccer, Vector3> _spawnPositions = new();
         readonly Dictionary<Agent_Soccer, Quaternion> _spawnRotations = new();
         Vector3 _ballSpawn;
@@ -139,7 +146,12 @@ namespace PoSoccer
                 if (_profileOverridden) agent.brainName = rewards.playerName;
                 _spawnPositions[agent] = agent.transform.position;
                 _spawnRotations[agent] = agent.transform.rotation;
+
+                // Cached once so the per-episode curriculum push costs no lookups.
+                var bot = agent.GetComponent<Agent_HeuristicBot>();
+                if (bot != null) _bots.Add(bot);
             }
+            ApplyBotBounds();
             _ballSpawn = ball != null ? ball.transform.position : transform.position;
 
             // Goal-line frames: red frame around the blue goal (the one Red defends),
@@ -277,6 +289,17 @@ namespace PoSoccer
             ApplyGoalWidth(blueGoal, CurrentGoalWidth);
             ApplyGoalWidth(redGoal, CurrentGoalWidth);
 
+            // Opponent curriculum: a full-strength bot beats a fresh policy so
+            // reliably that the brain never sees a goal to learn from, so the
+            // difficulty ramps instead. Applied at kickoff so a lesson change
+            // never lands mid-play.
+            CurrentBotStrength = Academy.Instance.EnvironmentParameters
+                .GetWithDefault("bot_strength", defaultBotStrength);
+            for (int botIndex = 0; botIndex < _bots.Count; botIndex++)
+            {
+                if (_bots[botIndex] != null) _bots[botIndex].SetStrength(CurrentBotStrength);
+            }
+
             if (ball != null)
             {
                 Vector2 jitter = Random.insideUnitCircle * ballSpawnJitter;
@@ -328,12 +351,83 @@ namespace PoSoccer
             ownerTeam == Agent_Soccer.Team.Blue ? blueGoal : redGoal;
 
         /// <summary>First teammate of the given agent, or null in 1v1.</summary>
+        /// <summary>
+        /// The teammate this agent observes. The brain contract carries exactly one
+        /// teammate slot (4 of the 18 vector observations), so on squads larger than
+        /// two we hand it the NEAREST teammate - the one whose position actually
+        /// matters for spacing decisions. At 2v2 this is identical to the old
+        /// "first other same-team agent", so trained brains are unaffected.
+        /// </summary>
         public Agent_Soccer GetTeammate(Agent_Soccer self)
         {
-            foreach (var agent in agents)
-                if (agent != null && agent != self && agent.team == self.team)
-                    return agent;
-            return null;
+            Agent_Soccer nearest = null;
+            float bestSqr = float.MaxValue;
+            for (int agentIndex = 0; agentIndex < agents.Count; agentIndex++)
+            {
+                var other = agents[agentIndex];
+                if (other == null || other == self || other.team != self.team) continue;
+                if (other.Body == null || self.Body == null) { nearest = nearest != null ? nearest : other; continue; }
+                float sqr = (other.Body.position - self.Body.position).sqrMagnitude;
+                if (sqr < bestSqr) { bestSqr = sqr; nearest = other; }
+            }
+            return nearest;
+        }
+
+        /// <summary>
+        /// Rescale the pitch for a given squad size. Every child except the ball and
+        /// the players is transformed proportionally (position and size), so walls,
+        /// corner cushions, goal mouths and the backdrop all stay consistent with
+        /// however the pitch was authored. Ball and player bodies keep their real
+        /// dimensions - a futsal ball is a futsal ball on any pitch.
+        ///
+        /// Must run before Start captures spawn positions, so Agent_MatchLoader
+        /// (order -60) calls it from Awake.
+        /// </summary>
+        public void ResizePitch(Vector2 newHalfExtents)
+        {
+            if (pitchHalfExtents.x <= 0.01f || pitchHalfExtents.y <= 0.01f) return;
+            Vector2 ratio = new(
+                newHalfExtents.x / pitchHalfExtents.x,
+                newHalfExtents.y / pitchHalfExtents.y);
+            if (Mathf.Approximately(ratio.x, 1f) && Mathf.Approximately(ratio.y, 1f)) return;
+
+            foreach (Transform child in transform)
+            {
+                // Players are positioned by the spawn logic; the ball is FIFA-spec.
+                if (child.GetComponent<Agent_Soccer>() != null) continue;
+                if (ball != null && child == ball.transform) continue;
+
+                Vector3 p = child.localPosition;
+                child.localPosition = new Vector3(p.x * ratio.x, p.y * ratio.y, p.z);
+                Vector3 s = child.localScale;
+                child.localScale = new Vector3(s.x * ratio.x, s.y * ratio.y, s.z);
+            }
+
+            pitchHalfExtents = newHalfExtents;
+            defaultGoalWidth = Agent_PitchSizing.GoalWidthFor(newHalfExtents);
+
+            ApplyBotBounds();
+        }
+
+        /// <summary>
+        /// Keep the bot's steering clamp inside the current pitch. Called from Start
+        /// (once the bot list is cached) and again after any resize - a bot still
+        /// clamping to the old pitch would refuse to chase into the new corners.
+        /// </summary>
+        void ApplyBotBounds()
+        {
+            Vector2 bounds = pitchHalfExtents - new Vector2(1f, 1f);
+            if (_bots.Count == 0)
+            {
+                // Resize can land before Start has cached the list.
+                var found = GetComponentsInChildren<Agent_HeuristicBot>(true);
+                for (int i = 0; i < found.Length; i++) found[i].interiorHalfExtents = bounds;
+                return;
+            }
+            for (int botIndex = 0; botIndex < _bots.Count; botIndex++)
+            {
+                if (_bots[botIndex] != null) _bots[botIndex].interiorHalfExtents = bounds;
+            }
         }
 
         int TeamSize(Agent_Soccer.Team t)

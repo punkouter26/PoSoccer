@@ -20,6 +20,11 @@ MonoBehaviour:
     moving the ball. Weakness by design: passes up shots.'
   playerColor: {r: 0.66, g: 0.4, b: 0.92, a: 1}
   brainModel: {fileID: 5022602860645237092, guid: abd6c029c5fdace4db256214d1c3c83c, type: 3}
+  trainingSteps: 2516768
+  trainingRunId: soccer_v2_nick
+  trainedOn: 2026-08-02
+  evalWinRate: -1
+  evalEpisodes: 0
   bodyScale: 0.85
   bodyMass: 54
   goalScorer: 0.5

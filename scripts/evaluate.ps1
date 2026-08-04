@@ -89,6 +89,16 @@ Write-Host ("Eval '{0}': {1} episodes | blue {2} / red {3} / stale {4} | win-rat
 
 if ($r.invalid) { Write-Error "Run marked INVALID (no model at eval time)."; exit 2 }
 
+# Stamp the measured rating onto the profile so the menu can show it next to the
+# step count. Baseline runs grade the bot, not a brain, so they never write.
+if (-not $Baseline) {
+    . "$PSScriptRoot\lib-profile.ps1"
+    $profileAsset = Join-Path $root "Assets\Agents\$($folders[$Profile])\Reward_$Profile.asset"
+    Set-ProfileField $profileAsset 'evalWinRate' ("{0:0.####}" -f $winRate)
+    Set-ProfileField $profileAsset 'evalEpisodes' "$($r.episodes)"
+    Write-Host ("  stamped Reward_{0}.asset: {1:P1} over {2} episodes" -f $Profile, $winRate, $r.episodes)
+}
+
 if ($Baseline) {
     Write-Host "Baseline run (no bar applied) - expect roughly 50/50 between mirrored heuristic bots."
     exit 0

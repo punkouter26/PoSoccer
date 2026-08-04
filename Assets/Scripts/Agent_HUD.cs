@@ -165,6 +165,7 @@ namespace PoSoccer
         int _shownSecond = -1;
         int _shownStep = -1;
         float _shownGoalWidth = -1f;     // first-frame sentinel for goal-width label
+        float _shownBotStrength = -1f;   // first-frame sentinel for the opponent-curriculum readout
         float _shownRedShare = -1f;      // first-frame sentinel for ball-control meter
 
         static Button SmallButton(string text, System.Action onClick)
@@ -345,11 +346,16 @@ namespace PoSoccer
                 // Training telemetry: raw steps + curriculum state belong here only.
                 int step = env.StepCount;
                 float goalWidth = env.CurrentGoalWidth;
-                if (step != _shownStep || !Mathf.Approximately(goalWidth, _shownGoalWidth))
+                float botStrength = env.CurrentBotStrength;
+                if (step != _shownStep
+                    || !Mathf.Approximately(goalWidth, _shownGoalWidth)
+                    || !Mathf.Approximately(botStrength, _shownBotStrength))
                 {
-                    _stepLabel.text = $"step {step}  ·  goal {goalWidth:0.0}m";
+                    _stepLabel.text =
+                        $"step {step}  ·  goal {goalWidth:0.0}m  ·  bot {botStrength:0.00}";
                     _shownStep = step;
                     _shownGoalWidth = goalWidth;
+                    _shownBotStrength = botStrength;
                 }
             }
 

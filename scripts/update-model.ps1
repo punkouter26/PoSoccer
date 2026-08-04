@@ -13,6 +13,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
+. "$PSScriptRoot\lib-profile.ps1"
 
 # Agent asset folders follow <AgentName>_v<NN> (UNITY_RULES 1).
 $folders = @{
@@ -61,3 +62,25 @@ $profileAsset = Join-Path $targetDir "Reward_$Profile.asset"
 if ((Test-Path $profileAsset) -and -not (Select-String -Path $profileAsset -Pattern 'brainModel:' -Quiet)) {
     Write-Warning "Reward_$Profile.asset has no brainModel yet - $Profile still plays as a heuristic bot."
 }
+
+# Stamp training provenance onto the profile so the menu can show what is behind
+# each brain. Steps come from the checkpoint filename (<BEHAVIOR>-<steps>.onnx);
+# the run root export has no step in its name, so fall back to the highest
+# numbered checkpoint in the run.
+$steps = 0
+$checkpointDir = Join-Path $root "results\$RunId\$Behavior"
+if (Test-Path $checkpointDir) {
+    $steps = Get-ChildItem $checkpointDir -Filter "$Behavior-*.onnx" |
+        ForEach-Object { [int]($_.BaseName -replace '^.*-', '') } |
+        Sort-Object -Descending | Select-Object -First 1
+}
+if (-not $steps) { $steps = 0 }
+
+# Deploying new weights invalidates any previously measured win rate; evaluate.ps1
+# writes a fresh one. -1 renders as "unrated" in the menu.
+Set-ProfileField $profileAsset 'trainingSteps' "$steps"
+Set-ProfileField $profileAsset 'trainingRunId' $RunId
+Set-ProfileField $profileAsset 'trainedOn' (Get-Date -Format 'yyyy-MM-dd')
+Set-ProfileField $profileAsset 'evalWinRate' '-1'
+Set-ProfileField $profileAsset 'evalEpisodes' '0'
+Write-Host "  provenance: $steps steps from $RunId (eval rating cleared)"

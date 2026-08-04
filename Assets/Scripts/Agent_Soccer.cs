@@ -144,6 +144,9 @@ namespace PoSoccer
         [SerializeField] private float _frameInset = 0.18f;     // how far OUTSIDE the body sprite the frame sits
         [SerializeField] private float _frameThickness = 0.10f;  // line width
         [SerializeField] private float _frameZ = 0.01f;          // behind the body, in front of the pitch
+        [Tooltip("Draw the RayPerceptionSensor2D arc under brain-driven players. " +
+                 "Off for a clean view; heuristic bots never get one either way.")]
+        [SerializeField] private bool _showVisionCone = true;
 
         protected override void Awake()
         {
@@ -254,6 +257,14 @@ namespace PoSoccer
             if (body != null && body.sprite != null && transform.Find("TeamFrame_Top") == null)
             {
                 BuildTeamFrame(transform, body, teamColor, _frameInset, _frameThickness, -_frameZ);
+            }
+
+            // Vision cone: only for agents actually running a trained brain. The
+            // heuristic bot reads transforms directly and never consults the sensor,
+            // so a cone on it would imply a field of view it does not obey.
+            if (_showVisionCone && !RuleBased)
+            {
+                Agent_VisionCone.Attach(transform, body, teamColor);
             }
 
             // Identity letter (S/M/K/N) on the body, driven by the assigned profile.

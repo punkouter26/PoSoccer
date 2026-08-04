@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Reward_BOT
   m_EditorClassIdentifier:
   playerName: BOT
+  evalWinRate: -1
+  trainingSteps: 0
   personalityNotes: 'THE BENCHMARK. Not a personality - the rule-based opponent every
     trained brain is measured against (Agent_HeuristicBot: chase, line up ball->goal,
     push, unstick from corners). brainModel stays null forever, so this profile always

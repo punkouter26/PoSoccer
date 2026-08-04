@@ -20,6 +20,21 @@ namespace PoSoccer
         [Tooltip("This player's trained brain. Null = plays with the rule-based bot until trained.")]
         public Unity.InferenceEngine.ModelAsset brainModel;
 
+        [Header("Training provenance (stamped by scripts/update-model.ps1 and evaluate.ps1)")]
+        [Tooltip("Trainer steps behind the deployed brainModel. 0 = never trained (rule-based bot).")]
+        public int trainingSteps;
+        [Tooltip("Run that produced the deployed brainModel, e.g. soccer_p3_botcurric_00.")]
+        public string trainingRunId;
+        [Tooltip("Date the brainModel was deployed into this slot (yyyy-MM-dd).")]
+        public string trainedOn;
+        [Tooltip("Share of eval episodes this brain won against the full-strength bot. " +
+                 "-1 = never measured. Bot-vs-bot baseline is ~0.425, so anything under that " +
+                 "is losing to the scripted opponent.")]
+        [Range(-1f, 1f)]
+        public float evalWinRate = -1f;
+        [Tooltip("Episode count behind evalWinRate (sample size for the number above).")]
+        public int evalEpisodes;
+
         [Header("Physique")]
         [Tooltip("Body size multiplier on the scene's base scale. Big bodies block and shield more of the pitch.")]
         public float bodyScale = 1f;

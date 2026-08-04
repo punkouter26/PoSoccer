@@ -28,11 +28,23 @@ namespace PoSoccer
         float _flankSide = 1f;
         float _unstickJitter;
 
-        // v2: strength knob for curriculum training. POSOCCER_BOT_STRENGTH
-        // env-var scales drive power, boost aggression, and turns off the
-        // support-positioning logic at low values so the brain gets a soft
-        // curriculum instead of a single deterministic strong opponent.
+        // v2: strength knob for curriculum training. Scales drive power, boost
+        // aggression, and turns off the support-positioning logic at low values
+        // so the brain gets a soft curriculum instead of a single deterministic
+        // strong opponent. Seeded from POSOCCER_BOT_STRENGTH; during training
+        // Agent_EnvController overwrites it every episode from the trainer's
+        // 'bot_strength' environment parameter (see SetStrength).
         float _strength = 1f;
+
+        /// <summary>Current opponent difficulty in [0, 1]. 1 = full-strength v1 behaviour.</summary>
+        public float Strength => _strength;
+
+        /// <summary>
+        /// Curriculum hook: set the bot's difficulty for the coming episode.
+        /// Called from <see cref="Agent_EnvController.ResetPitch"/> so a lesson change
+        /// takes effect on the next kickoff rather than mid-play.
+        /// </summary>
+        public void SetStrength(float value) => _strength = Mathf.Clamp01(value);
 
         void Awake()
         {

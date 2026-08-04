@@ -21,6 +21,11 @@ MonoBehaviour:
     scores rarely.'
   playerColor: {r: 0.16, g: 0.75, b: 0.85, a: 1}
   brainModel: {fileID: 5022602860645237092, guid: f322f18faef299942b3b27d707884dad, type: 3}
+  trainingSteps: 2516768
+  trainingRunId: soccer_v2_kim
+  trainedOn: 2026-08-02
+  evalWinRate: -1
+  evalEpisodes: 0
   bodyScale: 0.9
   bodyMass: 61
   goalScorer: 0.45
