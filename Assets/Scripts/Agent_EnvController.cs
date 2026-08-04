@@ -160,8 +160,10 @@ namespace PoSoccer
             // even though the ball goes in the opposite color's net to score.
             // Convention: redGoal is the goal Red scores into, blueGoal is what Blue scores into.
             // A red frame around redGoal reads as "where Red has to put the ball".
-            EnsureGoalFrame(blueGoal, new Color(0.2f, 0.5f, 1f, 1f));    // Blue team color
-            EnsureGoalFrame(redGoal, new Color(1f, 0.25f, 0.2f, 1f));     // Red team color
+            // Orange rather than the team's red: laid over the grey wall, red goes
+            // muddy while orange stays legible on a phone screen.
+            EnsureGoalFrame(blueGoal, new Color(0.15f, 0.55f, 1f, 1f));   // Blue goal mouth
+            EnsureGoalFrame(redGoal, new Color(1f, 0.5f, 0.05f, 1f));     // Orange goal mouth
 
             bool useGroups = TeamSize(Agent_Soccer.Team.Blue) > 1 || TeamSize(Agent_Soccer.Team.Red) > 1;
             if (useGroups)

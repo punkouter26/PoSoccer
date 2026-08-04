@@ -80,7 +80,8 @@ Hard-won traps:
 
 **Eval mode** is env-var driven (set by `evaluate.ps1` pre-launch, read in `Awake`): `POSOCCER_EVAL/BASELINE/EPISODES/RUNID/OUT`; `Agent_EvalStats` (Pitch root) aggregates across the 16-pitch grid, writes JSON, quits. `Agent_TrainingGrid` clones pitches when a trainer is connected or eval mode is on.
 
-**Assemblies** (3 total, no Editor assembly by design — scene work is MCP-only):
+**Assemblies** (4 total; scene *authoring* stays MCP-only, but headless CLI builds need an editor entry point):
+- `PoSoccer.Editor.Build` (`Assets/Editor`) → `BuildPlayerCommand.Build` (side-load APK) and `BuildAabCommand.Build` (Play-uploadable AAB, signing read from `POSOCCER_KEYSTORE*` env vars). Editor-only; excluded from player builds.
 - `PoSoccer.Runtime` (`Assets/`) → `Unity.ML-Agents` [hyphen], `Unity.InferenceEngine`, `Unity.InputSystem`, `Unity.RenderPipelines.Universal.Runtime` + `.2D.Runtime` + Core
 - `PoSoccer.EditModeTests` (`Assets/Tests/EditMode`) → `PoSoccer.Runtime`, `Unity.ML-Agents`, TestRunner
 - `PoSoccer.PlayModeTests` (`Assets/Tests/PlayMode`) → same
