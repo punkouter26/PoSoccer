@@ -112,3 +112,10 @@ desktop.ini
 # capture config, not project state. Regenerated on demand.
 /[Aa]ssets/Resources/PerformanceTestRun*.json
 /[Aa]ssets/Resources/PerformanceTestRun*.json.meta
+
+# =========================================
+# Android/CMake build scratch written by the Gradle NDK step during AAB/APK
+# builds (configure fingerprints, .cmake API query+reply, compile_commands).
+# Regenerated on every build and machine-specific, so it churned as a modified
+# file in every git status. Untracked 2026-08-04.
+/.utmp/
