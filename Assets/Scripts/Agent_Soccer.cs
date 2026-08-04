@@ -174,7 +174,43 @@ namespace PoSoccer
                 _behavior.BrainParameters.ActionSpec =
                     ActionSpec.MakeContinuous(ContinuousActionCount);
                 ApplyEvalMode();
+                ApplyTrainingOpponent();
             }
+        }
+
+        /// <summary>
+        /// Phase-1 contract: the RED team is the scripted opponent while a trainer is
+        /// attached. Opt-in via POSOCCER_OPPONENT=bot, which scripts/train-phase1.ps1
+        /// sets before launching.
+        ///
+        /// Without this, both agents in SCN_Training keep BehaviorType.Default, which
+        /// routes every agent to the trainer - so "phase 1 vs the heuristic bot"
+        /// silently became symmetric self-play, Agent_HeuristicBot never ran, and the
+        /// bot_strength curriculum had nothing to act on. Eval was then the first time
+        /// a policy ever met the bot, which is why four runs produced strong training
+        /// reward and a flat 15-19% win rate against it.
+        ///
+        /// Leave the variable unset for genuine self-play runs (phase 2 POCA, 3c).
+        /// </summary>
+        void ApplyTrainingOpponent()
+        {
+            // Eval owns policy assignment; it forces the opponent to heuristic itself.
+            if (Agent_EvalStats.EvalMode) return;
+            if (team != Team.Red) return;
+
+            string mode = System.Environment.GetEnvironmentVariable("POSOCCER_OPPONENT");
+            if (string.IsNullOrEmpty(mode) ||
+                !mode.Equals("bot", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _behavior.BehaviorType = BehaviorType.HeuristicOnly;
+            var bot = GetComponent<Agent_HeuristicBot>();
+            if (bot != null) bot.enabled = true;
+            // Printed once per red agent into the env player log. Silence here means
+            // the run is self-play, which is the failure this method exists to catch.
+            Debug.Log($"[Agent_Soccer] {name}: scripted opponent (POSOCCER_OPPONENT=bot).");
         }
 
         // Evaluation switch (v1 spec): env vars are set by scripts/evaluate.ps1 before

@@ -102,7 +102,9 @@ Enforced style lives in `.claude/rules/` and is loaded automatically: `architect
 
 ## State (2026-08-02)
 
-**Measured 2026-08-03** (100-episode evals, rebuilt player each time — `results/eval/*.json`):
+**LANDMINE — phase-1 training has never faced the bot.** Both agents in `SCN_Training` carry `m_BehaviorType: 0` (Default), which routes to the trainer whenever one is attached, and `Agent_Soccer.Awake` gives both the same behavior name. So with a trainer connected there is **no heuristic bot on the pitch at all**: one policy drives both teams and collects experience from both. `Agent_HeuristicBot.ComputeActions` is only reachable from `Agent_Soccer.Heuristic()`, which only runs under `BehaviorType.HeuristicOnly` — set by `ApplyEvalMode` in eval, and by `Agent_MatchLoader` in exhibition, but never in training. Consequences: (1) the `bot_strength` curriculum is **inert during training** — the lessons advance on reward but change nothing; (2) every run to date has been accidental symmetric self-play; (3) eval is the first time a policy ever meets the scripted bot, which is why training reward and eval win rate are decoupled (reward 1.24 → 19% wins). `scripts/train-phase1.ps1` is documented as "training vs the heuristic bot" and does not do that. Fixing it means forcing the opposing team to `HeuristicOnly` when a trainer is connected.
+
+**Measured 2026-08-03/04** (100-episode evals, rebuilt player each time — `results/eval/*.json`):
 
 | Run | Steps | Blue wins | Stalemates |
 |---|---|---|---|

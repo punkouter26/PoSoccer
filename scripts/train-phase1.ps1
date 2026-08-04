@@ -9,7 +9,9 @@ param(
     [string]$Config = "STANDARD_phase1_ppo.yaml",
     [string]$InitFrom = "",
     [switch]$Resume,
-    [switch]$Force
+    [switch]$Force,
+    [Parameter(HelpMessage = "Leave both teams on the trainer (symmetric self-play) instead of facing the bot.")]
+    [switch]$SelfPlay
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,6 +30,14 @@ try {
     Write-Warning "TensorBoard is not reachable on :6006. Run .\scripts\tensorboard.ps1 in another terminal to watch reward convergence / policy entropy / value loss. Training will continue."
 }
 
+# Phase 1 means "learn against the scripted bot". The training scene leaves both
+# teams on BehaviorType.Default, which routes everything to the trainer, so
+# without this the run is symmetric self-play and Agent_HeuristicBot never
+# executes - which is what silently happened to every run before 2026-08-04.
+# Agent_Soccer.ApplyTrainingOpponent reads this and forces Red to HeuristicOnly.
+# Env players are spawned as children of mlagents-learn, so they inherit it.
+$env:POSOCCER_OPPONENT = if ($SelfPlay) { "" } else { "bot" }
+
 $mlArgs = @("$root\config\$Config",
           "--run-id=$RunId", "--base-port=$BasePort", "--results-dir=$root\results")
 if ($EnvPath) { $mlArgs += @("--env=$root\$EnvPath", "--no-graphics", "--num-envs=$NumEnvs") }
@@ -39,6 +49,7 @@ try {
     mlagents-learn @mlArgs
 }
 finally {
+    $env:POSOCCER_OPPONENT = ""
     # Lifecycle guardrail: no orphaned trainer/env processes after a run.
     & "$root\scripts\cleanup-training.ps1"
     # Auto-assign the freshest checkpoint into the agent prefab slot (GUID preserved).
