@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "ai-game-developer": {
+      "type": "http",
+      "url": "https://ai-game.dev/mcp/p/161c6ea1"
+    },
+    "unityMCP": {
+      "type": "stdio",
+      "command": "C:\\Users\\punko\\AppData\\Local\\uv\\cache\\archive-v0\\5py95OJHbVFIbADz\\Scripts\\mcp-for-unity.exe",
+      "args": [
+        "--transport",
+        "stdio"
+      ]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+# ninja log v5
+113	1297	8075015720788605	FramePacing/CMakeFiles/swappywrapper.dir/UnitySwappyWrapper.cpp.o	f1e8901495b2e3ab
+1300	1905	8075015726084982	C:/Users/punko/Downloads/PoSoccer/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/695u2s5m/obj/arm64-v8a/libswappywrapper.so	6b5ad137529d4f87
+41	3003	8075015737810086	GameActivity/CMakeFiles/game.dir/UGAInputKeyEvent.cpp.o	1e2a7821f746f4e
+58	3051	8075015738386227	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	cf72f115673d6191
+1	3108	8075015738796123	GameActivity/CMakeFiles/game.dir/UGAConfiguration.cpp.o	faa425a1665e0eaa
+85	3118	8075015738952937	GameActivity/CMakeFiles/game.dir/UGAInputMotionEvent.cpp.o	5baa2085a0ec534f
+30	3199	8075015739899319	GameActivity/CMakeFiles/game.dir/UGADebug.cpp.o	d228088566063091
+100	3498	8075015742892914	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	f6ce5439efd44c57
+71	3594	8075015743871323	GameActivity/CMakeFiles/game.dir/UGAInput.cpp.o	2d22434b0b8b41e
+14	3806	8075015745971469	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	b59bc0348cec8026
+3806	3962	8075015747585752	C:/Users/punko/Downloads/PoSoccer/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/695u2s5m/obj/arm64-v8a/libgame.so	9551627b5237cc65

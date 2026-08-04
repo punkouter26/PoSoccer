@@ -56,11 +56,11 @@ foreach ($s in $scenes) {
         exit 4
     }
 }
-if (-not (Test-Path (Join-Path $ProjectRoot 'Assets/Plugins/Android/AndroidManifest.xml'))) {
-    Write-Host "ERROR: Assets/Plugins/Android/AndroidManifest.xml missing" -ForegroundColor Red
-    Write-Host "       Re-run the pre-build prep step that writes the manifest." -ForegroundColor Yellow
-    exit 5
-}
+# Product name and Android bundle identifier are set in ProjectSettings.asset
+# (productName=PoSoccer, applicationIdentifier.Android=com.posoccer.app).
+# Unity 6 removed support for Assets/Plugins/Android/res overrides, so we
+# rely on EditorUserBuildSettings to bake the right values into the gradle
+# build.
 
 # 4. Build the Unity command line.
 #    -batchmode            Headless
@@ -80,7 +80,7 @@ $proc = Start-Process -FilePath $UnityEditor `
         '-nographics',
         '-projectPath', $ProjectRoot,
         '-buildTarget', 'Android',
-        '-executeMethod', 'UnityEditor.Build.BuildPlayerCommand.Build',
+        '-executeMethod', 'BuildPlayerCommand.Build',
         '-buildTargetGroup', 'Android',
         '-buildTargetSubtarget', '0',
         '-logFile', $LogPath
@@ -89,7 +89,7 @@ $proc = Start-Process -FilePath $UnityEditor `
 
 if ($proc.ExitCode -ne 0) {
     Write-Host "ERROR: Unity exited with code $($proc.ExitCode)" -ForegroundColor Red
-    Write-Host "       Last 60 lines of $LogPath:" -ForegroundColor Yellow
+    Write-Host "       Last 60 lines of ${LogPath}:" -ForegroundColor Yellow
     Get-Content $LogPath -Tail 60 | ForEach-Object { "  $_" }
     exit $proc.ExitCode
 }
@@ -102,8 +102,8 @@ while (-not (Test-Path $ApkPath) -and (Get-Date) -lt $timeout) {
 }
 
 if (-not (Test-Path $ApkPath)) {
-    Write-Host "ERROR: $ApkPath did not appear within 20 minutes." -ForegroundColor Red
-    Write-Host "       Last 60 lines of $LogPath:" -ForegroundColor Yellow
+    Write-Host "ERROR: ${ApkPath} did not appear within 20 minutes." -ForegroundColor Red
+    Write-Host "       Last 60 lines of ${LogPath}:" -ForegroundColor Yellow
     Get-Content $LogPath -Tail 60 | ForEach-Object { "  $_" }
     exit 6
 }
