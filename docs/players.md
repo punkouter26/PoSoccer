@@ -10,6 +10,7 @@ profile** (`Reward_Settings` asset — the personality DNA) in a versioned folde
 | **MATT** | The Striker — biggest scoring reward + shoot gradient, lowest conceding fear, hates draws, urgent movement | `Assets/Agents/Matt_v01/` | `Reward_MATT.asset` | `MATT` (designed, untrained) |
 | **KIM** | The Wall — deepest conceding fear, screens the ball→own-goal lane (`defensivePositionScale`), patient and smooth | `Assets/Agents/Kim_v01/` | `Reward_KIM.asset` | `KIM` (designed, untrained) |
 | **NICK** | The Midfielder — paid for close control (`possessionScale`), loves the assist, stays central, passes up shots | `Assets/Agents/Nick_v01/` | `Reward_NICK.asset` | `NICK` (designed, untrained) |
+| **BOT** | The Benchmark — not a personality. The rule-based `Agent_HeuristicBot` (chase, line up ball→goal, push, unstick) that every trained brain is measured against. Reward values mirror STANDARD and are inert in exhibition play. | `Assets/Agents/Bot_v01/` | `Reward_BOT.asset` | none, permanently — `brainModel` stays null so `Agent_MatchLoader` always falls back to the bot |
 
 **Balance rule (unique but equally good):** every profile spends the same total
 incentive budget — terminal stakes (`goalScorer + assist + teamBaselineVictory +

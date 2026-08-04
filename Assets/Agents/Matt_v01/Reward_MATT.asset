@@ -19,6 +19,7 @@ MonoBehaviour:
     (2.2 terminal / 0.0016 dense) - just spent on attack. Weakness by design: last
     home when defending.'
   playerColor: {r: 1, g: 0.5, b: 0.12, a: 1}
+  brainModel: {fileID: 5022602860645237092, guid: 8990815309d227843b396bc6626a3f8e, type: 3}
   bodyScale: 1.25
   bodyMass: 117
   goalScorer: 1
@@ -28,6 +29,7 @@ MonoBehaviour:
   stalemateTimeout: -0.2
   stepPenalty: -0.00003
   ballProximityScale: 0.0003
+  useDifferentialProximity: 1
   facingAlignmentScale: 0.0002
   ballToGoalVelocityScale: 0.0011
   actionJitterScale: 0.0005

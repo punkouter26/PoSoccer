@@ -91,6 +91,15 @@ namespace PoSoccer
         public bool IsBoosting { get; private set; }
         public bool TouchedBallThisEpisode { get; private set; }
 
+        /// <summary>
+        /// True when this agent is driven by <see cref="Agent_HeuristicBot"/> instead of a
+        /// trained brain. Reads the policy that was actually installed (by Agent_MatchLoader
+        /// or <see cref="ApplyEvalMode"/>), so it stays honest when a profile carries no
+        /// brainModel and silently falls back to the bot. Valid from Awake onward.
+        /// </summary>
+        public bool RuleBased =>
+            _behavior == null || _behavior.BehaviorType != BehaviorType.InferenceOnly;
+
         Agent_HeuristicBot _bot;
         BehaviorParameters _behavior;
         Transform _label;                              // identity letter, kept upright

@@ -221,6 +221,17 @@ namespace PoSoccer
                 square.style.borderBottomColor = teamColor;
                 chip.Add(square);
 
+                // Who is driving this body? The point of the BOT roster entry is
+                // watching a trained brain play the rule-based benchmark, so the
+                // scoreboard has to say which is which without guessing.
+                var driver = new Label(agent.RuleBased ? "BOT" : "AI");
+                driver.style.fontSize = 24;
+                driver.style.marginTop = 4;
+                driver.style.unityFontStyleAndWeight = FontStyle.Bold;
+                driver.style.color = agent.RuleBased
+                    ? Agent_UIStyle.TextMuted : Agent_UIStyle.Accent;
+                chip.Add(driver);
+
                 (agent.team == Agent_Soccer.Team.Blue ? _blueChips : _redChips).Add(chip);
             }
         }

@@ -18,6 +18,10 @@ namespace PoSoccer
         public Reward_Settings matt;
         public Reward_Settings kim;
         public Reward_Settings nick;
+        [Tooltip("The rule-based benchmark opponent (Reward_BOT). Never carries a brainModel, " +
+                 "so picking it always fields Agent_HeuristicBot - that is how a trained brain " +
+                 "gets measured against the bot inside a normal match.")]
+        public Reward_Settings ruleBot;
 
         [Header("Flow")]
         public string matchScene = "SCN_Exhibition";
@@ -39,9 +43,11 @@ namespace PoSoccer
             }
 
             // Roster is local — built once per activation and never mutated.
-            var roster = new[] { standard, matt, kim, nick };
-            _picks[0] = standard; _picks[1] = nick;   // Blue: STANDARD + NICK
-            _picks[2] = matt;     _picks[3] = kim;    // Red:  MATT + KIM
+            // BOT sits last so the four personalities keep their familiar order.
+            var roster = new[] { standard, matt, kim, nick, ruleBot };
+            _picks[0] = standard; _picks[1] = nick;                    // Blue: STANDARD + NICK
+            _picks[2] = ruleBot != null ? ruleBot : matt;              // Red:  the rule-based
+            _picks[3] = ruleBot != null ? ruleBot : kim;               //       benchmark, x2
 
             root.Clear();
             var safe = new VisualElement();
@@ -129,16 +135,23 @@ namespace PoSoccer
             {
                 if (profile == null) continue;
                 var captured = profile;
-                // Untrained players are driven by the rule-based bot - say so up front.
+                // Say who is actually driving: the dedicated benchmark bot, a trained
+                // brain, or a personality that has no brain yet and falls back to the bot.
+                string subtitle;
+                if (ReferenceEquals(profile, ruleBot)) subtitle = "rule-based";
+                else if (profile.brainModel != null) subtitle = "trained AI";
+                else subtitle = "(bot)";
+
                 var b = new Button(() => onPick(captured))
                 {
-                    text = profile.brainModel != null
-                        ? profile.playerName : $"{profile.playerName}\n(BOT)",
+                    text = $"{profile.playerName}\n{subtitle}",
                     userData = profile,
                 };
-                b.style.width = 250; b.style.height = 170;
-                b.style.marginLeft = 12; b.style.marginRight = 12;
-                b.style.fontSize = 38;
+                // Five entries have to share the 1080-unit reference width:
+                // 5 x (196 + 6 + 6) = 1040.
+                b.style.width = 196; b.style.height = 150;
+                b.style.marginLeft = 6; b.style.marginRight = 6;
+                b.style.fontSize = 30;
                 b.style.unityFontStyleAndWeight = FontStyle.Bold;
                 b.style.color = Color.black;
                 b.style.backgroundColor = profile.playerColor;

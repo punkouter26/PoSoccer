@@ -735,6 +735,9 @@ MonoBehaviour:
   _wallKickCooldown: 0.5
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
+  _frameInset: 0.18
+  _frameThickness: 0.1
+  _frameZ: 0.01
 --- !u!114 &219326537
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1673,8 +1676,8 @@ MonoBehaviour:
   redAgent2: {fileID: 1785677906}
   defaultBlue: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
   defaultBlue2: {fileID: 11400000, guid: 59a6a1fc32970544e878f00aeb667f79, type: 2}
-  defaultRed: {fileID: 11400000, guid: 8864935e263b3b949aae2ce597bd1403, type: 2}
-  defaultRed2: {fileID: 11400000, guid: 8422c6b744068394992bf7f17ddaba21, type: 2}
+  defaultRed: {fileID: 11400000, guid: b17156f06611faf4eb5e77368965c421, type: 2}
+  defaultRed2: {fileID: 11400000, guid: b17156f06611faf4eb5e77368965c421, type: 2}
 --- !u!114 &588775821
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2351,6 +2354,9 @@ MonoBehaviour:
   _wallKickCooldown: 0.5
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
+  _frameInset: 0.18
+  _frameThickness: 0.1
+  _frameZ: 0.01
 --- !u!114 &1579506621
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2657,6 +2663,9 @@ MonoBehaviour:
   _wallKickCooldown: 0.5
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
+  _frameInset: 0.18
+  _frameThickness: 0.1
+  _frameZ: 0.01
 --- !u!114 &1593781675
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2946,6 +2955,9 @@ MonoBehaviour:
   _wallKickCooldown: 0.5
   env: {fileID: 0}
   rewards: {fileID: 11400000, guid: 2ac4bf1c973cb6f4b98871b7fd21715b, type: 2}
+  _frameInset: 0.18
+  _frameThickness: 0.1
+  _frameZ: 0.01
 --- !u!114 &1785677907
 MonoBehaviour:
   m_ObjectHideFlags: 0

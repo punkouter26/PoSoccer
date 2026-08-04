@@ -10,13 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: af179823a658aab41bd1d23c428ab770, type: 3}
-  m_Name: Reward_STANDARD
-  m_EditorClassIdentifier: 
-  playerName: STANDARD
-  personalityNotes: THE BASELINE. Balanced all-rounder - the reference brain every
-    personality is measured against.
-  playerColor: {r: 0.75, g: 0.75, b: 0.78, a: 1}
-  brainModel: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
+  m_Name: Reward_BOT
+  m_EditorClassIdentifier:
+  playerName: BOT
+  personalityNotes: 'THE BENCHMARK. Not a personality - the rule-based opponent every
+    trained brain is measured against (Agent_HeuristicBot: chase, line up ball->goal,
+    push, unstick from corners). brainModel stays null forever, so this profile always
+    resolves to the bot. Reward values mirror STANDARD so a brain trained on STANDARD
+    rewards faces a like-for-like opponent; they are inert during exhibition play.'
+  playerColor: {r: 0.62, g: 0.78, b: 0.3, a: 1}
   bodyScale: 1
   bodyMass: 75
   goalScorer: 0.7
@@ -26,7 +28,6 @@ MonoBehaviour:
   stalemateTimeout: -0.1
   stepPenalty: -0.00003
   ballProximityScale: 0.0004
-  useDifferentialProximity: 1
   facingAlignmentScale: 0.0002
   ballToGoalVelocityScale: 0.001
   actionJitterScale: 0.001

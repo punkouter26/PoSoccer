@@ -290,6 +290,7 @@ MonoBehaviour:
   matt: {fileID: 11400000, guid: 8864935e263b3b949aae2ce597bd1403, type: 2}
   kim: {fileID: 11400000, guid: 8422c6b744068394992bf7f17ddaba21, type: 2}
   nick: {fileID: 11400000, guid: 59a6a1fc32970544e878f00aeb667f79, type: 2}
+  ruleBot: {fileID: 11400000, guid: b17156f06611faf4eb5e77368965c421, type: 2}
   matchScene: SCN_Exhibition
 --- !u!114 &1914075437
 MonoBehaviour:
