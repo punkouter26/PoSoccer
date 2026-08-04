@@ -12,9 +12,22 @@ namespace PoSoccer
     [DisallowMultipleComponent]
     public sealed class Sensor_Vision : MonoBehaviour
     {
-        public const float ArcDegrees = 120f;
+        // v3 (2026-08-04): 120 deg / 12 m left the agent blind behind and to the
+        // sides while Agent_HeuristicBot reads every opponent's exact position from
+        // the transforms, 360 deg, unlimited range. Four runs plateaued at 15-21%
+        // against it. Widening the arc and extending the range costs nothing in
+        // contract terms: RayPerceptionSensor.OutputSize() is
+        // (DetectableTags + 2) * (2 * RaysPerDirection + 1) = 66 regardless of angle
+        // or length, so existing .onnx still load - only what the rays mean changes,
+        // and every model is being retrained anyway.
+        //
+        // The trade is angular resolution: 11 rays over 300 deg is ~27 deg apart
+        // versus ~12 deg before. Acceptable here because the ball's exact position
+        // already arrives through the vector observations - the rays' real job is
+        // opponents and walls, where coverage beats precision.
+        public const float ArcDegrees = 300f;
         public const int RaysPerDirection = 5;
-        public const float RayLength = 12f;
+        public const float RayLength = 24f;
 
         static readonly string[] Tags = { "Ball", "Wall", "Goal", "Agent" };
 

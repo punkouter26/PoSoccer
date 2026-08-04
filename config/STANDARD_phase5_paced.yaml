@@ -1,0 +1,109 @@
+# Phase 5: the same opponent curriculum, paced so the policy has to MASTER each
+# level before the next one arrives.
+#
+# What phase 4 showed. It was the first run to actually face the scripted bot
+# (before that, both teams routed to the trainer and every run was accidental
+# self-play). Reward reached lesson 3 - the full-strength bot - at 2.3M steps
+# with reward 0.038, then drifted to -0.293 by 4.6M. It got to the hardest
+# opponent before it could handle the middle ones and stopped improving.
+#
+# The cause is the phase-3 threshold ladder, which FALLS as difficulty rises
+# (0.30 -> 0.20 -> 0.10). That was written when the curriculum was inert and the
+# numbers had no consequences. With a real opponent it means each promotion
+# demands less competence than the last, so the policy is pushed upward exactly
+# when it is doing worst.
+#
+# This config inverts that: six smaller steps, thresholds that stay high, and a
+# min_lesson_length of 200 so a lucky streak cannot promote it. Reaching lesson 5
+# now requires genuinely beating a 0.8-strength bot.
+#
+# Paired with Sensor_Vision v3 (300 deg arc, 24 m range, unchanged observation
+# shapes), which addresses the other half of the plateau: the agent could not see
+# opponents outside a 120 deg forward cone while the bot reads every position
+# exactly.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 30000000
+    time_horizon: 1024
+    summary_freq: 20000
+    checkpoint_interval: 500000
+    keep_checkpoints: 15
+    threaded: false
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 200
+          threshold: 0.40
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 200
+          threshold: 0.40
+        value: 0.35
+      # Support positioning and corner craft switch on at 0.5 - the first real step up.
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 200
+          threshold: 0.35
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 200
+          threshold: 0.30
+        value: 0.65
+      # The boost-shot switches on at 0.8.
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 200
+          threshold: 0.25
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  num_envs: 1
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true
