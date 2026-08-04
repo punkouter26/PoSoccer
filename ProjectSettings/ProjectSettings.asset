@@ -688,7 +688,7 @@ PlayerSettings:
   webWasm2023: 0
   webEnableSubmoduleStrippingCompatibility: 0
   scriptingDefineSymbols:
-    Android: UNITY_MCP_READY;SENTIS_ANALYTICS_ENABLED;APP_UI_EDITOR_ONLY
+    Android: SENTIS_ANALYTICS_ENABLED;APP_UI_EDITOR_ONLY;UNITY_MCP_READY
     EmbeddedLinux: UNITY_MCP_READY
     GameCoreScarlett: UNITY_MCP_READY
     GameCoreXboxOne: UNITY_MCP_READY
