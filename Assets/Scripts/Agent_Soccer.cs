@@ -127,9 +127,25 @@ namespace PoSoccer
 
         /// <summary>
         /// Vector observation count: 14 self/ball/goal floats + 4 teammate floats
-        /// (zero-padded in 1v1 so one brain contract covers 1v1 and 2v2).
+        /// + 8 opponent floats (2 slots x rel-position/velocity), each zero-padded when
+        /// the slot is empty so one brain contract covers 1v1, 2v2 and 3v3.
+        ///
+        /// 2026-08-04: 18 -> 26. Every .onnx exported before that date expects 18 and is
+        /// obsolete - the inference loader rejects a shape mismatch outright, which is
+        /// the safe failure (unlike a sensor-arc change, which silently reinterprets).
         /// </summary>
-        public const int BaseObservationSize = 18;
+        public const int BaseObservationSize = 26;
+
+        /// <summary>
+        /// Opponent slots in the vector observation, nearest first, 4 floats each
+        /// (relative position + velocity). Zero-padded when fewer opponents exist, so
+        /// 1v1 / 2v2 / 3v3 all share one contract.
+        /// </summary>
+        public const int OpponentSlots = 2;
+
+        // Reused across CollectObservations calls - zero alloc in the hot path
+        // (performance.md). Never nulled, so the array survives episode resets.
+        readonly Agent_Soccer[] _opponentBuffer = new Agent_Soccer[OpponentSlots];
 
         /// <summary>
         /// Continuous actions: [0] forward drive, [1] lateral drive (strafe),
@@ -394,6 +410,28 @@ namespace PoSoccer
             {
                 sensor.AddObservation(Vector2.zero);
                 sensor.AddObservation(Vector2.zero);
+            }
+
+            // Opponents (4 x OpponentSlots, nearest first, zero-padded).
+            // The ray sensor nominally covers opponents but only guarantees detection
+            // within ~1.9 units and cannot tell a teammate from a foe (shared "Agent"
+            // tag), while the scripted bot reads opponents exactly at any range. These
+            // slots close that gap - see Agent_EnvController.GetOpponents.
+            int found = env != null ? env.GetOpponents(this, _opponentBuffer) : 0;
+            for (int slot = 0; slot < OpponentSlots; slot++)
+            {
+                if (slot < found && _opponentBuffer[slot] != null && _opponentBuffer[slot].Body != null)
+                {
+                    var foe = _opponentBuffer[slot].Body;
+                    sensor.AddObservation((foe.position - Body.position) * invMax);
+                    sensor.AddObservation(foe.linearVelocity * 0.1f);
+                }
+                else
+                {
+                    sensor.AddObservation(Vector2.zero);
+                    sensor.AddObservation(Vector2.zero);
+                }
+                _opponentBuffer[slot] = null;   // drop refs so resets cannot leak stale agents
             }
         }
 

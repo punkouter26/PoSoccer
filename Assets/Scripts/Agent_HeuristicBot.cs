@@ -21,6 +21,11 @@ namespace PoSoccer
         public Vector2 interiorHalfExtents = new(5.4f, 8.4f);
         [Tooltip("Seconds of jammed ball contact before flanking.")]
         public float unstickAfter = 1.25f;
+        [Tooltip("Max distance at which the bot perceives an opponent. 0 = unlimited, " +
+                 "which is the historical benchmark behaviour every result to date was " +
+                 "measured against - leave it at 0 unless you are deliberately running " +
+                 "a fair-information experiment. Seeded from POSOCCER_BOT_VISION.")]
+        public float perceptionRadius = 0f;
 
         float _jamSince = float.PositiveInfinity;
         float _flankUntil;
@@ -57,13 +62,32 @@ namespace PoSoccer
             string raw = System.Environment.GetEnvironmentVariable("POSOCCER_BOT_STRENGTH");
             if (!string.IsNullOrEmpty(raw) && float.TryParse(raw, out float parsed))
                 _strength = Mathf.Clamp01(parsed);
+
+            // Optional fair-information handicap (v3). The bot reads opponents straight
+            // off the transforms at unlimited range, while the brain's ray sensor only
+            // guarantees detection within ~1.9 units. Capping this radius is how you ask
+            // "is the 80% bar reachable, or is it just the perfect-information gap?".
+            // Default 0 (unlimited) keeps every historical result comparable.
+            string vision = System.Environment.GetEnvironmentVariable("POSOCCER_BOT_VISION");
+            if (!string.IsNullOrEmpty(vision) && float.TryParse(vision, out float radius))
+                perceptionRadius = Mathf.Max(0f, radius);
         }
 
-        /// <summary>Compute [move, turn, boost] for the given agent state.</summary>
+        /// <summary>Compute [forward, lateral, turn, boost] for the given agent state.</summary>
         public Vector4 ComputeActions(Rigidbody2D self, Rigidbody2D ball, Transform opponentGoal,
             Rigidbody2D teammate = null, Rigidbody2D nearestOpponent = null)
         {
             if (ball == null) return Vector4.zero;
+
+            // Fair-information handicap: drop an opponent the bot should not be able to
+            // see. Only the shoulder-charge consults nearestOpponent, so this narrows
+            // the bot's perfect-information edge without touching its ball skills.
+            if (perceptionRadius > 0f && nearestOpponent != null &&
+                (nearestOpponent.position - self.position).sqrMagnitude >
+                    perceptionRadius * perceptionRadius)
+            {
+                nearestOpponent = null;
+            }
 
             Vector2 toBall = ball.position - self.position;
             Vector2 target = ball.position;

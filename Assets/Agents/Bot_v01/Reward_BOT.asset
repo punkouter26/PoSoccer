@@ -37,5 +37,5 @@ MonoBehaviour:
   cornerBallPenalty: 0.0006
   defensivePositionScale: 0
   possessionScale: 0
-  ballContact: 0.05
+  ballContact: 0.005
   maxEnvironmentSteps: 9000

@@ -376,6 +376,67 @@ namespace PoSoccer
         }
 
         /// <summary>
+        /// Opponents of <paramref name="self"/>, nearest first, written into
+        /// <paramref name="buffer"/>. Returns how many slots were filled; the caller
+        /// zero-pads the rest so one brain contract covers 1v1, 2v2 and 3v3.
+        ///
+        /// Added 2026-08-04: until then CollectObservations carried no opponent term at
+        /// all, so a policy's only view of an opponent was the 11-ray sensor - which
+        /// guarantees detection only within ~1.9 units (0.6% of the pitch) and cannot
+        /// separate friend from foe, since every player carries the "Agent" tag.
+        /// Agent_HeuristicBot meanwhile reads nearestOpponent straight off the
+        /// transforms at unlimited range. That asymmetry, not training budget, is what
+        /// pinned five runs (5M-30M steps) to a flat 16-17% win rate.
+        /// </summary>
+        public int GetOpponents(Agent_Soccer self, Agent_Soccer[] buffer)
+        {
+            if (buffer == null || self == null) return 0;
+            int count = 0;
+            for (int agentIndex = 0; agentIndex < agents.Count; agentIndex++)
+            {
+                var other = agents[agentIndex];
+                if (other == null || other.team == self.team || other.Body == null) continue;
+                if (count < buffer.Length)
+                {
+                    buffer[count++] = other;
+                    continue;
+                }
+                // Buffer full: keep the nearest `buffer.Length` opponents by swapping
+                // out the current farthest. No allocation, no LINQ (performance.md).
+                if (self.Body == null) continue;
+                float incoming = (other.Body.position - self.Body.position).sqrMagnitude;
+                int farthest = -1;
+                float worst = incoming;
+                for (int slot = 0; slot < count; slot++)
+                {
+                    float sqr = (buffer[slot].Body.position - self.Body.position).sqrMagnitude;
+                    if (sqr > worst) { worst = sqr; farthest = slot; }
+                }
+                if (farthest >= 0) buffer[farthest] = other;
+            }
+
+            // Insertion sort by distance, nearest first. `count` is 2-3 in practice, so
+            // this is cheaper than any comparer-based sort and allocates nothing.
+            if (self.Body != null)
+            {
+                for (int i = 1; i < count; i++)
+                {
+                    var key = buffer[i];
+                    float keySqr = (key.Body.position - self.Body.position).sqrMagnitude;
+                    int j = i - 1;
+                    while (j >= 0 &&
+                           (buffer[j].Body.position - self.Body.position).sqrMagnitude > keySqr)
+                    {
+                        buffer[j + 1] = buffer[j];
+                        j--;
+                    }
+                    buffer[j + 1] = key;
+                }
+            }
+            return count;
+        }
+
+        /// <summary>
         /// Rescale the pitch for a given squad size. Every child except the ball and
         /// the players is transformed proportionally (position and size), so walls,
         /// corner cushions, goal mouths and the backdrop all stay consistent with

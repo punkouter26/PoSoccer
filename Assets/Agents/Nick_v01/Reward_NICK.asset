@@ -19,7 +19,7 @@ MonoBehaviour:
     Same total incentive budget as everyone (2.2 / 0.0016) - spent on keeping and
     moving the ball. Weakness by design: passes up shots.'
   playerColor: {r: 0.66, g: 0.4, b: 0.92, a: 1}
-  brainModel: {fileID: 5022602860645237092, guid: abd6c029c5fdace4db256214d1c3c83c, type: 3}
+  brainModel: {fileID: 0}
   trainingSteps: 2516768
   trainingRunId: soccer_v2_nick
   trainedOn: 2026-08-02
@@ -42,5 +42,5 @@ MonoBehaviour:
   cornerBallPenalty: 0.0006
   defensivePositionScale: 0
   possessionScale: 0.0006
-  ballContact: 0.05
+  ballContact: 0.005
   maxEnvironmentSteps: 9000

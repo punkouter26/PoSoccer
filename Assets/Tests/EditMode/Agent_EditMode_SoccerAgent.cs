@@ -51,15 +51,23 @@ namespace PoSoccer.Tests
         [Test]
         public void RewardSettings_DefaultsMatchPrd()
         {
+            // These are the CURRENT intended defaults, not the v1 PRD table. Where the
+            // two differ the divergence was deliberate and is documented on the field's
+            // tooltip in Reward_Settings; this test guards against accidental drift, so
+            // it tracks the code. Values updated 2026-08-04 after the suite was found
+            // failing on three v2-era changes that predate this session.
             var r = ScriptableObject.CreateInstance<Reward_Settings>();
             Assert.AreEqual(0.7f, r.goalScorer);
             Assert.AreEqual(0.3f, r.assist);
-            Assert.AreEqual(0.2f, r.teamBaselineVictory);
+            Assert.AreEqual(0.1f, r.teamBaselineVictory);
             Assert.AreEqual(-1.0f, r.goalConceded);
-            Assert.AreEqual(-0.0001f, r.stepPenalty, 1e-6f);
-            Assert.AreEqual(0.0004f, r.ballProximityScale, 1e-6f);
+            // v2: stepPenalty zeroed - it washed out the whole reward gradient.
+            Assert.AreEqual(0f, r.stepPenalty, 1e-6f);
+            // v2: differential proximity replaced absolute proximity.
+            Assert.AreEqual(0.002f, r.ballProximityScale, 1e-6f);
             Assert.AreEqual(0.0002f, r.facingAlignmentScale, 1e-6f);
-            Assert.AreEqual(0.05f, r.ballContact);
+            // v3: 0.05 -> 0.005. At 0.05, 14 touches outscored a goal (0.7).
+            Assert.AreEqual(0.005f, r.ballContact);
             Assert.AreEqual(-0.10f, r.stalemateTimeout, 1e-6f);
             Assert.AreEqual(5000, r.maxEnvironmentSteps);
             Object.DestroyImmediate(r);
@@ -77,8 +85,12 @@ namespace PoSoccer.Tests
             var ballBody = ballGo.AddComponent<Rigidbody2D>();
 
             // Facing +Y, ball to the left (-X) => positive (CCW) turn expected.
-            Vector3 actions = bot.ComputeActions(selfBody, ballBody, null);
-            Assert.Greater(actions.y, 0f, "turn should be CCW toward a ball on the left");
+            // ComputeActions returns [forward, lateral, turn, boost]; turn is .z. This
+            // read .y (lateral) and had been asserting on the wrong channel ever since
+            // lateral drive was inserted at index 1 - it measured -0.6, the lateral
+            // clamp, and failed for a reason unrelated to turning.
+            Vector4 actions = bot.ComputeActions(selfBody, ballBody, null);
+            Assert.Greater(actions.z, 0f, "turn should be CCW toward a ball on the left");
 
             Object.DestroyImmediate(ballGo);
         }

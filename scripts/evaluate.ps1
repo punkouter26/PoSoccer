@@ -4,7 +4,14 @@
 #   Model eval:                                    .\scripts\evaluate.ps1 -RunId soccer_p1_00 -Episodes 100
 param(
     [string]$RunId = "soccer_p1_00",
-    [int]$Episodes = 100,
+    # 2026-08-04: default raised 100 -> 1000. Measured across ten identical-model
+    # runs, a 100-episode eval scatters 11%-24% (SD ~3.7 points, i.e. ordinary
+    # binomial noise at n=100 - nothing is broken, the sample was just too small).
+    # At that resolution a real +5-point gain is invisible and a lucky run reads
+    # as progress: a single 24% was briefly recorded as an improvement over 18%
+    # when the true mean was 16.2%. 1000 episodes drops SD to ~1.2 points and
+    # costs a few minutes.
+    [int]$Episodes = 1000,
     [switch]$Baseline,
     [ValidateSet("STANDARD", "MATT", "KIM", "NICK")]
     [string]$Profile = "STANDARD",

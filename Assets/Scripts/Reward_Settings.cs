@@ -80,7 +80,12 @@ namespace PoSoccer
         public float possessionScale = 0f;
 
         [Header("Sparse rewards")]
-        public float ballContact = 0.05f;
+        [Tooltip("Reward per fresh ball collision. v3 (2026-08-04): 0.05 -> 0.005. At 0.05 " +
+                 "just 14 touches outscored a goal (0.7), so over a ~4400-step episode the " +
+                 "optimal policy was to poke the ball repeatedly rather than finish - which " +
+                 "matches the observed 12-18% stalemate rate. Contact should nudge a cold-start " +
+                 "policy toward the ball, not compete with scoring.")]
+        public float ballContact = 0.005f;
 
         [Header("Episode limits")]
         [Tooltip("Env steps before stalemate timeout is applied.")]
