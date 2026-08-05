@@ -17,9 +17,12 @@ using UnityEngine;
 
 public static class BuildPlayerCommand
 {
+    // SCN_Menu first: index 0 is what the app boots into, and the game always starts
+    // from the menu (Agent_MatchLoader depends on Agent_MatchSetup statics that only the
+    // menu sets). SCN_Training is excluded - it is the headless training/eval scene and
+    // is unreachable from the game's UI on device.
     private static readonly string[] Scenes =
     {
-        "Assets/Scenes/SCN_Training.unity",
         "Assets/Scenes/SCN_Menu.unity",
         "Assets/Scenes/SCN_Exhibition.unity",
     };

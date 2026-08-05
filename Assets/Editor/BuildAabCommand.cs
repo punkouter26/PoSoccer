@@ -40,9 +40,16 @@ public static class BuildAabCommand
     // editor whose enum predates API 36 - the underlying value is just the int.
     private const int TargetApiLevel = 36;
 
+    // Index 0 is what the app boots into, so SCN_Menu MUST come first (UNITY_RULES:
+    // the game always starts from the menu - Agent_MatchLoader reads squad sizes and
+    // per-slot profiles from Agent_MatchSetup statics that only the menu sets).
+    //
+    // SCN_Training is deliberately EXCLUDED from Android builds. It is the headless
+    // training/eval scene, is never reachable from the game's UI, and shipping it only
+    // bloats the download. The "SCN_Training must stay index 0" rule applies to the
+    // Windows player that mlagents-learn and evaluate.ps1 boot - not to the store build.
     private static readonly string[] Scenes =
     {
-        "Assets/Scenes/SCN_Training.unity",
         "Assets/Scenes/SCN_Menu.unity",
         "Assets/Scenes/SCN_Exhibition.unity",
     };

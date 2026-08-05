@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Custom LAUNCHER manifest. Enabled by useCustomLauncherManifest in
+  ProjectSettings (Player > Publishing Settings > Custom Launcher Manifest).
+
+  Purpose: strip android.permission.INTERNET.
+
+  Unity's generated unityLibrary manifest declares INTERNET unconditionally.
+  Nothing in this game touches the network - there is no networking stack, no
+  analytics SDK, and no game code references UnityWebRequest/System.Net/Socket.
+  ML-Agents only opens a socket when a trainer attaches, and training runs on
+  the Windows player, never on Android. An offline game asking for network
+  access is a question the reviewer will ask, so remove it.
+
+  Why the LAUNCHER manifest and not Assets/Plugins/Android/AndroidManifest.xml:
+  that file REPLACES the generated unityLibrary manifest wholesale, which means
+  taking ownership of the activity declaration, splash meta-data, notch config,
+  screen orientation and GL/vulkan feature flags - all of which Unity otherwise
+  regenerates from Player Settings. Freezing that here would silently ignore
+  future Player Settings changes. The launcher manifest merges last, so a
+  tools:node="remove" is enough and owns nothing else.
+
+  Content below mirrors Unity's generated launcher manifest; keep it in sync if
+  Player Settings for install location / supported screens change.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools"
+          android:installLocation="preferExternal">
+
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+
+    <application android:icon="@mipmap/app_icon" android:label="@string/app_name" />
+
+    <supports-screens
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true"
+        android:anyDensity="true" />
+</manifest>

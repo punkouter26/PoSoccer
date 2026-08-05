@@ -62,18 +62,26 @@ ships Unity's default icon. Needed:
 - Adaptive icon (foreground + background layers), 432x432 source
 - 512x512 PNG for the store listing (separate from the in-app icon)
 
-### 4. INTERNET permission
+### 4. INTERNET permission — RESOLVED 2026-08-04
 
-The merged manifest requests `android.permission.INTERNET`. Nothing in the game
-uses the network — it comes from the ML-Agents communicator, which only opens a
-socket when a trainer attaches (and training runs on the Windows player, never on
-Android). Two options:
+Stripped. Note the attribution above was wrong: the permission does **not** come
+from ML-Agents. Unity's own generated `unityLibrary` manifest declares it
+unconditionally — verified in the previous build's merged manifest under
+`Library/Bee/Android/Prj/IL2CPP/Gradle/launcher/build/intermediates/packaged_manifests/`.
+Nothing in `Assets/Scripts` references `UnityWebRequest`, `System.Net`, `WWW` or
+`Socket`.
 
-- **Declare it**: answer Play's Data Safety form as "no data collected". Honest,
-  but reviewers ask why an offline game wants network access.
-- **Strip it**: add `Assets/Plugins/Android/AndroidManifest.xml` with
-  `<uses-permission android:name="android.permission.INTERNET" tools:node="remove"/>`.
-  Safe for the store build; does not affect the Windows training player.
+Removed via `Assets/Plugins/Android/LauncherManifest.xml` with
+`tools:node="remove"`, enabled by `useCustomLauncherManifest: 1`.
+
+Deliberately **not** done with `Assets/Plugins/Android/AndroidManifest.xml` as
+suggested above: that file replaces the generated `unityLibrary` manifest
+wholesale, taking permanent ownership of the activity declaration, splash
+meta-data, notch config, orientation and GL/Vulkan feature flags — and silently
+ignoring later Player Settings changes. The launcher manifest merges last and
+owns nothing else.
+
+See `docs/android-internal-testing.md` for the full current state.
 
 ### 5. Store listing (all human-authored)
 

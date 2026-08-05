@@ -75,9 +75,22 @@ namespace Unity.MLAgents.Inference
 
         void Dispose()
         {
-            if (data.dataOnBackend.backendType != BackendType.CPU)
+            // 2026-08-04 (PoSoccer local patch): `data` was dereferenced unguarded here
+            // while being null-checked on the very next line. Reached from ~TensorProxy,
+            // so a null `data` threw NullReferenceException on the GC finalizer thread on
+            // every collection - hundreds of entries per minute in Android logcat:
+            //   NullReferenceException
+            //     at Unity.MLAgents.Inference.TensorProxy.Dispose ()
+            //     at Unity.MLAgents.Inference.TensorProxy.Finalize ()
+            // Non-fatal (finalizer exceptions are swallowed) but it burns GC time every
+            // inference and buries real errors in the log. TensorUtils.ResizeTensor
+            // assigns `data` after disposing the old one, so a finalizer racing that
+            // window legitimately sees null.
+            var tensor = data;
+            if (tensor?.dataOnBackend != null &&
+                tensor.dataOnBackend.backendType != BackendType.CPU)
             {
-                data?.Dispose();
+                tensor.Dispose();
             }
         }
     }

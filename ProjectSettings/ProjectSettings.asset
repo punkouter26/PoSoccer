@@ -264,7 +264,7 @@ PlayerSettings:
   templatePackageId: com.unity.template.universal-2d@6.1.5
   templateDefaultScene: Assets/Scenes/SampleScene.unity
   useCustomMainManifest: 0
-  useCustomLauncherManifest: 0
+  useCustomLauncherManifest: 1
   useCustomMainGradleTemplate: 0
   useCustomLauncherGradleManifest: 0
   useCustomBaseGradleTemplate: 0
@@ -303,92 +303,116 @@ PlayerSettings:
   m_BuildTargetPlatformIcons:
   - m_BuildTarget: Android
     m_Icons:
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 937c56ccbe1657043a4a5d1e0e313402, type: 3}
+      - {fileID: 2800000, guid: 31ee250b2de38d540b6e6a7c38414e78, type: 3}
       m_Width: 432
       m_Height: 432
       m_Kind: 2
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 937c56ccbe1657043a4a5d1e0e313402, type: 3}
+      - {fileID: 2800000, guid: 31ee250b2de38d540b6e6a7c38414e78, type: 3}
       m_Width: 324
       m_Height: 324
       m_Kind: 2
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 937c56ccbe1657043a4a5d1e0e313402, type: 3}
+      - {fileID: 2800000, guid: 31ee250b2de38d540b6e6a7c38414e78, type: 3}
       m_Width: 216
       m_Height: 216
       m_Kind: 2
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 937c56ccbe1657043a4a5d1e0e313402, type: 3}
+      - {fileID: 2800000, guid: 31ee250b2de38d540b6e6a7c38414e78, type: 3}
       m_Width: 162
       m_Height: 162
       m_Kind: 2
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 937c56ccbe1657043a4a5d1e0e313402, type: 3}
+      - {fileID: 2800000, guid: 31ee250b2de38d540b6e6a7c38414e78, type: 3}
       m_Width: 108
       m_Height: 108
       m_Kind: 2
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 937c56ccbe1657043a4a5d1e0e313402, type: 3}
+      - {fileID: 2800000, guid: 31ee250b2de38d540b6e6a7c38414e78, type: 3}
       m_Width: 81
       m_Height: 81
       m_Kind: 2
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 192
       m_Height: 192
       m_Kind: 1
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 144
       m_Height: 144
       m_Kind: 1
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 96
       m_Height: 96
       m_Kind: 1
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 72
       m_Height: 72
       m_Kind: 1
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 48
       m_Height: 48
       m_Kind: 1
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 36
       m_Height: 36
       m_Kind: 1
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 192
       m_Height: 192
       m_Kind: 0
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 144
       m_Height: 144
       m_Kind: 0
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 96
       m_Height: 96
       m_Kind: 0
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 72
       m_Height: 72
       m_Kind: 0
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 48
       m_Height: 48
       m_Kind: 0
       m_SubKind: 
-    - m_Textures: []
+    - m_Textures:
+      - {fileID: 2800000, guid: 19c11da57f30f6d43a2dce0769ce5d21, type: 3}
       m_Width: 36
       m_Height: 36
       m_Kind: 0
