@@ -69,23 +69,33 @@ namespace PoSoccer
             Agent_UIStyle.ApplySafeArea(safe);
             safe.style.backgroundColor = Agent_UIStyle.Background;
             safe.style.alignItems = Align.Center;
-            safe.style.justifyContent = Justify.Center;
+            // SpaceEvenly, not Center: the squads change height as players are
+            // added, so a centered block leaves a dead band above and below at
+            // small squad sizes. Distributing the slack fills the screen at 1v1
+            // and collapses cleanly to no gaps at 10v10.
+            safe.style.justifyContent = Justify.SpaceEvenly;
+            safe.style.paddingTop = 24;
+            safe.style.paddingBottom = 24;
             root.Add(safe);
 
             // All sizes are in 1080x1920 reference-resolution units (9:16 per
             // UNITY_RULES; PanelSettings scales the panel to the actual screen,
-            // match-width).
+            // match-width). Title and subtitle share a group so SpaceEvenly does
+            // not push them apart.
+            var header = new VisualElement();
+            header.style.alignItems = Align.Center;
+
             var title = new Label("PoSoccer");
-            title.style.fontSize = 92;
+            title.style.fontSize = 118;
             title.style.color = Color.white;
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
-            safe.Add(title);
+            header.Add(title);
 
             var subtitle = new Label("tap a name to add · tap a card to remove");
-            subtitle.style.fontSize = 28;
+            subtitle.style.fontSize = 30;
             subtitle.style.color = Agent_UIStyle.TextMuted;
-            subtitle.style.marginBottom = 18;
-            safe.Add(subtitle);
+            header.Add(subtitle);
+            safe.Add(header);
 
             safe.Add(BuildPresetRow());
 
@@ -94,27 +104,27 @@ namespace PoSoccer
             safe.Add(BuildTeamSection("BLUE", Agent_UIStyle.BlueTeam, _blue, _blueStrip, out _blueCount));
             safe.Add(BuildTeamSection("RED", Agent_UIStyle.RedTeam, _red, _redStrip, out _redCount));
 
+            // Pitch note rides just above PLAY so the size readout reads as a
+            // caption on the button rather than a floating third element.
+            var footer = new VisualElement();
+            footer.style.alignItems = Align.Center;
+
             _pitchNote = new Label(string.Empty);
-            _pitchNote.style.fontSize = 24;
+            _pitchNote.style.fontSize = 28;
             _pitchNote.style.color = Agent_UIStyle.TextMuted;
-            _pitchNote.style.marginTop = 12;
-            safe.Add(_pitchNote);
+            _pitchNote.style.marginBottom = 16;
+            footer.Add(_pitchNote);
 
             _play = new Button(StartMatch) { text = "PLAY" };
-            _play.style.fontSize = 60;
+            _play.style.fontSize = 74;
             _play.style.unityFontStyleAndWeight = FontStyle.Bold;
-            _play.style.marginTop = 18;
-            _play.style.paddingLeft = 110; _play.style.paddingRight = 110;
-            _play.style.paddingTop = 20; _play.style.paddingBottom = 20;
+            _play.style.paddingLeft = 150; _play.style.paddingRight = 150;
+            _play.style.paddingTop = 26; _play.style.paddingBottom = 26;
             _play.style.backgroundColor = Agent_UIStyle.Accent;
             _play.style.color = Agent_UIStyle.TextPrimary;
             Agent_UIStyle.Round(_play);
-            safe.Add(_play);
-
-            var sound = Agent_UIStyle.SoundToggleButton();
-            sound.style.color = Agent_UIStyle.TextMuted;
-            sound.style.marginTop = 12;
-            safe.Add(sound);
+            footer.Add(_play);
+            safe.Add(footer);
 
             RefreshAll();
         }
@@ -184,14 +194,13 @@ namespace PoSoccer
         {
             var section = new VisualElement();
             section.style.alignItems = Align.Center;
-            section.style.marginBottom = 20;
             section.style.width = 1000;
 
             var band = new VisualElement();
-            band.style.height = 6; band.style.width = 240;
+            band.style.height = 8; band.style.width = 340;
             band.style.backgroundColor = teamColor;
-            band.style.marginBottom = 8;
-            Agent_UIStyle.Round(band, 3);
+            band.style.marginBottom = 12;
+            Agent_UIStyle.Round(band, 4);
             section.Add(band);
 
             // Header row: team name, [- N +] stepper, per-side CLEAR.
@@ -202,19 +211,19 @@ namespace PoSoccer
             header.style.marginBottom = 8;
 
             var name = new Label(teamLabel);
-            name.style.fontSize = 40;
+            name.style.fontSize = 52;
             name.style.color = teamColor;
             name.style.unityFontStyleAndWeight = FontStyle.Bold;
-            name.style.marginRight = 22;
+            name.style.marginRight = 26;
             header.Add(name);
 
             header.Add(StepperButton("−", () => Resize(squad, squad.Count - 1)));
 
             countLabel = new Label();
-            countLabel.style.fontSize = 38;
+            countLabel.style.fontSize = 48;
             countLabel.style.color = Agent_UIStyle.TextPrimary;
             countLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            countLabel.style.width = 100;
+            countLabel.style.width = 120;
             countLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
             header.Add(countLabel);
 
@@ -233,7 +242,7 @@ namespace PoSoccer
             strip.style.flexWrap = Wrap.Wrap;
             strip.style.justifyContent = Justify.Center;
             strip.style.width = 1000;
-            strip.style.minHeight = 116;
+            strip.style.minHeight = 190;
             section.Add(strip);
 
             return section;
@@ -252,10 +261,10 @@ namespace PoSoccer
             {
                 var profile = _roster[i];
                 var b = new Button(() => AddToSquad(squad, profile)) { text = profile.playerName };
-                b.style.height = 56;
-                b.style.fontSize = 24;
+                b.style.height = 78;
+                b.style.fontSize = 30;
                 b.style.unityFontStyleAndWeight = FontStyle.Bold;
-                b.style.paddingLeft = 20; b.style.paddingRight = 20;
+                b.style.paddingLeft = 26; b.style.paddingRight = 26;
                 b.style.marginLeft = 4; b.style.marginRight = 4;
                 b.style.backgroundColor = profile.playerColor;
                 b.style.color = Color.black;
@@ -272,8 +281,8 @@ namespace PoSoccer
         static Button StepperButton(string glyph, System.Action onClick)
         {
             var b = new Button(onClick) { text = glyph };
-            b.style.width = 70; b.style.height = 70;
-            b.style.fontSize = 44;
+            b.style.width = 86; b.style.height = 86;
+            b.style.fontSize = 54;
             b.style.unityFontStyleAndWeight = FontStyle.Bold;
             b.style.color = Agent_UIStyle.TextPrimary;
             b.style.backgroundColor = Agent_UIStyle.PanelBg;
@@ -284,10 +293,10 @@ namespace PoSoccer
         static Button SmallButton(string text, Color background, System.Action onClick)
         {
             var b = new Button(onClick) { text = text };
-            b.style.height = 56;
-            b.style.fontSize = 24;
+            b.style.height = 74;
+            b.style.fontSize = 30;
             b.style.unityFontStyleAndWeight = FontStyle.Bold;
-            b.style.paddingLeft = 22; b.style.paddingRight = 22;
+            b.style.paddingLeft = 30; b.style.paddingRight = 30;
             b.style.marginLeft = 5; b.style.marginRight = 5;
             b.style.color = Agent_UIStyle.TextPrimary;
             b.style.backgroundColor = background;
@@ -369,7 +378,7 @@ namespace PoSoccer
             if (squad.Count == 0)
             {
                 var empty = new Label("empty — tap a name above");
-                empty.style.fontSize = 22;
+                empty.style.fontSize = 26;
                 empty.style.color = Agent_UIStyle.TextMuted;
                 empty.style.unityTextAlign = TextAnchor.MiddleCenter;
                 empty.style.marginTop = 34;
@@ -379,7 +388,7 @@ namespace PoSoccer
 
             // Cards shrink as the squad grows so ten still fit two ranks of five.
             bool compact = squad.Count > 5;
-            float width = compact ? 150f : 178f;
+            float width = compact ? 170f : 210f;
 
             for (int slot = 0; slot < squad.Count; slot++)
             {
@@ -387,7 +396,7 @@ namespace PoSoccer
                 var profile = squad[slot];
                 var card = new Button(() => RemoveSlot(squad, captured));
                 card.style.width = width;
-                card.style.height = compact ? 100f : 116f;
+                card.style.height = compact ? 142f : 174f;
                 card.style.marginLeft = 5; card.style.marginRight = 5;
                 card.style.marginBottom = 8;
                 card.style.paddingTop = 4; card.style.paddingBottom = 4;
@@ -400,9 +409,9 @@ namespace PoSoccer
                 card.style.borderTopColor = teamColor; card.style.borderBottomColor = teamColor;
                 card.style.borderLeftColor = teamColor; card.style.borderRightColor = teamColor;
 
-                card.Add(CardLine(profile.playerName, compact ? 22 : 26, FontStyle.Bold, 1f));
-                card.Add(CardLine(DriverLine(profile), compact ? 15 : 17, FontStyle.Normal, 0.75f));
-                card.Add(CardLine(StepsLine(profile), compact ? 15 : 17, FontStyle.Bold, 0.85f));
+                card.Add(CardLine(profile.playerName, compact ? 24 : 32, FontStyle.Bold, 1f));
+                card.Add(CardLine(DriverLine(profile), compact ? 16 : 21, FontStyle.Normal, 0.75f));
+                card.Add(CardLine(StepsLine(profile), compact ? 16 : 21, FontStyle.Bold, 0.85f));
                 strip.Add(card);
             }
         }
