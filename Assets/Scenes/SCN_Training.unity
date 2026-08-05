@@ -1863,7 +1863,6 @@ MonoBehaviour:
   _frameInset: 0.18
   _frameThickness: 0.1
   _frameZ: 0.01
-  _showVisionCone: 1
 --- !u!114 &1579506621
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1886,7 +1885,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
+  m_Model: {fileID: 0}
   m_InferenceDevice: 0
   m_BehaviorType: 0
   m_BehaviorName: My Behavior
@@ -2175,7 +2174,6 @@ MonoBehaviour:
   _frameInset: 0.18
   _frameThickness: 0.1
   _frameZ: 0.01
-  _showVisionCone: 1
 --- !u!114 &1593781675
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2198,7 +2196,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
+  m_Model: {fileID: 0}
   m_InferenceDevice: 0
   m_BehaviorType: 0
   m_BehaviorName: My Behavior

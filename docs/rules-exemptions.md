@@ -111,3 +111,35 @@ with recovery) is not, by design.
 to reset wear on main-menu return (or after N seconds idle in the menu),
 possible Agent_Stamina API addition `DecayWear(float amount)` and a
 recovery invocation site in `Agent_HUD` or a new `Agent_Roster` system.
+
+---
+
+## 5. Fixed timestep is 0.01 s, not 0.02 s (Rule 2) — EXEMPT
+
+**Rule:** "Lock physics timestep (Δt = 0.02 s) and solver iterations for
+training stability."
+
+**What the project does:** `ProjectSettings/TimeManager.asset` sets
+`Fixed Timestep: 0.01`. Solver iterations are Unity's 2D defaults
+(velocity 8 / position 3).
+
+**Why:** the entire locomotion model was measured and tuned at 0.01 s. The
+published figures — 4.35 m/s jog, 9.54 m/s sprint, t95 ≈ 3.7 s — are
+outputs of a traction model (`mu * m * g` friction circle, 1200 N/s force
+slew, active foot braking) that integrates per physics step. Doubling the
+step changes force integration and the slew ceiling per tick, so every one
+of those numbers moves. It would also invalidate the accumulated benchmark
+results, which are all measured against agents trained at 0.01 s, and
+`DecisionRequester` period 8 is expressed in physics steps — at 0.02 s the
+agent would decide half as often in wall-clock terms, silently halving the
+control rate.
+
+**Rule status:** the rule's intent (a *locked*, deterministic timestep, not
+a specific number) is met — 0.01 s is fixed, committed, and identical
+across training, evaluation and play. Only the literal value differs, and
+it errs on the side of *more* physics stability, not less.
+
+**Status: PERMANENT** while the current benchmark results stand. Revisit
+only as part of a deliberate from-scratch retrain, where the whole
+locomotion model would be re-measured anyway — never as a standalone
+compliance edit.
