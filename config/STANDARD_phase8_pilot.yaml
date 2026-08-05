@@ -1,0 +1,112 @@
+# Phase 8 PILOT - 3M steps, not 20M. Verifies the agent can MOVE before spending 3 hours.
+#
+# Phases 6 and 7 both graded ~17% and neither hypothesis (perception, reward balance)
+# explained it. The chase probe finally measured the policy directly:
+#
+#                        trained policy    scripted bot    chassis
+#   distance in 4 s        2.62 m            15.08 m       -
+#   reached the ball       never             2.70 s        -
+#   top speed              0.95 m/s          5.17 m/s      9.54 m/s
+#   heading churn          199 deg           79 deg        -
+#
+# It never learned to drive. It creeps and spins. Cause: the Reward_*.asset profiles had
+# drifted from the code defaults on the locomotion terms - ballProximityScale 0.0004 vs
+# 0.002 (5x too weak) and actionJitterScale 0.001 vs 0.0004 (2.5x too strong), a 12x swing
+# against moving, 50x on KIM. Editing a field initializer never touches an existing
+# ScriptableObject, so the documented v2 fix landed in code and reached no asset.
+# Standing still was the local optimum and 20M steps found it.
+#
+# Fixed in all five profiles; RewardProfiles_MatchCodeDefaultsOnMechanics now pins it.
+#
+# GATE: export at 3M, run Probe_B_ChaseEfficiency. If the agent does not reach the ball,
+# do NOT start a full run - the reward table is still wrong. Everything else is identical
+# to phase 7 so the comparison stays single-variable.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 3000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # One flat threshold, applied to every lesson: the policy must be genuinely
+  # winning (goalScorer 0.7 vs goalConceded -1.0, so a sustained +0.5 mean means
+  # scoring materially more than it concedes) before the opponent gets stronger.
+  # min_lesson_length 1000 makes a lucky streak far too expensive to fake.
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.35
+      # Support positioning and corner craft switch on at 0.5 - the first real step up.
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.65
+      # The boost-shot switches on at 0.8.
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  num_envs: 1
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

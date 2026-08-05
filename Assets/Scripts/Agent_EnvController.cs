@@ -82,6 +82,7 @@ namespace PoSoccer
         readonly List<Agent_HeuristicBot> _bots = new();
         readonly Dictionary<Agent_Soccer, Vector3> _spawnPositions = new();
         readonly Dictionary<Agent_Soccer, Quaternion> _spawnRotations = new();
+        bool _spawnCacheWarned;
         Vector3 _ballSpawn;
         bool _episodeEnding;
 
@@ -312,6 +313,8 @@ namespace PoSoccer
                 ball.linearDamping = Random.Range(ballDampingRange.x, ballDampingRange.y);
             }
 
+            EnsureSpawnCache();
+
             foreach (var agent in agents)
             {
                 if (randomizeSpawns)
@@ -373,6 +376,43 @@ namespace PoSoccer
                 if (sqr < bestSqr) { bestSqr = sqr; nearest = other; }
             }
             return nearest;
+        }
+
+        /// <summary>
+        /// Rebuild any missing spawn-cache entries instead of throwing.
+        ///
+        /// 2026-08-04: `Start` fills these once, but a domain reload while play mode is
+        /// running - which is what "Enter Play Mode Options -> DisableDomainReload" causes -
+        /// wipes non-serialized state WITHOUT re-running Start. `agents` is serialized so it
+        /// comes back populated, while these dictionaries come back empty. ResetPitch then
+        /// threw KeyNotFoundException on `_spawnRotations[agent]` every FixedUpdate, so every
+        /// episode reset aborted, `_episodeEnding` stayed true and the pitch froze: agents
+        /// motionless, all four actions exactly 0, stamina untouched. It reads as "the brain
+        /// is broken" and is not - it is an editor-configuration fault with no visible cause.
+        ///
+        /// The setting must stay off (UNITY_RULES / ML-Agents Academy needs the reload), but
+        /// a reset loop should degrade rather than brick the pitch, and it should say so once.
+        /// </summary>
+        void EnsureSpawnCache()
+        {
+            for (int agentIndex = 0; agentIndex < agents.Count; agentIndex++)
+            {
+                var agent = agents[agentIndex];
+                if (agent == null) continue;
+                if (_spawnPositions.ContainsKey(agent) && _spawnRotations.ContainsKey(agent)) continue;
+
+                if (!_spawnCacheWarned)
+                {
+                    _spawnCacheWarned = true;
+                    Debug.LogWarning(
+                        "[Env] Spawn cache was missing entries and has been rebuilt from current " +
+                        "transforms. This normally means a domain reload happened during play mode: " +
+                        "check Project Settings > Editor > Enter Play Mode Settings and keep domain " +
+                        "reload ON. Spawns for this episode may be off; later episodes are correct.");
+                }
+                _spawnPositions[agent] = agent.transform.position;
+                _spawnRotations[agent] = agent.transform.rotation;
+            }
         }
 
         /// <summary>

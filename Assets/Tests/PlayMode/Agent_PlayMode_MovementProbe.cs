@@ -115,12 +115,28 @@ namespace PoSoccer.Tests
             yield return RunChase("PROBE-B (as shipped)");
         }
 
-        IEnumerator RunChase(string label)
+        /// <summary>
+        /// Chase efficiency for the BLUE agent - the side the trained policy occupies in
+        /// both training and eval. This is the honest read on "can the brain reach a ball".
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Probe_D_ChaseEfficiency_BlueTrainedSide()
         {
-            var red = _env.agents.First(a => a.team == Agent_Soccer.Team.Red);
-            var blue = _env.agents.First(a => a.team == Agent_Soccer.Team.Blue);
+            yield return RunChase("PROBE-D (blue = trained side)", Agent_Soccer.Team.Blue);
+        }
 
-            // Park blue out of the way so it cannot interfere.
+        IEnumerator RunChase(string label,
+            Agent_Soccer.Team mover = Agent_Soccer.Team.Red)
+        {
+            // 2026-08-04: the trained policy is ALWAYS Blue - scripts/train-phase1.ps1 sets
+            // POSOCCER_OPPONENT=bot, which forces Red to HeuristicOnly. Measuring Red with a
+            // Blue-trained model runs it out of distribution (self velocity, eye axis and
+            // relBall are world-frame while the goal terms are team-relative), which reads
+            // as "the policy cannot move". Probe the side the policy actually trained on.
+            var red = _env.agents.First(a => a.team == mover);
+            var blue = _env.agents.First(a => a.team != mover);
+
+            // Park the other agent out of the way so it cannot interfere.
             blue.Body.position = new Vector2(-5f, -8f);
 
             red.Body.position = new Vector2(0f, -6f);

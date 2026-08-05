@@ -21,6 +21,46 @@ namespace PoSoccer.Tests
             return s;
         }
 
+        /// <summary>
+        /// Every Reward_*.asset must match the code defaults on the LOCOMOTION MECHANICS
+        /// terms. These are not personality knobs - personality lives in the terminal
+        /// rewards, the trait scales and the physique.
+        ///
+        /// Why this test exists (2026-08-04). Editing a field initializer in
+        /// Reward_Settings does NOT touch an existing ScriptableObject asset, so a fix can
+        /// land in code and silently never reach the assets. That happened here: the v2
+        /// pass halved actionJitterScale to 0.0004 because "the old penalty was teaching
+        /// the brain to be smooth and idle" and raised ballProximityScale to 0.002, but no
+        /// asset was updated. STANDARD trained for months with the approach reward 5x too
+        /// weak and the anti-movement penalty 2.5x too strong - a 12x swing against moving,
+        /// and 50x on KIM. The measured result: a policy that travelled 2.62 m in 4 s where
+        /// the scripted bot covered 15.08 m, never reached the ball, and topped out at
+        /// 0.95 m/s on a chassis that does 9.54 m/s. It read as "the AI is bad at soccer".
+        /// </summary>
+        [Test]
+        public void RewardProfiles_MatchCodeDefaultsOnMechanics()
+        {
+            var code = ScriptableObject.CreateInstance<Reward_Settings>();
+            string[] guids = UnityEditor.AssetDatabase.FindAssets("t:Reward_Settings");
+            Assert.Greater(guids.Length, 0, "no Reward_Settings assets found");
+
+            foreach (string guid in guids)
+            {
+                string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+                var a = UnityEditor.AssetDatabase.LoadAssetAtPath<Reward_Settings>(path);
+                Assert.AreEqual(code.stepPenalty, a.stepPenalty, 1e-9f, $"{path} stepPenalty");
+                Assert.AreEqual(code.ballProximityScale, a.ballProximityScale, 1e-9f,
+                    $"{path} ballProximityScale - reward for closing on the ball");
+                Assert.AreEqual(code.actionJitterScale, a.actionJitterScale, 1e-9f,
+                    $"{path} actionJitterScale - too high and the policy learns to stand still");
+                Assert.AreEqual(code.useDifferentialProximity, a.useDifferentialProximity,
+                    $"{path} useDifferentialProximity");
+                Assert.Greater(a.ballProximityScale, a.actionJitterScale,
+                    $"{path}: approaching the ball must out-pay holding still");
+            }
+            Object.DestroyImmediate(code);
+        }
+
         [Test]
         public void Stamina_DrainsAt60PerSecondWhileBoosting()
         {

@@ -15,7 +15,8 @@ PoSoccer: a top-down 2D physics soccer game + **ML-Agents training benchmark**. 
 - UI Toolkit only (runtime, code-built, shared `PanelSettings` at ScaleWithScreenSize **1080×1920** (9:16) match-width; style constants in `Agent_UIStyle`). Fixed timestep 0.01s, portrait **locked** (`defaultScreenOrientation: 0`, landscape autorotate off).
 - **Version parity**: embedded `Packages/com.unity.ml-agents` (4.1.0 @ ab179e18, protobuf-swapped — see landmines) must match Python `mlagents` 1.2.0.dev0. Pins live in `requirements-training.txt`; `scripts/setup-training-env.ps1` builds `.venv` from that commit and **fails loudly on drift**. Python ≤3.10.12.
 - Trained `.onnx` overwrites happen **in place** (GUID-stable slot per personality: `Assets/Agents/<Name>_v01/<NAME>.onnx`). Kill orphaned trainers after runs; TensorBoard restarts prune/archive runs.
-- **Git branch: `master`.** Do not create other branches unless explicitly asked. `master` is the only branch, local and remote, and is the GitHub default (2026-08-04: `main` held no unique commits and was deleted).
+- **Git branch: `master`.** Do not create other branches unless explicitly asked. `master` is the only branch, local and remote, and is the GitHub default (2026-08-04: `main` held no unique commits and was deleted, the default was flipped, `origin/HEAD` repointed).
+- **Always start the game from `SCN_Menu`** — never press Play on `SCN_Exhibition` directly. `Agent_MatchLoader` reads squad sizes and per-slot profiles from the `Agent_MatchSetup` statics, which **only the menu sets**; loading the exhibition scene on its own silently falls back to whatever is serialized in it, so you are testing a lineup nobody chose. (Headless training/eval are the exception — they boot `SCN_Training` directly by design.)
 - Deliberate departures from these rules are recorded in `docs/rules-exemptions.md` — an audit finding not on that page is a real defect.
 
 ## Commands
@@ -70,7 +71,7 @@ Hard-won traps:
 
 **Realistic physics** (traction overhaul): 75 kg reference agent, **236 N/75 kg drive** (force scales with mass, so every physique shares one top speed and heavier bodies simply carry more momentum), 1200 N/s slew, linearDamping **0.7** set from code, 250 N·m torque. Locomotion is **traction-limited**: all foot force — launching, cutting, braking — shares one friction circle of `mu * m * g` (mu 1.2), with active foot braking when there is no drive intent and extra lateral damping so strafing is slower than running. Turn rate falls from 360°/s at rest to 25% of that at sprint. Measured: **4.35 m/s jog / 9.54 m/s sprint, t95 ≈ 3.7 s** (human-like build-up). FIFA ball (r=0.11, 0.43 kg, drag ~0.1 randomized, Magnus curl). Zero in-plane gravity (top-down — see `docs/rules-exemptions.md`); gravity enters physically via the traction budget.
 
-**Movement probe**: `Agent_PlayMode_MovementProbe` reports locomotion numbers to the console (chassis / as-shipped / forced-bot). Use it instead of watching the Game view — an unfocused editor barely runs play-mode frames.
+**Movement probe**: `Agent_PlayMode_MovementProbe` reports locomotion numbers to the console (chassis / as-shipped / forced-bot / blue-trained-side). Use it instead of watching the Game view — an unfocused editor barely runs play-mode frames. **Run it against every trained brain before trusting any win-rate theory** — it is the only measurement that separates "bad at soccer" from "cannot move", and on 2026-08-04 three runs' worth of hypotheses turned out to rest on the latter.
 
 **Episode flow**: `Reward_GoalTrigger` → `Agent_EnvController.OnGoalScored/OnStalemate/OnOutOfBounds` (containment watchdog) → terminal rewards (+0.7 scorer / +0.3 assist / −1.0 conceded / −0.1 stalemate) → `EpisodeEnded` event fires **before** reset (subscribers read cumulative rewards; HUD/FX/audio all hang off it) → `ResetPitch` (domain randomization: random own-half spawns, ball drag) reads `goal_width` curriculum. `stepCapOverride` on the exhibition Pitch shortens episodes to 2500 steps for pace.
 
@@ -150,6 +151,39 @@ Halving the opponent left the win rate **flat** and converted 31 points of losse
 Also available: `Agent_HeuristicBot.perceptionRadius` (env `POSOCCER_BOT_VISION`, default **0 = unlimited**, preserving every historical result) caps how far the bot perceives opponents — the knob for asking whether the 80% bar is reachable at all or is just the perfect-information gap.
 
 Phase 2 POCA self-play is *not* indicated — runs `v2`/`v3`/`p3` were effectively symmetric self-play and scored 15–19%.
+
+**RESULT — phase 7 also moved nothing, and the probe finally found the real cause.** `soccer_p7_scoring_00` (20.0M, reward table fixed, single-variable vs p6) graded **16.6%** over 1000 episodes against p6's 17.1% and the old brain's 16.2%. The reward fix did work behaviourally — stalemates 17.0% → 14.4% — but those draws became **losses** (red 65.9% → 69.0%), not wins. Three runs, three hypotheses, one flat ~16–17%.
+
+**The agent never learned to drive.** `Agent_PlayMode_MovementProbe` measures the policy directly; nobody had run it against a trained brain before 2026-08-04 because everything was graded headless on aggregate counters:
+
+| 4 s chase, 10.44 m away | trained policy | scripted bot | chassis capability |
+|---|---|---|---|
+| distance travelled | **0.99 m (9%)** | 15.08 m (144%) | — |
+| reached the ball | **never** | 2.70 s | — |
+| top speed | **0.58 m/s** | 5.16 m/s | 9.54 m/s |
+| heading churn | 184° | 84° | — |
+
+It creeps and spins at ~6% of the chassis' ability. Every "it can't finish / can't see / won't attack" theory was built on top of a policy that could not cross the pitch.
+
+**LANDMINE — a ScriptableObject asset never receives a changed field initializer.** Editing `Reward_Settings.cs` does **not** touch an existing `Reward_*.asset`. The v2 pass fixed the locomotion terms in code and **no asset ever got them**, so every profile trained with:
+
+| term | code | STANDARD | KIM | effect |
+|---|---|---|---|---|
+| `ballProximityScale` (reward for closing on the ball) | 0.002 | 0.0004 | 0.0002 | 5–10× too weak |
+| `actionJitterScale` (penalty for changing action) | 0.0004 | 0.001 | 0.002 | 2.5–5× too strong |
+| `stepPenalty` (v2 zeroed it) | 0 | −0.00003 | −0.00003 | all five drifted |
+
+Net **12× swing against moving** on STANDARD, **50× on KIM**. Standing still was the local optimum and 20M steps found it. Fixed in all five profiles 2026-08-04 and pinned by `RewardProfiles_MatchCodeDefaultsOnMechanics` (EditMode) — that test is the guard, keep it green. Personality lives in terminal rewards, trait scales and physique; the locomotion mechanics must match code.
+
+**LANDMINE — a domain reload during play mode freezes the pitch with no error visible in game.** `ResetPitch` threw `KeyNotFoundException` on `_spawnRotations[agent]` every `FixedUpdate`, so every episode reset aborted and the pitch locked: agents motionless, **all four actions exactly 0.0000**, stamina untouched, `StepCount` still climbing. It reads exactly like "the brain is broken". Cause: "Enter Play Mode Options → DisableDomainReload" wipes non-serialized state without re-running `Start`; `agents` is serialized so it returns populated while the spawn dictionaries return empty. **The setting must stay OFF** (ML-Agents Academy needs the reload). `Agent_EnvController.EnsureSpawnCache` now heals and warns once instead of bricking.
+
+**The `POSOCCER_BOT_VISION` knob is a dead end.** `perceptionRadius` gates only the shoulder-charge, which itself requires the opponent within **2 units** — so any radius ≥ 2 is a no-op. The bot barely consults opponent state at all, which means **in 1v1 there is essentially no information asymmetry**: both sides get exact ball, goal and pitch state. The phase-6 perception thesis was wrong for this matchup; it would only bite in 2v2.
+
+**Training and eval are 1v1.** `SCN_Training` holds exactly two agents. The teammate block and the second opponent slot are **always zero**, so no policy has ever practised with a teammate — 2v2 is untested capability, not tuned behaviour. Two consequences: `SCN_Exhibition` runs the brain out of distribution, and `Agent_PitchSizing` scales the exhibition pitch to squad size (80 m²/player, width clamped to [12, 30]) so 2v2 is **12.6 × 25.3 m against training's 36 × 54 m — ~6× smaller**, and 1v1 in the menu clamps to 12 × 24 and still cannot reach the training size. Judge the brain in `SCN_Training`; use the menu to play the game.
+
+**Probe gotcha:** `RunChase` drives **Red** by default, but the trained policy is always **Blue** (`train-phase1.ps1` sets `POSOCCER_OPPONENT=bot`, forcing Red to `HeuristicOnly`). Self velocity, eye axis and `relBall` are world-frame while the goal terms are team-relative, so probing Red runs a Blue-trained policy out of distribution. Use `Probe_D_ChaseEfficiency_BlueTrainedSide`.
+
+**Process that now applies to every run: pilot then gate.** `config/STANDARD_phase8_pilot.yaml` is 3M steps (~25 min) instead of 20M (~2.9 h); export, run the probe, and only commit to a full run if the agent actually reaches the ball. p8 promoted a lesson at ~2M and reached **+0.648** where p7 never promoted in 20M and ended +0.281 — an 8×+ sample-efficiency gain from the locomotion fix. **Unresolved:** the p8 probe still reads 0.99 m / 0.58 m/s, so training reward and measured locomotion still disagree. Do not launch a full run until that contradiction is explained.
 
 **Eval gotcha**: `evaluate.ps1` grades whatever is baked into `Builds/PoSoccer/PoSoccer.exe`, so rebuild (MCP `manage_build`) after every `update-model.ps1` or you grade stale weights. Its staleness warning compares the **.exe** mtime, which Unity often leaves untouched even on a successful rebuild — check `PoSoccer_Data/resources.assets` instead, and ignore the warning when that file is fresh. Free Asset Store picks (optional, zero dependencies): `docs/asset-store-free-assets.md`.
 
