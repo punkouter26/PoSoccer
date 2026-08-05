@@ -20,8 +20,8 @@ MonoBehaviour:
   trainingSteps: 20000142
   trainingRunId: soccer_p9_random_00
   trainedOn: 2026-08-05
-  evalWinRate: -1
-  evalEpisodes: 0
+  evalWinRate: 0.174
+  evalEpisodes: 1000
   bodyScale: 1
   bodyMass: 75
   goalScorer: 1.2
