@@ -3,13 +3,23 @@ using UnityEngine;
 namespace PoSoccer
 {
     /// <summary>
-    /// Tight ball-following camera with a wide establishing shot at kickoff and
-    /// after each goal. Wide baseline = the scene's authored orthoSize; tight
-    /// overlay is roughly 1.5x zoom-in (~67% of orthoSize). Position lags
-    /// the ball with critically-damped smoothing, clamped to the pitch so the
-    /// edges never pan past the goal mouths.
-    /// Execution order -50 so the camera is settled before MatchFX samples
-    /// Camera.main on Start.
+    /// Ball-following camera that frames the pitch to the actual viewport and tightens
+    /// on the action when play is slow.
+    ///
+    /// Three things drive the zoom, widest wins:
+    ///  - a wide establishing shot at kickoff and after each goal;
+    ///  - the bounding box of the ball plus every player, so a scrum in one corner
+    ///    fills the screen while a stretched counter-attack pulls back;
+    ///  - ball speed, which biases wider so a fast break does not outrun the frame.
+    ///
+    /// The wide baseline is DERIVED, not authored: it is the smallest orthographic size
+    /// that still shows the whole pitch at the current aspect. On a 9:16 phone the pitch
+    /// is narrower than the screen, so this resolves to "fit the pitch height", filling
+    /// the portrait viewport top to bottom instead of leaving the authored letterbox.
+    /// Recomputed every frame so Agent_PitchSizing resizing the pitch per squad size (and
+    /// any resolution or orientation change) is picked up for free.
+    ///
+    /// Execution order -50 so the camera is settled before MatchFX samples Camera.main.
     /// </summary>
     [DefaultExecutionOrder(-50)]
     public sealed class Agent_CameraFollow : MonoBehaviour
@@ -18,18 +28,21 @@ namespace PoSoccer
         [SerializeField] private float _kickoffHoldSeconds = 2.0f;
         [Tooltip("Wide linger after each goal (seconds).")]
         [SerializeField] private float _goalHoldSeconds = 1.5f;
-        [Tooltip("Tight orthoSize = wide * (1 - zoomFraction). 0.33 = 1.5x zoom.")]
-        [Range(0.05f, 0.6f)] [SerializeField] private float _zoomFraction = 0.33f;
+        [Tooltip("Tightest allowed framing as a fraction of the wide shot. " +
+                 "0.45 = the camera may zoom to 2.2x when play is slow and compact.")]
+        [Range(0.25f, 1f)] [SerializeField] private float _tightestFraction = 0.45f;
+        [Tooltip("World units of breathing room kept around the ball and players.")]
+        [SerializeField] private float _actionPadding = 3.0f;
+        [Tooltip("Ball speed (m/s) at which the camera is pulled fully back to the wide " +
+                 "shot. Below this it interpolates toward the tight action framing.")]
+        [SerializeField] private float _speedForWide = 7.0f;
         [Tooltip("Position lerp toward the ball (per second at 60 fps).")]
         [Range(2f, 12f)] [SerializeField] private float _followSpeed = 6f;
-        [Tooltip("Half-margin added on top of pitchHalfExtents so the camera can " +
-                 "pan slightly past the goal mouths before clamping at the touchline.")]
+        [Tooltip("Extra world units the view may show beyond the touchline.")]
         [SerializeField] private float _edgeMargin = 0.5f;
 
         Camera _cam;
         Agent_EnvController _env;
-        float _wideOrthoSize;
-        float _tightOrthoSize;
         float _wideUntilTime;
         bool _wide;
 
@@ -37,15 +50,9 @@ namespace PoSoccer
         {
             _cam = Camera.main;
             _env = FindFirstObjectByType<Agent_EnvController>();
-            if (_cam == null) return;
-            _wideOrthoSize = _cam.orthographicSize;
-            _tightOrthoSize = _wideOrthoSize * (1f - _zoomFraction);
             _wide = true;
             _wideUntilTime = Time.time + _kickoffHoldSeconds;
-            if (_env != null)
-            {
-                _env.EpisodeEnded += OnEpisodeEnded;
-            }
+            if (_env != null) _env.EpisodeEnded += OnEpisodeEnded;
         }
 
         void OnDestroy()
@@ -59,37 +66,91 @@ namespace PoSoccer
             _wideUntilTime = Time.time + _goalHoldSeconds;
         }
 
+        /// <summary>
+        /// Smallest orthographic size showing the whole pitch at the current aspect.
+        /// orthographicSize is the HALF height, so the width constraint has to be divided
+        /// by aspect before comparing. Max of the two = nothing gets cropped.
+        /// </summary>
+        float WideOrthoSize(Vector2 half)
+        {
+            float aspect = _cam.aspect > 0.01f ? _cam.aspect : 0.5625f;   // 9:16 fallback
+            return Mathf.Max(half.y, half.x / aspect);
+        }
+
         void LateUpdate()
         {
             if (_cam == null || _env == null || _env.Ball == null) return;
 
-            // Switch to tight once the hold expires.
-            if (_wide && Time.time >= _wideUntilTime)
+            if (_wide && Time.time >= _wideUntilTime) _wide = false;
+
+            Vector2 pitchHalf = _env.PitchHalfExtents + Vector2.one * _edgeMargin;
+            float wideOrtho = WideOrthoSize(pitchHalf);
+            float tightestOrtho = wideOrtho * _tightestFraction;
+
+            Vector2 ballPos = _env.Ball.position;
+            float targetOrtho;
+
+            if (_wide)
             {
-                _wide = false;
+                targetOrtho = wideOrtho;
+            }
+            else
+            {
+                // Frame everything that matters: the ball and every player. Manual loop
+                // rather than LINQ - this runs every frame (performance.md).
+                float minX = ballPos.x, maxX = ballPos.x;
+                float minY = ballPos.y, maxY = ballPos.y;
+                var agents = _env.agents;
+                for (int i = 0; i < agents.Count; i++)
+                {
+                    var a = agents[i];
+                    if (a == null || a.Body == null) continue;
+                    Vector2 p = a.Body.position;
+                    if (p.x < minX) minX = p.x;
+                    if (p.x > maxX) maxX = p.x;
+                    if (p.y < minY) minY = p.y;
+                    if (p.y > maxY) maxY = p.y;
+                }
+
+                // Half-extents of the action, measured from the camera's focus point (the
+                // ball) so the framing stays ball-centred rather than drifting to the
+                // bounding-box centre, which would fight the position follow below.
+                float actionHalfX = Mathf.Max(Mathf.Abs(maxX - ballPos.x),
+                                              Mathf.Abs(ballPos.x - minX)) + _actionPadding;
+                float actionHalfY = Mathf.Max(Mathf.Abs(maxY - ballPos.y),
+                                              Mathf.Abs(ballPos.y - minY)) + _actionPadding;
+                float actionOrtho = WideOrthoSize(new Vector2(actionHalfX, actionHalfY));
+
+                // A fast ball needs more lead room; a slow one means a scrum worth
+                // filling the screen with.
+                float speed01 = Mathf.Clamp01(_env.Ball.linearVelocity.magnitude / _speedForWide);
+                targetOrtho = Mathf.Lerp(actionOrtho, wideOrtho, speed01);
+                targetOrtho = Mathf.Clamp(targetOrtho, tightestOrtho, wideOrtho);
             }
 
-            float targetOrtho = _wide ? _wideOrthoSize : _tightOrthoSize;
-            // Smooth the zoom so the cut from wide->tight reads as a deliberate move,
-            // not a snap. t = 1 - exp(-k * dt) gives frame-rate independent lerp.
-            float zoomK = _wide ? 4f : 5f;
+            // Frame-rate independent smoothing; easing out of the wide shot is a shade
+            // slower than easing into it so goal replays do not snap.
+            float zoomK = _wide ? 4f : 3f;
             _cam.orthographicSize = Mathf.Lerp(_cam.orthographicSize, targetOrtho,
                 1f - Mathf.Exp(-zoomK * Time.unscaledDeltaTime));
 
-            // Position lag: follow the ball, clamped to the pitch plus the edge margin.
-            Vector2 half = _env.PitchHalfExtents + Vector2.one * _edgeMargin;
-            float halfH = _cam.orthographicSize;
-            float halfW = halfH * _cam.aspect;
-            Vector2 target = _env.Ball.position;
-            target.x = Mathf.Clamp(target.x, -halfW, halfW);
-            target.y = Mathf.Clamp(target.y, -halfH, halfH);
+            // Clamp so the view never pans past the pitch. This previously computed
+            // pitchHalf and then clamped against the CAMERA's half-extents instead,
+            // leaving the pitch bounds unused and letting the camera drift off the pitch.
+            float camHalfH = _cam.orthographicSize;
+            float camHalfW = camHalfH * _cam.aspect;
+            float panX = Mathf.Max(0f, pitchHalf.x - camHalfW);
+            float panY = Mathf.Max(0f, pitchHalf.y - camHalfH);
+
+            Vector2 target = ballPos;
+            target.x = Mathf.Clamp(target.x, -panX, panX);
+            target.y = Mathf.Clamp(target.y, -panY, panY);
 
             Vector3 pos = _cam.transform.position;
             float t = 1f - Mathf.Exp(-_followSpeed * Time.unscaledDeltaTime);
             pos.x = Mathf.Lerp(pos.x, target.x, t);
             pos.y = Mathf.Lerp(pos.y, target.y, t);
-            pos.z = _cam.transform.position.z; // never change camera depth
-            _cam.transform.position = pos;
+            _cam.transform.position = pos;   // z untouched: never change camera depth
         }
     }
 }
