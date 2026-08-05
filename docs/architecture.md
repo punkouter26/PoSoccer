@@ -1,198 +1,333 @@
 # PoSoccer — ML-Agents Architecture Diagram Suite
 
-Generated 2026-07-31 against commit `521293c` (+ bot boost-shot/shoulder-charge working tree).
-Project: top-down 2D physics soccer (Unity 6000.5.4f1, 2D URP, **Box2D** physics — this
-project has no 3D PhysX, no joints, no articulated rigs; agents are momentum-driven boxes).
-Note: the generation template referenced `CreatureTrainingRace.unity`; this project's
-training scene is `Assets/Scenes/SCN_Training.unity` — all diagrams reflect the real scene.
+Generated **2026-08-05** against `master` @ `5f25701`.
+Project: top-down 2D physics soccer. Unity 6000.5.6f1, 2D URP, **Box2D** (`Physics2D`).
 
-Brains: `STANDARD` (trained), `MATT` / `KIM` / `NICK` (reward-DNA designed, untrained — bot-driven).
+**Read this before the diagrams.** Two facts shape every one of them:
+
+1. **No joints, no articulated rig, no PhysX.** Each agent is a *single* `Rigidbody2D`
+   driven by one linear force and one torque (`Agent_Soccer.OnActionReceived`). There are
+   no per-joint drive targets, no $K_p$/$K_d$ gains, no DoF chain. This is a recorded
+   deviation — see `rules-exemptions.md` §2. The "Actuator Map" below therefore documents
+   the **traction model**, which is what actually converts action vectors into motion.
+2. **No trained brain is currently assigned.** All four personality `.onnx` were deleted
+   on 2026-08-05 (they declared 102 inputs against a 118-input runtime). `brainModel` is
+   `null` on all five profiles, so every player falls back to `Agent_HeuristicBot`. The
+   inference path below is *the contract*, not something running today.
+
+Total model inputs: **118** = 66 ray + 52 vector. Changing any of it obsoletes every export.
 
 ---
 
 ## 1. Runtime Inference Loop
 
 ### 1-simple
+
 ```mermaid
 flowchart TD
-    DR[DecisionRequester\nevery 8 physics steps] --> OBS[Collect observations\nvector + vision rays]
-    OBS --> NN[STANDARD.onnx\nUnity InferenceEngine]
-    NN --> ACT[OnActionReceived\nmove / turn / boost]
-    ACT --> PHYS[Box2D physics\nforces move body & ball]
-    PHYS --> WORLD[Goals, walls, opponents]
-    WORLD --> DR
+    A[FixedUpdate<br/>0.01 s] --> B[DecisionRequester<br/>every 8 steps]
+    B --> C[CollectObservations]
+    C --> D[Sentis / InferenceEngine]
+    D --> E[OnActionReceived]
+    E --> F[Box2D solver]
+    F --> A
 ```
 
 ### 1-detailed
+
 ```mermaid
 flowchart TD
-    FU[FixedUpdate @ 0.01 s\nAcademy.EnvironmentStep] --> DR{DecisionRequester\nDecisionPeriod = 8\n→ 12.5 decisions/s}
-    DR -->|decision step| CO["Agent_Soccer.CollectObservations\n18 floats: vel(2) eye(2) stamina(1)\nrelBall(2) ballVel(2) relOppGoal(2)\nrelOwnGoal(2) distOppGoal(1) mate(4)\n× 2 stacked → obs_1 [1,36]"]
-    DR -->|decision step| SV["Sensor_Vision (RayPerceptionSensor2D)\n11 rays, 120° arc, 12 u range\ntags: Ball Wall Goal Agent\n11 × (4+2) = obs_0 [1,66]"]
-    CO --> BP[BehaviorParameters\nname STANDARD - enforced in Awake\nTeamId = team enum]
-    SV --> BP
-    BP -->|InferenceOnly / Default| IE["Unity.InferenceEngine (Sentis lineage)\nSTANDARD.onnx - 93,140 params\nCPU burst inference"]
-    BP -->|HeuristicOnly| HB[Agent_HeuristicBot\nchase / line-up / corner-craft\nboost-shot / shoulder-charge]
-    IE --> AB["continuous_actions [1,3] ∈ [-1,1]"]
-    HB --> AB
-    AB --> OAR["OnActionReceived\ndrive = MoveTowards(prev, a0·700N·boost·stamina, 2300 N/s)\ntorque = a1·250 N·m, ω clamp 360°/s\nboost: a2>0.1 & stamina → ×2.2"]
-    OAR --> B2D["Rigidbody2D (Box2D)\nagent 60-95 kg, ball 0.43 kg\nMagnus curl + spin transfer\nwall kick-out impulse 6 N·s"]
-    B2D --> EV[Reward_GoalTrigger / walls / corner arcs]
-    EV --> ENVC[Agent_EnvController\nrewards, episode events]
-    ENVC --> FU
+    subgraph Sense
+      A1["Sensor_Vision<br/>RayPerceptionSensor2D<br/>11 rays · 300° · 24 m<br/>tags Ball/Wall/Goal/Agent<br/>→ 66 floats"]
+      A2["Agent_Soccer.CollectObservations<br/>self 4 + stamina 1 + ball 4<br/>+ goals 5 + teammate 4<br/>+ opponents 8 = 26<br/>× 2 stacked → 52 floats"]
+    end
+    A1 --> M
+    A2 --> M
+    M["Model input 118<br/>normalize: true"] --> N["MLP<br/>2 layers × 256 units"]
+    N --> O["4 continuous actions<br/>fwd · lateral · turn · boost<br/>tanh-bounded"]
+    O --> P["OnActionReceived<br/>×1.6 ActionGain, clamp ±1"]
+    P --> Q["Traction budget<br/>μ·m·g = 1.2·75·9.81 ≈ 883 N"]
+    Q --> R["Rigidbody2D.AddForce / AddTorque<br/>slew 1200 N/s · torque 250 N·m"]
+    R --> S["Physics2D step<br/>Δt 0.01 s · vel 8 / pos 3 iters<br/>gravity (0,0)"]
+    S --> T{Terminal?}
+    T -- goal / stalemate / OOB --> U[Agent_EnvController]
+    T -- no --> A1
 ```
+
+> `RayPerceptionSensor.OutputSize()` = `(DetectableTags + 2) × (2 × RaysPerDirection + 1)`
+> = `(4 + 2) × 11` = **66**. It depends on tag and ray *counts* only — **not** on arc or
+> range. Changing `ArcDegrees` or `RayLength` keeps every tensor shape identical while
+> silently changing what the rays mean. See the sensor-geometry landmine in `CLAUDE.md`.
 
 ---
 
 ## 2. Tensor Blueprint
 
 ### 2-simple
+
 ```mermaid
 flowchart LR
-    A[Vision rays\n66 numbers] --> N[Neural network\n2 hidden layers]
-    B[Body & ball state\n36 numbers] --> N
-    N --> C[3 actions\nmove, turn, boost]
+    R[rays 66] --> C[concat 118]
+    V[vector 52] --> C
+    C --> H[2 × 256] --> A[4 actions]
 ```
 
 ### 2-detailed
+
 ```mermaid
 flowchart LR
-    subgraph Inputs
-        O0["obs_0 [B,66]\nray hits one-hot 4 tags\n+ miss flag + distance,\n× 11 rays"]
-        O1["obs_1 [B,36]\n18 obs × 2 stacked frames\n(velocity/trend context\nat DecisionPeriod 8)"]
+    subgraph obs_0["obs_0 — ray sensor"]
+      R1["[batch, 66]<br/>11 rays × 6<br/>(4 tags + hit + dist)"]
     end
-    O0 --> NRM["VectorNormalizer\n(normalize: true,\nrunning mean/var)"]
-    O1 --> NRM
-    NRM --> H1["Linear 102→H + Swish"]
-    H1 --> H2["Linear H→H + Swish"]
-    H2 --> MU["mu [B,3]"]
-    H2 --> SIG["log_sigma [3]\n(state-independent)"]
-    MU --> SAMPLE["Gaussian sample → tanh-free clamp [-1,1]"]
-    SIG --> SAMPLE
-    SAMPLE --> OUT1["continuous_actions [B,3]"]
-    MU --> OUT2["deterministic_continuous_actions [B,3]\n(used by eval/exhibition inference)"]
-    NOTE["H = 256 (phase 1 PPO, STANDARD.onnx 93,140 params)\nH = 512 (phase 2 POCA, checkpoints 317,140 params)\nextra outputs: version_number, memory_size=0 (no LSTM)"]
+    subgraph obs_1["obs_1 — vector, stacked ×2"]
+      V1["[batch, 52]<br/>26 per frame"]
+      V2["self pos/vel 4<br/>stamina 1<br/>ball rel pos/vel 4<br/>own+opp goal 5<br/>teammate slot 4<br/>opponent slots 2×4 = 8"]
+    end
+    R1 --> CAT["concat → [batch, 118]"]
+    V1 --> CAT
+    V2 -.->|zero-padded when slot empty| V1
+    CAT --> NORM["running normalizer"]
+    NORM --> L1["dense 256 + swish"]
+    L1 --> L2["dense 256 + swish"]
+    L2 --> PI["policy head → [batch, 4] μ<br/>+ log σ (continuous)"]
+    L2 --> VF["value head → [batch, 1]"]
+    PI --> ACT["fwd · lateral · turn · boost"]
 ```
+
+**Zero-padding is load-bearing.** Training and eval are **1v1** — `SCN_Training` holds
+exactly two agents — so the teammate block and the second opponent slot are *always zero*.
+No policy has ever practised with a teammate; 2v2 is untested capability, not tuned
+behaviour.
 
 ---
 
-## 3. Reward Tree (per-brain personality DNA in `Reward_Settings` assets)
+## 3. Reward Tree
 
 ### 3-simple
+
 ```mermaid
 graph TD
-    R[Rewards] --> W[Win the episode]
-    R --> P[Play well each step]
-    W --> G[Score +, Assist +, Concede −, Draw −]
-    P --> D[Chase ball, face ball,\nshoot goalward, avoid walls & corners]
-    R --> U[Every player: same total budget,\nspent differently = personality]
+    E[Episode] --> T[Terminal]
+    E --> D[Dense shaping]
+    T --> T1[goal +1.2]
+    T --> T2[conceded −1.0]
+    T --> T3[stalemate −0.6]
+    D --> D1[approach ball]
+    D --> D2[penalties]
 ```
 
 ### 3-detailed
+
 ```mermaid
 graph TD
-    ROOT[Reward stream] --> TERM["Terminal (episode end)\nbudget: Σ = 2.2 for every player"]
-    ROOT --> DENSE["Dense (per decision)\nbudget: Σ scales = 0.0016"]
-    ROOT --> SPARSE["Sparse"]
-    ROOT --> GROUP["MA-POCA group (2v2)\nwin +1 / lose −1 team reward"]
-    TERM --> TS["goalScorer: STD 0.7, MATT 1.0,\nKIM 0.45, NICK 0.5"]
-    TERM --> TA["assist: STD 0.3, MATT 0.15,\nKIM 0.35, NICK 0.5"]
-    TERM --> TB["teamBaselineVictory: 0.15–0.2"]
-    TERM --> TC["goalConceded: STD −1.0, MATT −0.9,\nKIM −1.2, NICK −1.0"]
-    TERM --> TD2["stalemateTimeout: MATT −0.2 … KIM −0.02"]
-    DENSE --> D1["ballProximity 1/(1+d) × 0.0002–0.0004"]
-    DENSE --> D2["facingAlignment dot(eye,toBall) × 0.0002"]
-    DENSE --> D3["ballToGoalVelocity (the shoot gradient)\nSTD 0.0010, MATT 0.0011, KIM/NICK 0.0004–6"]
-    DENSE --> D4["KIM trait: defensivePosition 0.0006\n(stand on ball→own-goal line)"]
-    DENSE --> D5["NICK trait: possession 0.0006\n(ball within 1.2 m)"]
-    DENSE --> PEN["Penalties (style, off-budget):\nstep −0.0001/−0.0002, jitter ×0.0005–0.002,\nwall band −0.0005, corner zone −0.0006"]
-    SPARSE --> S1["first ballContact +0.05/episode"]
+    ROOT["Reward_Settings (ScriptableObject)<br/>one asset per personality"]
+
+    ROOT --> TERM["Terminal"]
+    TERM --> G1["goalScorer +1.2<br/>MATT 1.4 · KIM 1.3"]
+    TERM --> G2["assist +0.3"]
+    TERM --> G3["teamBaselineVictory +0.1"]
+    TERM --> G4["goalConceded −1.0"]
+    TERM --> G5["stalemateTimeout −0.6"]
+
+    ROOT --> DENSE["Dense (per FixedUpdate)"]
+    DENSE --> P1["ballProximityScale 0.002<br/>useDifferentialProximity: true<br/>reward = (prevDist − curDist) × scale"]
+    DENSE --> P2["facingAlignmentScale 0.0002"]
+    DENSE --> P3["ballToGoalVelocityScale 0.001"]
+    DENSE --> P4["ballContact 0.005<br/>≈ 240 touches per goal"]
+    DENSE --> P5["stepPenalty 0.0"]
+
+    ROOT --> PEN["Penalties"]
+    PEN --> N1["actionJitterScale 0.0004"]
+    PEN --> N2["wallProximityPenalty 0.0005"]
+    PEN --> N3["cornerBallPenalty 0.0006"]
+
+    ROOT --> TRAIT["Personality traits"]
+    TRAIT --> X1["defensivePositionScale — KIM only"]
+    TRAIT --> X2["possessionScale — NICK only"]
 ```
+
+**Why the terminal numbers are what they are.** The original table
+(`goalScorer 0.7 / stalemateTimeout −0.1`) made stalling *optimal*: EV(stall) = −0.1 vs
+EV(attack at 50/50) = −0.15, so a policy needed a **>53% win rate before attacking beat
+parking the bus** — and it wins ~17%. Retuned 2026-08-04 so attacking wins even at 30%
+(−0.34 vs −0.60).
+
+**Personality lives in terminal rewards, trait scales and physique — never in the
+locomotion mechanics.** `RewardProfiles_MatchCodeDefaultsOnMechanics` (EditMode) pins the
+mechanics terms to the code defaults after profile drift cost four training runs. Keep it
+green.
 
 ---
 
-## 4. Actuator Map (no joints/Kp-Kd — force-driven rigid bodies)
+## 4. Actuator Map
+
+> **There are no joints.** The rule this diagram answers asks for joint drive targets,
+> $K_p$/$K_d$ and DoF limits. PoSoccer has none — one `Rigidbody2D`, one force, one torque.
+> What follows is the real actuation chain: a friction-circle traction model.
 
 ### 4-simple
+
 ```mermaid
 flowchart LR
-    A0[Action 0\nmove] --> F[Push body forward/back]
-    A1[Action 1\nturn] --> T[Spin body]
-    A2[Action 2\nboost] --> S[Sprint ×2.2\nwhile stamina lasts]
-    F --> BALL[Run through ball = shot\nrun into opponent = shove]
+    A[4 actions] --> B[intent vector]
+    B --> C[friction circle μ·m·g]
+    C --> D[AddForce]
+    A --> E[turn] --> F[AddTorque]
 ```
 
 ### 4-detailed
+
 ```mermaid
 flowchart LR
-    A0["a[0] move ∈ [-1,1]"] --> SLEW["target = a0 × 700 N × boostMul × staminaPow\nslew: MoveTowards @ 2300 N/s\n(reversals take ~0.3-0.6 s)"]
-    SLEW --> ADDF["AddForce(eyeAxis × drive)\nmass 60 (NICK) / 66 (KIM) / 75 (STD) / 95 (MATT) kg\n→ m·v_max invariant: equal top-speed momentum"]
-    A1["a[1] turn ∈ [-1,1]"] --> TQ["AddTorque(a1 × 250 N·m)\nangularVelocity clamp ±360°/s"]
-    A2["a[2] boost ∈ [0,1]"] --> BST{"a2 > 0.1\n& stamina > 0?"}
-    BST -->|yes| MUL["boostMul = 2.2\nstamina drains (Agent_Stamina)"]
-    BST -->|no| ONE["boostMul = 1\nstaminaPow = 0.6 + 0.4·ratio"]
-    ADDF --> CONTACT["Ball contact = momentum transfer\n+ spin ×0.3 → Magnus curl"]
-    CONTACT --> KICKOUT["Auto wall kick-out:\ntouch ball in 1 m wall band →\nimpulse 6 N·s corners / 3 N·s walls\n(goal mouths exempt, 0.5 s cooldown)"]
+    A0["a0 forward"] --> I["intent = fwd·up + lat·right<br/>ClampMagnitude 1"]
+    A1["a1 lateral"] --> I
+    A2["a2 turn"] --> TQ
+    A3["a3 boost ≥ 0.1"] --> BO
+
+    I --> DR["drive = 236 N × (m / 75 kg)<br/>constant N/kg → same top speed<br/>every physique"]
+    BO --> BM["×2.2 while stamina remains"]
+    BM --> DR
+    DR --> SLEW["slew ≤ 1200 N/s<br/>(muscle ramp ~0.2 s jog)"]
+    SLEW --> CIRC["friction circle<br/>|F_total| ≤ μ·m·g<br/>1.2 × 75 × 9.81 ≈ 883 N"]
+    BRK["active foot braking<br/>when no drive intent"] --> CIRC
+    LAT["lateral drag 0.4<br/>strafe ≈ 64% of run"] --> CIRC
+    CIRC --> FRC["Rigidbody2D.AddForce"]
+
+    TQ --> TS["torque 250 N·m<br/>× turnScale(speed)<br/>360°/s at rest → 25% at sprint"]
+    TS --> TRQ["AddTorque, |ω| ≤ 360°/s"]
+
+    FRC --> BODY["Rigidbody2D<br/>mass 75 kg · linearDamping 0.7"]
+    TRQ --> BODY
+    STA["Agent_Stamina<br/>power floor 0.6 when spent<br/>wear 0.002/s boosting, floor 0.6"] --> DR
 ```
+
+Measured on the chassis: **4.35 m/s jog, 9.54 m/s sprint, t95 ≈ 3.7 s.** Gravity is
+`(0,0)` in-plane (top-down; `rules-exemptions.md` §1) but $g = 9.81$ enters *physically*
+through the traction budget — body weight sets the normal force, which sets how hard the
+feet can push, cut and brake.
+
+Ball: FIFA spec — r = 0.11 m, 0.43 kg, drag ~0.1 randomized per episode, Magnus curl.
+Wall kick-out: 6 N·s impulse inside a 1.0 m band, 0.5 s cooldown (corner-scrum escape).
 
 ---
 
 ## 5. Hyperparameter Matrix
 
 ### 5-simple
+
 ```mermaid
 flowchart LR
-    P1[Phase 1: PPO\nvs rule-based bot\n20M steps done] --> B[STANDARD brain]
-    P2[Phase 2: MA-POCA\nself-play, both teams learn\n30M steps running] --> B
+    P[PPO] --> H[lr 3e-4 linear]
+    P --> B[batch 2048 / buffer 20480]
+    P --> N[2 × 256]
+    P --> S[20M steps]
 ```
 
 ### 5-detailed
+
 ```mermaid
 flowchart LR
-    subgraph "Phase 1 - PPO (soccer_p1e_00, complete)"
-        P1A["trainer: ppo | lr 3e-4 linear→0\nbatch 2048 | buffer 20480 | epochs 3\nβ 5e-3 | ε 0.2 | λ 0.95 | γ 0.99\nnet 2×256 Swish, normalize\ntime_horizon 512 | max 20M"]
+    subgraph trainer["trainer — config/STANDARD_phase9_randomized.yaml"]
+      T1["trainer_type: ppo"]
+      T2["max_steps: 20,000,000"]
+      T3["time_horizon: 1024"]
+      T4["summary_freq: 50,000"]
+      T5["keep_checkpoints: 20<br/>checkpoint_interval: 1,000,000"]
     end
-    subgraph "Phase 2 - MA-POCA (soccer_p2_00, running)"
-        P2A["trainer: poca | lr 3e-4 constant\nbatch 2048 | buffer 20480 | epochs 3\nβ 5e-3 | ε 0.2 | λ 0.95 | γ 0.99\nnet 2×512 Swish, normalize\ntime_horizon 1000 | max 30M"]
-        P2B["self_play: save every 50k,\nteam_change 200k, swap 2k,\nwindow 10, latest-model 50%,\nELO start 1200"]
+    subgraph hyper["hyperparameters"]
+      H1["batch_size: 2048"]
+      H2["buffer_size: 20480"]
+      H3["learning_rate: 3.0e-4<br/>schedule: linear"]
+      H4["beta: 8.0e-3"]
+      H5["epsilon: 0.2"]
+      H6["lambd: 0.95"]
+      H7["num_epoch: 3"]
     end
-    P1A -->|"--initialize-from\n⚠ arch mismatch 256→512:\npolicy re-initialized (see report)"| P2A
-    subgraph "Curriculum goal_width (progress-gated)"
-        C0["Lesson0 wide 6.0\n0–20%"] --> C1["Lesson1 mid 4.0\n20–50% (active)"] --> C2["Lesson2 tight 2.5\n50–100%"]
+    subgraph net["network_settings"]
+      N1["normalize: true"]
+      N2["hidden_units: 256"]
+      N3["num_layers: 2"]
     end
+    subgraph rs["reward_signals"]
+      R1["extrinsic<br/>gamma 0.99 · strength 1.0"]
+    end
+    subgraph env["environment_parameters"]
+      E1["goal_width: 6.0 (fixed —<br/>matches eval, no mismatch)"]
+      E2["bot_strength: uniform<br/>[0.2, 1.0] per episode"]
+    end
+    trainer --> hyper --> net --> rs --> env
 ```
+
+**Phase 9 is a single-variable change: the curriculum was replaced by sampling.** A gated
+ladder starved every prior run — p7 spent all 20M steps at `bot_strength` 0.2 and was then
+graded at 1.0. Coverage went *backwards* across runs (p5 → 0.8, p6 → 0.5, p7 → 0.2,
+p8 → 0.35). Uniform sampling makes the train and eval distributions match and leaves no
+threshold to tune wrong.
+
+Parity is enforced: embedded `com.unity.ml-agents` **4.1.0** ↔ Python `mlagents`
+**1.2.0.dev0**, pinned in `requirements-training.txt`.
 
 ---
 
 ## 6. Episode Lifecycle
 
 ### 6-simple
+
 ```mermaid
 stateDiagram-v2
-    [*] --> Kickoff
-    Kickoff --> Playing
-    Playing --> Goal: ball fully in a net
-    Playing --> Timeout: step cap reached
-    Goal --> Kickoff: rewards paid, pitch reset
-    Timeout --> Kickoff
+    [*] --> Reset
+    Reset --> Stepping
+    Stepping --> Stepping: decision every 8
+    Stepping --> Terminal: goal / timeout / OOB
+    Terminal --> Reset
 ```
 
 ### 6-detailed
+
 ```mermaid
 stateDiagram-v2
-    [*] --> ResetPitch
-    ResetPitch: ResetPitch\nread goal_width curriculum\nball center + jitter, random drag 0.08-0.15\nagents random own-half spawns ±20° facing
-    ResetPitch --> StepLoop
-    StepLoop: Step loop (FixedUpdate 0.01 s)\ndecision every 8 steps → dense rewards\nMagnus force · stamina tick · kick-out pops
-    StepLoop --> GoalScored: Reward_GoalTrigger\n(ball fully inside net)
-    StepLoop --> Stalemate: StepCount ≥ cap\n(5000 train / 2500 exhibition)
-    StepLoop --> OutOfBounds: containment watchdog\n(anything beyond extents +1.5)
-    GoalScored: OnGoalScored\nscorer +0.7·profile / assist +0.3\nconceders −1.0 / others +0.2\nPOCA group +1 / −1, EndEpisode
-    Stalemate: OnStalemate\nall agents stalemateTimeout\nGroupEpisodeInterrupted
-    OutOfBounds: OnOutOfBounds\nno rewards, episode interrupted
+    [*] --> Initialize
+
+    Initialize: Agent_Soccer.Awake
+    Initialize: contract asserted (26 obs × 2, 4 actions)
+    Initialize: Sensor_Vision auto-added if absent
+    Initialize: red team → HeuristicOnly when POSOCCER_OPPONENT=bot
+    Initialize --> ResetPitch
+
+    ResetPitch: random own-half spawns
+    ResetPitch: ball drag randomized
+    ResetPitch: goal_width from env params
+    ResetPitch: EnsureSpawnCache heals + warns
+    ResetPitch --> Stepping
+
+    Stepping: FixedUpdate 0.01 s
+    Stepping: DecisionRequester period 8
+    Stepping: dense rewards accumulate
+    Stepping --> Stepping: step < cap
+
+    Stepping --> GoalScored: Reward_GoalTrigger
+    Stepping --> Stalemate: step ≥ maxEnvironmentSteps (5000)
+    Stepping --> OutOfBounds: containment watchdog
+
+    GoalScored: +1.2 scorer · +0.3 assist · −1.0 conceded
+    Stalemate: −0.6 both sides
+    OutOfBounds: reset, no terminal reward
+
     GoalScored --> EpisodeEnded
     Stalemate --> EpisodeEnded
     OutOfBounds --> EpisodeEnded
-    EpisodeEnded: EpisodeEnded event fires BEFORE reset\n(HUD toast, FX, audio, eval stats\nread cumulative rewards here)
+
+    EpisodeEnded: event fires BEFORE reset
+    EpisodeEnded: subscribers read cumulative reward + StepCount
+    EpisodeEnded: HUD · MatchFX · Audio · CameraFollow · EvalStats
     EpisodeEnded --> ResetPitch
+    EpisodeEnded --> [*]: eval episode budget reached
 ```
+
+**The event ordering is a contract.** `EpisodeEnded` fires *before* `ResetPitch` so
+subscribers can still sample `GetCumulativeReward()` and `StepCount`. Five components
+depend on it, each with a matched `+=`/`-=` in enable/disable. Moving the fire site after
+the reset would silently zero every reported reward.
+
+`stepCapOverride` on the exhibition Pitch shortens episodes to 2500 steps for match pace;
+training uses the full 5000.

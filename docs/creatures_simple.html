@@ -2,62 +2,150 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PoSoccer — Executive Dashboard</title>
 <style>
- body{font-family:Segoe UI,Arial,sans-serif;background:#101418;color:#e8edf2;margin:0;padding:28px;max-width:900px}
- h1{color:#7fd47f} h2{color:#8ecbff;margin-top:30px;font-size:19px}
- .bar{background:#232d36;border-radius:8px;height:22px;overflow:hidden;margin:4px 0 14px}
- .fill{height:100%;border-radius:8px;color:#08110a;font-weight:700;font-size:13px;line-height:22px;padding-left:10px;white-space:nowrap}
- .g{background:#7fd47f}.y{background:#e8c46a}.r{background:#ff8b7b}.b{background:#7fb8ff}
- .card{background:#161d24;border:1px solid #2a3540;border-radius:10px;padding:14px 18px;margin:10px 0}
- .badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;margin-left:8px}
- .bok{background:#1d4022;color:#8fe89f}.bwait{background:#4a3d1a;color:#ffd97a}.bbot{background:#3a2b4a;color:#d9b8ff}
- .small{color:#94a1ae;font-size:12.5px} b.k{color:#9fd6ff}
+ :root{--bg:#101418;--panel:#19212a;--line:#2a3540;--fg:#e8edf2;--muted:#93a2b1;
+       --grn:#7fd47f;--blu:#8ecbff;--red:#ff8a80;--amb:#ffc46b}
+ *{box-sizing:border-box}
+ body{font-family:Segoe UI,system-ui,Arial,sans-serif;background:var(--bg);color:var(--fg);
+      margin:0;padding:28px;max-width:960px;margin-inline:auto;line-height:1.6}
+ h1{color:var(--grn);margin-top:0}
+ h2{color:var(--blu);margin-top:36px;font-size:19px;border-bottom:1px solid var(--line);padding-bottom:6px}
+ .sub{color:var(--muted);font-size:13px;margin-bottom:26px}
+ .cards{display:flex;flex-wrap:wrap;gap:14px;margin:20px 0}
+ .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;flex:1 1 200px}
+ .card .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+ .card .v{font-size:30px;font-weight:700;margin-top:4px}
+ .bar{background:#0b1014;border-radius:6px;height:22px;overflow:hidden;margin:6px 0 2px;border:1px solid var(--line)}
+ .bar span{display:block;height:100%;line-height:22px;font-size:12px;color:#07110a;font-weight:700;padding-left:8px;white-space:nowrap}
+ .row{margin:14px 0}
+ .row .lbl{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
+ .pill{display:inline-block;padding:3px 12px;border-radius:20px;font-size:12px;font-weight:700}
+ .p-bad{background:#3a1f1f;color:var(--red)}
+ .p-warn{background:#3a3220;color:var(--amb)}
+ .p-ok{background:#1f3a26;color:var(--grn)}
+ .scroll{overflow-x:auto}
+ table{border-collapse:collapse;width:100%;font-size:14px;margin:12px 0;min-width:460px}
+ th,td{border:1px solid var(--line);padding:8px 11px;text-align:left}
+ th{background:var(--panel);color:var(--blu)}
+ .box{background:#1b2430;border-left:4px solid var(--blu);padding:14px 18px;margin:20px 0;border-radius:0 6px 6px 0}
+ .box.bad{background:#2b1d1d;border-left-color:var(--red)}
+ footer{margin-top:44px;padding-top:16px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
 </style>
 </head>
 <body>
-<h1>⚽ PoSoccer — Agent Dashboard</h1>
-<p class="small">2026-07-31 · plain-language status of the AI players</p>
 
-<h2>🏃 Training right now: the STANDARD brain, v2</h2>
-<div class="card">
-The brain is playing <b>against itself</b> (both teams learning) on the new corner-proof pitch — 30 million practice steps planned.
-<div class="bar"><div class="fill b" style="width:24%">7.1M / 30M — 24% · ~6 h left</div></div>
-<b class="k">Learning signal:</b> its match reward climbed from losing (−0.31) to solidly winning (+0.87) its practice games.<br>
-<b class="k">Skill rating (ELO):</b> 1176 — even with its past selves so far; a sustained climb is the "getting genuinely better" signal.<br>
-<b class="k">Difficulty ramp:</b> passed level 1 of 3 — goals just narrowed from 6.0 to 4.0; the tight 2.5 net unlocks halfway through.
-<p class="small">⚠ One honest caveat: the plan was to start from the old brain's knowledge, but a network-size change made it
-start fresh (details in the technical report). It's learning fast anyway; if the final exam disappoints, we rerun with the fix.</p>
+<h1>PoSoccer — Executive Dashboard</h1>
+<div class="sub">2026-08-05 · benchmark status at a glance</div>
+
+<div class="cards">
+  <div class="card"><div class="k">Benchmark bar</div><div class="v">80%</div><div class="sub" style="margin:0">wins, &le;10% stalemates</div></div>
+  <div class="card"><div class="k">Best measured</div><div class="v" style="color:var(--red)">17.4%</div><div class="sub" style="margin:0">1000-episode eval</div></div>
+  <div class="card"><div class="k">Bot-vs-bot parity</div><div class="v" style="color:var(--amb)">42.5%</div><div class="sub" style="margin:0">the fair-harness reference</div></div>
+  <div class="card"><div class="k">Brains shipped</div><div class="v" style="color:var(--red)">0</div><div class="sub" style="margin:0">all players are bots</div></div>
 </div>
 
-<h2>📈 How good is the current champion?</h2>
-<div class="card">
-100-match exam vs the rule-based bot (goal: 80% wins):
-<div class="bar"><div class="fill y" style="width:32%">32% wins — current brain, new physics</div></div>
-<div class="bar"><div class="fill r" style="width:18%">18% — same brain before the corner fixes</div></div>
-<div class="bar"><div class="fill g" style="width:100%">0% stalemates (was 27%) — corner-jam problem solved ✔</div></div>
-Progress story: 8% → 22% → 18% → <b>32%</b>. Matches now resolve 3.5× faster — every game ends with a real goal.
+<div class="box bad">
+<strong>Status: not met, and not close.</strong> Every trained policy scores 15&ndash;24%
+against a rule-based bot whose own parity is 42.5%. The brains are meaningfully
+<em>worse</em> than the scripted opponent they were built to beat. No <code>.onnx</code> is
+currently assigned — the game fields rule-based bots and remains fully playable.
 </div>
 
-<h2>👥 The Roster</h2>
-<div class="card"><b style="color:#c0c0c8">■ STANDARD</b> — the balanced pro <span class="badge bok">REAL AI BRAIN</span><br>
-<span class="small">Reference build (75 kg). The only trained player; his v2 is in the oven right now.</span></div>
-<div class="card"><b style="color:#ff9f40">■ MATT</b> — the Striker <span class="badge bbot">BOT (awaiting training)</span><br>
-<span class="small">The big guy (1.25×, 95 kg): slow, unstoppable in a shoving duel, lives to score, hates draws.</span></div>
-<div class="card"><b style="color:#40cfe0">■ KIM</b> — the Wall <span class="badge bbot">BOT (awaiting training)</span><br>
-<span class="small">Compact and disciplined (66 kg): conceding hurts her more than anyone; paid to stand in the shot lane.</span></div>
-<div class="card"><b style="color:#b070f0">■ NICK</b> — the Midfielder <span class="badge bbot">BOT (awaiting training)</span><br>
-<span class="small">Smallest and fastest (60 kg): keeps the ball on a string, values the assist as much as the goal.</span></div>
-<p class="small">Fairness rule: everyone has the same total "motivation budget" and the same top-speed momentum —
-big-and-slow hits exactly as hard as small-and-fast. Personalities differ in <i>style</i>, not strength.</p>
+<h2>Progress toward the bar</h2>
 
-<h2>🔧 Recent behavior evolution</h2>
-<div class="card">
-✔ Corner-stuck ball fixed — rounded slick corners + automatic kick-out pop (stalemates 27% → 0%)<br>
-✔ Bots learned corner-craft: sweep the ball out along the wall instead of pinning it<br>
-✔ Bots learned to <b>boost-shoot</b> (sprint through the ball when lined up) and <b>shoulder-charge</b> ball-hogs<br>
-✔ Personalities rebalanced to equal budgets; big/small body physics added<br>
-⏳ Tonight: v2 brain finishes → automatic 100-match exam vs the 32% baseline
+<div class="row">
+  <div class="lbl"><span>Win rate — best run vs 80% target</span><span>17.4%</span></div>
+  <div class="bar"><span style="width:21.75%;background:var(--red)">21.8% of target</span></div>
 </div>
+<div class="row">
+  <div class="lbl"><span>Stalemate rate — 14.0% vs &le;10% target</span><span>14.0%</span></div>
+  <div class="bar"><span style="width:71.4%;background:var(--amb)">over budget</span></div>
+</div>
+<div class="row">
+  <div class="lbl"><span>Current run <code>soccer_p9_random_00</code></span><span>15.0M / 20M steps</span></div>
+  <div class="bar"><span style="width:75%;background:var(--blu)">75% — interrupted, never graded</span></div>
+</div>
+
+<h2>Behaviour evolution</h2>
+<div class="scroll">
+<table>
+<tr><th>Phase</th><th>Hypothesis under test</th><th>Result</th><th>Verdict</th></tr>
+<tr><td>v2 / v3</td><td>baseline PPO</td><td>15&ndash;18%</td><td><span class="pill p-bad">no</span></td></tr>
+<tr><td>p3</td><td>opponent-strength curriculum</td><td>19%</td><td><span class="pill p-bad">no</span></td></tr>
+<tr><td>p4</td><td>actually train against the bot</td><td>24% <span style="color:var(--muted)">(&plusmn;8, n=100)</span></td><td><span class="pill p-warn">noise</span></td></tr>
+<tr><td>p5</td><td>more compute — 30M steps</td><td>24% <span style="color:var(--muted)">(&plusmn;8, n=100)</span></td><td><span class="pill p-bad">no</span></td></tr>
+<tr><td>p6</td><td>give the agent opponent observations</td><td>17.1%</td><td><span class="pill p-bad">no</span></td></tr>
+<tr><td>p7</td><td>fix the reward table so attacking pays</td><td>16.6%</td><td><span class="pill p-bad">no</span></td></tr>
+<tr><td>p8</td><td>fix drifted locomotion rewards</td><td>16.9%</td><td><span class="pill p-bad">no</span></td></tr>
+<tr><td>p9</td><td>randomize opponent strength</td><td><em>incomplete</em></td><td><span class="pill p-warn">pending</span></td></tr>
+</table>
+</div>
+
+<div class="box">
+<strong>Four hypotheses, four flat results.</strong> Perception, reward balance, compute and
+locomotion rewards were each tested and each moved the graded number by less than the
+measurement error. The one thing that <em>did</em> change was training reward — p8 reached
++0.648 where p7 ended +0.281, an 8&times; sample-efficiency gain — and <strong>none of it
+transferred</strong>. Training reward is not the objective; the evaluation is.
+</div>
+
+<h2>What we actually learned</h2>
+
+<h3 style="color:var(--amb);font-size:15px">1. The agent never learned to drive</h3>
+<div class="scroll">
+<table>
+<tr><th>4-second chase</th><th>Trained policy</th><th>Scripted bot</th><th>Chassis limit</th></tr>
+<tr><td>Distance travelled</td><td style="color:var(--red)">2.62 m</td><td>15.08 m</td><td>&mdash;</td></tr>
+<tr><td>Reached the ball</td><td style="color:var(--red)">never</td><td>2.70 s</td><td>&mdash;</td></tr>
+<tr><td>Top speed</td><td style="color:var(--red)">0.95 m/s</td><td>5.17 m/s</td><td>9.54 m/s</td></tr>
+</table>
+</div>
+<p>It creeps and spins at roughly a tenth of what the body can do. Every strategy-level
+theory was built on top of a policy that could not cross the pitch.</p>
+
+<h3 style="color:var(--amb);font-size:15px">2. It is an offense problem</h3>
+<p>Against a <em>half-strength</em> bot the win rate stayed flat (17.1% &rarr; 17.4%) while
+31 points of losses turned into draws, one for one. Scoring is pinned near 17% no matter who
+is on the other side — so it is not perception, and not opponent difficulty.</p>
+
+<h3 style="color:var(--amb);font-size:15px">3. Small evaluations lie</h3>
+<p>Ten repeat evaluations of the <em>same</em> model returned anywhere from 11% to 24%. That
+is ordinary sampling noise, not progress. One lucky 24% was briefly committed as an
+improvement over 18% when the true mean was 16.2%. Evaluations now default to 1000 episodes.</p>
+
+<h2>Roster status</h2>
+<div class="scroll">
+<table>
+<tr><th>Player</th><th>Role</th><th>Brain</th><th>Currently plays as</th></tr>
+<tr><td>STANDARD</td><td>Balanced</td><td><span class="pill p-bad">none</span></td><td>rule-based bot</td></tr>
+<tr><td>MATT</td><td>Striker</td><td><span class="pill p-bad">none</span></td><td>rule-based bot</td></tr>
+<tr><td>KIM</td><td>Defender</td><td><span class="pill p-bad">none</span></td><td>rule-based bot</td></tr>
+<tr><td>NICK</td><td>Midfielder</td><td><span class="pill p-bad">none</span></td><td>rule-based bot</td></tr>
+<tr><td>BOT</td><td>Benchmark opponent</td><td><span class="pill p-ok">by design</span></td><td>rule-based bot</td></tr>
+</table>
+</div>
+<p style="color:var(--muted);font-size:13px">All four personality models were removed on
+2026-08-05: they expected 102 network inputs against a runtime that now produces 118, so they
+could never load. Bodies are identical by design — personality lives entirely in the reward
+profile.</p>
+
+<h2>Next step</h2>
+<div class="box">
+<code>soccer_p9_random_00</code> is <strong>75% complete and has never been evaluated</strong>.
+It tests the one variable never tried: letting the policy meet a full-strength opponent at all,
+by sampling difficulty uniformly instead of gating it behind a mastery ladder that starved
+every prior run. Resume it to 20M, export, run the movement probe first, and only then grade
+it over 1000 episodes.
+</div>
+
+<footer>
+Executive summary generated 2026-08-05 from <code>results/eval/*.json</code>,
+<code>config/STANDARD_phase9_randomized.yaml</code> and the reward profile assets. Technical
+detail lives in <code>creatures.html</code>; architecture diagrams in
+<code>architecture.md</code>; model and component matrices in <code>onnx_summary.md</code>.
+</footer>
+
 </body>
 </html>
