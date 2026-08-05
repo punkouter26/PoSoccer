@@ -55,24 +55,57 @@ public static class Agent_BuildPlayerCommand
         string outputPath = Path.Combine(projectRoot, "Builds", "PoSoccer", "PoSoccer.apk");
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
 
-        var buildPlayerOptions = new BuildPlayerOptions
-        {
-            scenes = Scenes,
-            locationPathName = outputPath,
-            target = BuildTarget.Android,
-            targetGroup = BuildTargetGroup.Android,
-            options = development
-                ? (BuildOptions.Development | BuildOptions.AllowDebugging)
-                : BuildOptions.None,
-        };
-
-        Debug.Log($"[Agent_BuildPlayerCommand] Building " +
-                  $"{(development ? "DEVELOPMENT" : "MASTER")} APK -> {outputPath}");
+        // This command builds the side-load APK, so it owns both settings the AAB
+        // release path leaves behind. Without forcing them a build here fails or,
+        // worse, succeeds and produces something uninstallable:
+        //
+        //   useCustomKeystore  -> points at keys/posoccer-upload.keystore with the
+        //                         password in POSOCCER_KEYSTORE_PASS. Absent those,
+        //                         the build dies with "Unable to sign the Android
+        //                         application". A side-load wants the debug keystore.
+        //   buildAppBundle     -> emits an .aab even when the output path ends in
+        //                         .apk. The file looks fine but carries
+        //                         BundleConfig.pb and base/manifest/AndroidManifest.xml
+        //                         instead of a root manifest, and adb rejects it with
+        //                         the misleading INSTALL_PARSE_FAILED_UNEXPECTED_EXCEPTION.
+        //
+        // Both are restored in the finally block so Agent_BuildAabCommand and the
+        // Play release path are unaffected.
+        bool prevAppBundle = EditorUserBuildSettings.buildAppBundle;
+        bool prevCustomKeystore = PlayerSettings.Android.useCustomKeystore;
+        EditorUserBuildSettings.buildAppBundle = false;
+        PlayerSettings.Android.useCustomKeystore = false;
 
         // Use fully-qualified types so we don't depend on `using` resolving
         // UnityEditor.Build.Reporting (that sub-namespace is in a separate
         // assembly that the implicit Assembly-CSharp-Editor doesn't reference)
-        var report = BuildPipeline.BuildPlayer(buildPlayerOptions);
+        UnityEditor.Build.Reporting.BuildReport report;
+        try
+        {
+            var buildPlayerOptions = new BuildPlayerOptions
+            {
+                scenes = Scenes,
+                locationPathName = outputPath,
+                target = BuildTarget.Android,
+                targetGroup = BuildTargetGroup.Android,
+                options = development
+                    ? (BuildOptions.Development | BuildOptions.AllowDebugging)
+                    : BuildOptions.None,
+            };
+
+            Debug.Log($"[Agent_BuildPlayerCommand] Building " +
+                      $"{(development ? "DEVELOPMENT" : "MASTER")} APK -> {outputPath}");
+
+            report = BuildPipeline.BuildPlayer(buildPlayerOptions);
+        }
+        finally
+        {
+            // Restore here, not in a finally around the exits: EditorApplication.Exit
+            // does not return, so anything after it would never run.
+            EditorUserBuildSettings.buildAppBundle = prevAppBundle;
+            PlayerSettings.Android.useCustomKeystore = prevCustomKeystore;
+        }
+
         var summary = report.summary;
 
         Debug.Log($"[Agent_BuildPlayerCommand] Result:  {summary.result}");
