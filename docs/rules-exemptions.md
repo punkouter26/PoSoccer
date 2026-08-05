@@ -52,8 +52,8 @@ all modeled; **joint degrees of freedom are not** — there is no articulated bo
 so there are no per-joint drive targets or per-joint torque limits.
 
 **Why it has not been fixed:** this is not a local change. The brain contract is
-frozen and enforced in `Agent_Soccer.Awake` — 18 vector observations × 2 stacked,
-3 continuous actions. An articulated body changes both the observation space
+frozen and enforced in `Agent_Soccer.Awake` — 26 vector observations × 2 stacked,
+4 continuous actions. An articulated body changes both the observation space
 (per-joint state) and the action space (per-joint drive targets), which
 **obsoletes every trained `.onnx`**, including the current STANDARD checkpoint,
 and invalidates the training benchmark's accumulated results.
@@ -68,15 +68,18 @@ folded into a compliance pass.
 
 ---
 
-## 3. Default branch (UPDATES) — RESOLVED, see below
+## 3. Default branch (UPDATES) — RESOLVED, no longer a deviation
 
 **Rule:** "Use master branch for everything."
 
-The repository's history was created on `main`. A `master` branch has been
-created from it and pushed. Changing the *default* branch on GitHub and
-retiring `main` must be done in the repository settings on github.com — it
-cannot be done from the working tree, and doing it breaks existing clones
-until they re-point. See the note in the session that created `master`.
+The repository's history was created on `main`. A `master` branch was created
+from it and pushed, and on **2026-08-04** the changeover was completed on
+github.com: `main` held no unique commits and was deleted, the GitHub default
+was flipped to `master`, and `origin/HEAD` was repointed. `master` is now the
+only branch, local and remote.
+
+**Status: CLOSED.** Retained here only as a record of the migration; there is
+no outstanding deviation. Do not create other branches unless explicitly asked.
 
 ---
 

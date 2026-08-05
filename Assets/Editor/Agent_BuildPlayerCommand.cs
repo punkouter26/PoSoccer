@@ -1,8 +1,8 @@
-// BuildPlayerCommand.cs
+// Agent_BuildPlayerCommand.cs
 // Editor-only entry point for headless Unity Android builds.
 // Invoke from CLI:
 //   Unity.exe -batchmode -quit -nographics -projectPath <root> \
-//             -buildTarget Android -executeMethod BuildPlayerCommand.Build \
+//             -buildTarget Android -executeMethod Agent_BuildPlayerCommand.Build \
 //             [-Development] -logFile <log>
 //
 // Output: <projectRoot>/Builds/PoSoccer/PoSoccer.apk
@@ -15,7 +15,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-public static class BuildPlayerCommand
+public static class Agent_BuildPlayerCommand
 {
     // SCN_Menu first: index 0 is what the app boots into, and the game always starts
     // from the menu (Agent_MatchLoader depends on Agent_MatchSetup statics that only the
@@ -40,7 +40,7 @@ public static class BuildPlayerCommand
         {
             if (!File.Exists(scene))
             {
-                Debug.LogError($"[BuildPlayerCommand] Scene missing on disk: {scene}");
+                Debug.LogError($"[Agent_BuildPlayerCommand] Scene missing on disk: {scene}");
                 EditorApplication.Exit(2);
                 return;
             }
@@ -66,7 +66,7 @@ public static class BuildPlayerCommand
                 : BuildOptions.None,
         };
 
-        Debug.Log($"[BuildPlayerCommand] Building " +
+        Debug.Log($"[Agent_BuildPlayerCommand] Building " +
                   $"{(development ? "DEVELOPMENT" : "MASTER")} APK -> {outputPath}");
 
         // Use fully-qualified types so we don't depend on `using` resolving
@@ -75,12 +75,12 @@ public static class BuildPlayerCommand
         var report = BuildPipeline.BuildPlayer(buildPlayerOptions);
         var summary = report.summary;
 
-        Debug.Log($"[BuildPlayerCommand] Result:  {summary.result}");
-        Debug.Log($"[BuildPlayerCommand] Output:  {summary.outputPath}");
-        Debug.Log($"[BuildPlayerCommand] Size:    {summary.totalSize} bytes");
-        Debug.Log($"[BuildPlayerCommand] Time:    {summary.totalTime}");
-        Debug.Log($"[BuildPlayerCommand] Errors:  {summary.totalErrors}");
-        Debug.Log($"[BuildPlayerCommand] Warnings:{summary.totalWarnings}");
+        Debug.Log($"[Agent_BuildPlayerCommand] Result:  {summary.result}");
+        Debug.Log($"[Agent_BuildPlayerCommand] Output:  {summary.outputPath}");
+        Debug.Log($"[Agent_BuildPlayerCommand] Size:    {summary.totalSize} bytes");
+        Debug.Log($"[Agent_BuildPlayerCommand] Time:    {summary.totalTime}");
+        Debug.Log($"[Agent_BuildPlayerCommand] Errors:  {summary.totalErrors}");
+        Debug.Log($"[Agent_BuildPlayerCommand] Warnings:{summary.totalWarnings}");
 
         if (summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
         {

@@ -103,14 +103,14 @@ $proc = Start-Process -FilePath $UnityExe `
         '-batchmode', '-quit', '-nographics',
         '-projectPath', $ProjectRoot,
         '-buildTarget', 'Android',
-        '-executeMethod', 'BuildAabCommand.Build',
+        '-executeMethod', 'Agent_BuildAabCommand.Build',
         '-logFile', $LogPath
     ) -NoNewWindow -PassThru -Wait
 
 if ($proc.ExitCode -ne 0) {
     Write-Host "ERROR: Unity exited with code $($proc.ExitCode)" -ForegroundColor Red
     switch ($proc.ExitCode) {
-        2 { Write-Host "       A scene listed in BuildAabCommand.Scenes is missing." -ForegroundColor Yellow }
+        2 { Write-Host "       A scene listed in Agent_BuildAabCommand.Scenes is missing." -ForegroundColor Yellow }
         3 { Write-Host "       Signing configuration was rejected inside Unity." -ForegroundColor Yellow }
     }
     Write-Host "       Last 60 lines of ${LogPath}:" -ForegroundColor Yellow
@@ -128,7 +128,7 @@ Write-Host "[2/3] Built $AabPath ($sizeMb MB)" -ForegroundColor Green
 
 # 4. Report what Play will actually see, from the log the build just wrote.
 Write-Host "[3/3] Manifest values baked into this bundle:" -ForegroundColor Cyan
-Select-String -Path $LogPath -Pattern '\[BuildAabCommand\] (appId|Result|Size)=?' |
+Select-String -Path $LogPath -Pattern '\[Agent_BuildAabCommand\] (appId|Result|Size)=?' |
     ForEach-Object { "  $($_.Line.Trim())" }
 
 Write-Host ""

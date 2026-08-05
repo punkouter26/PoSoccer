@@ -1,7 +1,7 @@
-// BuildAabCommand.cs
+// Agent_BuildAabCommand.cs
 // Editor-only entry point for a Play-uploadable Android App Bundle.
 //
-// Separate from BuildPlayerCommand.Build (which produces the side-load APK)
+// Separate from Agent_BuildPlayerCommand.Build (which produces the side-load APK)
 // because the Play artifact differs in three ways that all matter:
 //   1. .aab, not .apk        - Play requires App Bundles for apps created
 //                              after August 2021, internal testing included.
@@ -12,7 +12,7 @@
 //
 // Invoke from CLI:
 //   Unity.exe -batchmode -quit -nographics -projectPath <root> \
-//             -buildTarget Android -executeMethod BuildAabCommand.Build \
+//             -buildTarget Android -executeMethod Agent_BuildAabCommand.Build \
 //             -logFile <log>
 //
 // Signing credentials are read from the ENVIRONMENT, never from this file or
@@ -33,7 +33,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-public static class BuildAabCommand
+public static class Agent_BuildAabCommand
 {
     // Play's requirement for new apps from 2026-08-31. Written as a cast rather
     // than AndroidSdkVersions.AndroidApiLevel36 so this still compiles on an
@@ -60,7 +60,7 @@ public static class BuildAabCommand
         {
             if (!File.Exists(scene))
             {
-                Debug.LogError($"[BuildAabCommand] Scene missing on disk: {scene}");
+                Debug.LogError($"[Agent_BuildAabCommand] Scene missing on disk: {scene}");
                 EditorApplication.Exit(2);
                 return;
             }
@@ -75,7 +75,7 @@ public static class BuildAabCommand
         if (string.IsNullOrEmpty(keystore) || string.IsNullOrEmpty(keystorePass) ||
             string.IsNullOrEmpty(keyAlias) || string.IsNullOrEmpty(keyAliasPass))
         {
-            Debug.LogError("[BuildAabCommand] Signing env vars missing. Set POSOCCER_KEYSTORE, " +
+            Debug.LogError("[Agent_BuildAabCommand] Signing env vars missing. Set POSOCCER_KEYSTORE, " +
                            "POSOCCER_KEYSTORE_PASS, POSOCCER_KEYALIAS, POSOCCER_KEYALIAS_PASS. " +
                            "Refusing to fall back to the debug keystore - Play would reject it.");
             EditorApplication.Exit(3);
@@ -83,7 +83,7 @@ public static class BuildAabCommand
         }
         if (!File.Exists(keystore))
         {
-            Debug.LogError($"[BuildAabCommand] No keystore at {keystore}");
+            Debug.LogError($"[Agent_BuildAabCommand] No keystore at {keystore}");
             EditorApplication.Exit(3);
             return;
         }
@@ -132,21 +132,21 @@ public static class BuildAabCommand
             options = BuildOptions.None,
         };
 
-        Debug.Log($"[BuildAabCommand] appId={PlayerSettings.GetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android)} " +
+        Debug.Log($"[Agent_BuildAabCommand] appId={PlayerSettings.GetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android)} " +
                   $"version={PlayerSettings.bundleVersion} " +
                   $"versionCode={PlayerSettings.Android.bundleVersionCode} " +
                   $"targetSdk={(int)PlayerSettings.Android.targetSdkVersion} " +
                   $"minSdk={(int)PlayerSettings.Android.minSdkVersion}");
-        Debug.Log($"[BuildAabCommand] Building AAB -> {outputPath}");
+        Debug.Log($"[Agent_BuildAabCommand] Building AAB -> {outputPath}");
 
         var report = BuildPipeline.BuildPlayer(options);
         var summary = report.summary;
 
-        Debug.Log($"[BuildAabCommand] Result:  {summary.result}");
-        Debug.Log($"[BuildAabCommand] Output:  {summary.outputPath}");
-        Debug.Log($"[BuildAabCommand] Size:    {summary.totalSize} bytes");
-        Debug.Log($"[BuildAabCommand] Time:    {summary.totalTime}");
-        Debug.Log($"[BuildAabCommand] Errors:  {summary.totalErrors}");
+        Debug.Log($"[Agent_BuildAabCommand] Result:  {summary.result}");
+        Debug.Log($"[Agent_BuildAabCommand] Output:  {summary.outputPath}");
+        Debug.Log($"[Agent_BuildAabCommand] Size:    {summary.totalSize} bytes");
+        Debug.Log($"[Agent_BuildAabCommand] Time:    {summary.totalTime}");
+        Debug.Log($"[Agent_BuildAabCommand] Errors:  {summary.totalErrors}");
 
         // Do not leave the password sitting in ProjectSettings.asset, which is
         // tracked in git. Unity persists these fields on write otherwise.
