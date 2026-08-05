@@ -6,9 +6,16 @@ namespace PoSoccer
 {
     /// <summary>
     /// Runtime stadium dressing: URP 2D lighting (global fill, corner floodlights,
-    /// goal glows), shadow casters on walls/agents, lit sprite materials, and a
-    /// post-processing volume (bloom + vignette + goal-moment chromatic pulse).
-    /// Everything is built in code; the scene only carries this component.
+    /// goal glows), lit sprite materials, and a post-processing volume
+    /// (bloom + goal-moment chromatic pulse). Everything is built in code; the
+    /// scene only carries this component.
+    ///
+    /// 2026-08-05: 2D shadows and the vignette were removed. Shadows were the
+    /// single largest GPU cost here — six shadow-casting point lights plus a
+    /// ShadowCaster2D on every wall and agent — and on a flat top-down pitch they
+    /// added almost nothing readable. The vignette darkened the edges of an
+    /// already-small portrait view, working against readability rather than for
+    /// it. Bloom, the lights and the goal pulse carry the look on their own.
     /// </summary>
     [DefaultExecutionOrder(-40)]
     public sealed class Agent_Stadium : MonoBehaviour
@@ -46,10 +53,6 @@ namespace PoSoccer
             MakeLight("GoalGlowS", Light2D.LightType.Point, new Vector2(0f, -8.9f),
                 new Color(0.4f, 0.6f, 1f), 0.8f, 4.5f);
 
-            // Shadows
-            foreach (var go in GameObject.FindGameObjectsWithTag("Wall")) AddCaster(go);
-            foreach (var go in GameObject.FindGameObjectsWithTag("Agent")) AddCaster(go);
-
             BuildPostVolume();
         }
 
@@ -67,17 +70,6 @@ namespace PoSoccer
             {
                 light.pointLightInnerRadius = radius * 0.15f;
                 light.pointLightOuterRadius = radius;
-                light.shadowsEnabled = true;
-                light.shadowIntensity = 0.55f;
-            }
-        }
-
-        static void AddCaster(GameObject go)
-        {
-            if (go.GetComponent<ShadowCaster2D>() == null)
-            {
-                var caster = go.AddComponent<ShadowCaster2D>();
-                caster.selfShadows = false;
             }
         }
 
@@ -92,9 +84,6 @@ namespace PoSoccer
             _bloom = profile.Add<Bloom>();
             _bloom.intensity.Override(0.9f);
             _bloom.threshold.Override(0.9f);
-            var vignette = profile.Add<Vignette>();
-            vignette.intensity.Override(0.28f);
-            vignette.smoothness.Override(0.42f);
             _chroma = profile.Add<ChromaticAberration>();
             _chroma.intensity.Override(0f);
             volume.profile = profile;

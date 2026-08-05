@@ -83,8 +83,20 @@ namespace PoSoccer
             if (squad.Count == 0) return;
 
             // Surplus first, so the clone template is never a player being destroyed.
+            //
+            // Deactivate BEFORE Destroy. Destroy is deferred to the end of the frame,
+            // so a surplus player is still returned by GetComponentsInChildren for the
+            // rest of this frame - including by Agent_EnvController.Start, which runs
+            // at order -50, after this Awake at -60, in the SAME frame. It would then
+            // hold a reference that turns into a MissingReferenceException once the
+            // deferred destroy lands. SetActive(false) closes the window: the default
+            // GetComponentsInChildren<T>() skips inactive objects, so the doomed player
+            // is invisible to discovery immediately rather than at end of frame.
+            // (Symptom this fixes: Match_TwoStandardsVsTwoBots failing intermittently
+            // with "The object of type 'PoSoccer.Agent_Soccer' has been destroyed".)
             for (int slot = squad.Count - 1; slot >= size; slot--)
             {
+                squad[slot].gameObject.SetActive(false);
                 Destroy(squad[slot].gameObject);
                 squad.RemoveAt(slot);
             }
