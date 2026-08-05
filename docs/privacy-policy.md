@@ -1,3 +1,8 @@
+---
+title: PoSoccer Privacy Policy
+description: Privacy policy for the PoSoccer Android app.
+---
+
 # Privacy Policy for PoSoccer
 
 **Last updated: 4 August 2026**
