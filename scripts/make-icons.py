@@ -2,7 +2,7 @@
 Generate PoSoccer's Android launcher and store icons.
 
 Deterministic, regenerable, and colour-matched to the game: every colour below is
-read from Assets/Scripts/Agent_UIStyle.cs so the icon and the UI cannot drift.
+read from Assets/Scripts/Presentation/Agent_UIStyle.cs so the icon and the UI cannot drift.
 
 Outputs
   Assets/Sprites/Icons/icon_foreground.png   432x432 RGBA  adaptive foreground

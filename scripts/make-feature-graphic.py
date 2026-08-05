@@ -2,7 +2,7 @@
 Generate the Play Console feature graphic (1024x500) for PoSoccer.
 
 Same palette source as scripts/make-icons.py - the colours come from
-Assets/Scripts/Agent_UIStyle.cs, so the store art, the app icon and the in-game
+Assets/Scripts/Presentation/Agent_UIStyle.cs, so the store art, the app icon and the in-game
 UI cannot drift apart.
 
 Play's rules for this asset:
