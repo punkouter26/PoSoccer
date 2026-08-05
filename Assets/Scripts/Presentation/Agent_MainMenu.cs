@@ -6,15 +6,18 @@ using UnityEngine.UIElements;
 namespace PoSoccer
 {
     /// <summary>
-    /// Opening menu (UI Toolkit, mobile portrait, safe-area): set a squad size per
-    /// side (1-10, independent, so 1v3 is expressible) and choose who fills each
-    /// slot, then launch the match scene.
+    /// Opening menu (UI Toolkit, mobile portrait, safe-area): build a squad per
+    /// side (0-10, independent, so 1v3 is expressible) and launch the match scene.
     ///
-    /// The old layout gave every slot its own five-button row, which does not
-    /// survive twenty slots. Instead each side gets a stepper and a wrapping strip
-    /// of compact slot cards; tapping a card cycles it through the roster. New
-    /// slots default to BOT, so a 10v10 against the benchmark is two taps.
-    /// The whole tree is built in code so no UXML wiring is needed.
+    /// Each side owns a roster picker and a strip of slot cards. Tapping a roster
+    /// button *appends* that player to that side; tapping a filled slot *removes*
+    /// it. That replaces the old tap-to-cycle card, which needed up to five taps
+    /// to reach one player and gave no way to drop a slot from the middle. The
+    /// [- N +] stepper is kept because it bulk-adds bots, so 10-a-side against the
+    /// benchmark is still two taps. Presets cover the common matchups outright.
+    ///
+    /// A side may be empty while editing; PLAY stays disabled until both sides
+    /// have at least one player. The whole tree is built in code, no UXML wiring.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class Agent_MainMenu : MonoBehaviour
@@ -38,6 +41,7 @@ namespace PoSoccer
 
         VisualElement _blueStrip, _redStrip;
         Label _blueCount, _redCount, _pitchNote;
+        Button _play;
 
         void OnEnable()
         {
@@ -57,13 +61,7 @@ namespace PoSoccer
                 return;
             }
 
-            // Default matchup: the trained baseline pair against the benchmark bot.
-            _blue.Clear();
-            _blue.Add(standard != null ? standard : _roster[0]);
-            _blue.Add(nick != null ? nick : _roster[0]);
-            _red.Clear();
-            _red.Add(Bot());
-            _red.Add(Bot());
+            ApplyPreset(2);
 
             root.Clear();
             var safe = new VisualElement();
@@ -78,16 +76,18 @@ namespace PoSoccer
             // UNITY_RULES; PanelSettings scales the panel to the actual screen,
             // match-width).
             var title = new Label("PoSoccer");
-            title.style.fontSize = 104;
+            title.style.fontSize = 92;
             title.style.color = Color.white;
             title.style.unityFontStyleAndWeight = FontStyle.Bold;
             safe.Add(title);
 
-            var subtitle = new Label("set the squads, tap a slot to swap the player");
-            subtitle.style.fontSize = 30;
+            var subtitle = new Label("tap a name to add · tap a card to remove");
+            subtitle.style.fontSize = 28;
             subtitle.style.color = Agent_UIStyle.TextMuted;
-            subtitle.style.marginBottom = 34;
+            subtitle.style.marginBottom = 18;
             safe.Add(subtitle);
+
+            safe.Add(BuildPresetRow());
 
             _blueStrip = new VisualElement();
             _redStrip = new VisualElement();
@@ -97,23 +97,23 @@ namespace PoSoccer
             _pitchNote = new Label(string.Empty);
             _pitchNote.style.fontSize = 24;
             _pitchNote.style.color = Agent_UIStyle.TextMuted;
-            _pitchNote.style.marginTop = 18;
+            _pitchNote.style.marginTop = 12;
             safe.Add(_pitchNote);
 
-            var play = new Button(StartMatch) { text = "PLAY" };
-            play.style.fontSize = 64;
-            play.style.unityFontStyleAndWeight = FontStyle.Bold;
-            play.style.marginTop = 22;
-            play.style.paddingLeft = 110; play.style.paddingRight = 110;
-            play.style.paddingTop = 22; play.style.paddingBottom = 22;
-            play.style.backgroundColor = Agent_UIStyle.Accent;
-            play.style.color = Agent_UIStyle.TextPrimary;
-            Agent_UIStyle.Round(play);
-            safe.Add(play);
+            _play = new Button(StartMatch) { text = "PLAY" };
+            _play.style.fontSize = 60;
+            _play.style.unityFontStyleAndWeight = FontStyle.Bold;
+            _play.style.marginTop = 18;
+            _play.style.paddingLeft = 110; _play.style.paddingRight = 110;
+            _play.style.paddingTop = 20; _play.style.paddingBottom = 20;
+            _play.style.backgroundColor = Agent_UIStyle.Accent;
+            _play.style.color = Agent_UIStyle.TextPrimary;
+            Agent_UIStyle.Round(_play);
+            safe.Add(_play);
 
             var sound = Agent_UIStyle.SoundToggleButton();
             sound.style.color = Agent_UIStyle.TextMuted;
-            sound.style.marginTop = 14;
+            sound.style.marginTop = 12;
             safe.Add(sound);
 
             RefreshAll();
@@ -132,6 +132,51 @@ namespace PoSoccer
         /// <summary>The benchmark bot when it is wired, else the last roster entry.</summary>
         Reward_Settings Bot() => ruleBot != null ? ruleBot : _roster[_roster.Length - 1];
 
+        /// <summary>A wired profile, or the first roster entry when it is missing.</summary>
+        Reward_Settings Or(Reward_Settings profile) => profile != null ? profile : _roster[0];
+
+        // ── Presets ─────────────────────────────────────────────────────────
+
+        VisualElement BuildPresetRow()
+        {
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.justifyContent = Justify.Center;
+            row.style.marginBottom = 20;
+
+            row.Add(SmallButton("1v1", Agent_UIStyle.PanelBg, () => ApplyPreset(1)));
+            row.Add(SmallButton("2v2", Agent_UIStyle.PanelBg, () => ApplyPreset(2)));
+            row.Add(SmallButton("5v5", Agent_UIStyle.PanelBg, () => ApplyPreset(5)));
+            row.Add(SmallButton("CLEAR ALL", Agent_UIStyle.PanelBg, ClearAll));
+            return row;
+        }
+
+        /// <summary>
+        /// Blue fields personalities (cycling the roster order, skipping the bot),
+        /// red fields the benchmark bot. That is the matchup the benchmark grades,
+        /// so the presets and the eval harness agree on what "NvN vs bot" means.
+        /// </summary>
+        void ApplyPreset(int perSide)
+        {
+            _blue.Clear();
+            _red.Clear();
+
+            var picks = Compact(standard, matt, kim, nick);
+            for (int i = 0; i < perSide; i++)
+            {
+                _blue.Add(picks.Length > 0 ? picks[i % picks.Length] : Or(null));
+                _red.Add(Bot());
+            }
+            RefreshAll();
+        }
+
+        void ClearAll()
+        {
+            _blue.Clear();
+            _red.Clear();
+            RefreshAll();
+        }
+
         // ── Team section ────────────────────────────────────────────────────
 
         VisualElement BuildTeamSection(string teamLabel, Color teamColor,
@@ -139,58 +184,96 @@ namespace PoSoccer
         {
             var section = new VisualElement();
             section.style.alignItems = Align.Center;
-            section.style.marginBottom = 26;
+            section.style.marginBottom = 20;
             section.style.width = 1000;
 
             var band = new VisualElement();
             band.style.height = 6; band.style.width = 240;
             band.style.backgroundColor = teamColor;
-            band.style.marginBottom = 10;
+            band.style.marginBottom = 8;
             Agent_UIStyle.Round(band, 3);
             section.Add(band);
 
-            // Header row: team name on the left, [-  N  +] stepper on the right.
+            // Header row: team name, [- N +] stepper, per-side CLEAR.
             var header = new VisualElement();
             header.style.flexDirection = FlexDirection.Row;
             header.style.alignItems = Align.Center;
             header.style.justifyContent = Justify.Center;
-            header.style.marginBottom = 12;
+            header.style.marginBottom = 8;
 
             var name = new Label(teamLabel);
-            name.style.fontSize = 44;
+            name.style.fontSize = 40;
             name.style.color = teamColor;
             name.style.unityFontStyleAndWeight = FontStyle.Bold;
-            name.style.marginRight = 28;
+            name.style.marginRight = 22;
             header.Add(name);
 
             header.Add(StepperButton("−", () => Resize(squad, squad.Count - 1)));
 
             countLabel = new Label();
-            countLabel.style.fontSize = 40;
+            countLabel.style.fontSize = 38;
             countLabel.style.color = Agent_UIStyle.TextPrimary;
             countLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            countLabel.style.width = 120;
+            countLabel.style.width = 100;
             countLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
             header.Add(countLabel);
 
             header.Add(StepperButton("+", () => Resize(squad, squad.Count + 1)));
+
+            var clear = SmallButton("CLEAR", Agent_UIStyle.PanelBg, () => ClearSide(squad));
+            clear.style.marginLeft = 22;
+            header.Add(clear);
             section.Add(header);
+
+            // Roster picker: one tap appends that player to this side.
+            section.Add(BuildRosterPicker(squad, teamColor));
 
             // Slot strip: wraps to a second line once a squad passes five.
             strip.style.flexDirection = FlexDirection.Row;
             strip.style.flexWrap = Wrap.Wrap;
             strip.style.justifyContent = Justify.Center;
             strip.style.width = 1000;
+            strip.style.minHeight = 116;
             section.Add(strip);
 
             return section;
         }
 
+        VisualElement BuildRosterPicker(List<Reward_Settings> squad, Color teamColor)
+        {
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.flexWrap = Wrap.Wrap;
+            row.style.justifyContent = Justify.Center;
+            row.style.width = 1000;
+            row.style.marginBottom = 8;
+
+            for (int i = 0; i < _roster.Length; i++)
+            {
+                var profile = _roster[i];
+                var b = new Button(() => AddToSquad(squad, profile)) { text = profile.playerName };
+                b.style.height = 56;
+                b.style.fontSize = 24;
+                b.style.unityFontStyleAndWeight = FontStyle.Bold;
+                b.style.paddingLeft = 20; b.style.paddingRight = 20;
+                b.style.marginLeft = 4; b.style.marginRight = 4;
+                b.style.backgroundColor = profile.playerColor;
+                b.style.color = Color.black;
+                b.style.borderTopWidth = 2; b.style.borderBottomWidth = 2;
+                b.style.borderLeftWidth = 2; b.style.borderRightWidth = 2;
+                b.style.borderTopColor = teamColor; b.style.borderBottomColor = teamColor;
+                b.style.borderLeftColor = teamColor; b.style.borderRightColor = teamColor;
+                Agent_UIStyle.Round(b, 12);
+                row.Add(b);
+            }
+            return row;
+        }
+
         static Button StepperButton(string glyph, System.Action onClick)
         {
             var b = new Button(onClick) { text = glyph };
-            b.style.width = 76; b.style.height = 76;
-            b.style.fontSize = 46;
+            b.style.width = 70; b.style.height = 70;
+            b.style.fontSize = 44;
             b.style.unityFontStyleAndWeight = FontStyle.Bold;
             b.style.color = Agent_UIStyle.TextPrimary;
             b.style.backgroundColor = Agent_UIStyle.PanelBg;
@@ -198,20 +281,51 @@ namespace PoSoccer
             return b;
         }
 
+        static Button SmallButton(string text, Color background, System.Action onClick)
+        {
+            var b = new Button(onClick) { text = text };
+            b.style.height = 56;
+            b.style.fontSize = 24;
+            b.style.unityFontStyleAndWeight = FontStyle.Bold;
+            b.style.paddingLeft = 22; b.style.paddingRight = 22;
+            b.style.marginLeft = 5; b.style.marginRight = 5;
+            b.style.color = Agent_UIStyle.TextPrimary;
+            b.style.backgroundColor = background;
+            Agent_UIStyle.Round(b, 12);
+            return b;
+        }
+
+        // ── Squad edits ─────────────────────────────────────────────────────
+
+        void AddToSquad(List<Reward_Settings> squad, Reward_Settings profile)
+        {
+            if (squad.Count >= Agent_MatchSetup.MAX_SQUAD) return;
+            squad.Add(profile);
+            RefreshAll();
+        }
+
+        void RemoveSlot(List<Reward_Settings> squad, int slot)
+        {
+            if (slot < 0 || slot >= squad.Count) return;
+            squad.RemoveAt(slot);
+            RefreshAll();
+        }
+
+        void ClearSide(List<Reward_Settings> squad)
+        {
+            squad.Clear();
+            RefreshAll();
+        }
+
         void Resize(List<Reward_Settings> squad, int size)
         {
-            size = Mathf.Clamp(size, 1, Agent_MatchSetup.MAX_SQUAD);
+            // Floor is 0, not 1: a side may be emptied while building a lineup.
+            // PLAY is gated in RefreshAll instead, so an empty side can never launch.
+            size = Mathf.Clamp(size, 0, Agent_MatchSetup.MAX_SQUAD);
             // New slots default to the benchmark bot - the common case is "my brain
             // against N bots", and it keeps a 10-a-side setup to two taps.
             while (squad.Count < size) squad.Add(Bot());
             while (squad.Count > size) squad.RemoveAt(squad.Count - 1);
-            RefreshAll();
-        }
-
-        void Cycle(List<Reward_Settings> squad, int slot)
-        {
-            int current = System.Array.IndexOf(_roster, squad[slot]);
-            squad[slot] = _roster[(current + 1 + _roster.Length) % _roster.Length];
             RefreshAll();
         }
 
@@ -224,11 +338,26 @@ namespace PoSoccer
             if (_blueCount != null) _blueCount.text = $"{_blue.Count}";
             if (_redCount != null) _redCount.text = $"{_red.Count}";
 
+            bool playable = _blue.Count > 0 && _red.Count > 0;
+
             if (_pitchNote != null)
             {
-                Vector2 half = Agent_PitchSizing.HalfExtentsFor(_blue.Count, _red.Count);
-                _pitchNote.text =
-                    $"{_blue.Count}v{_red.Count}  ·  pitch {half.x * 2f:0}m x {half.y * 2f:0}m";
+                if (!playable)
+                {
+                    _pitchNote.text = "add at least one player to each side";
+                }
+                else
+                {
+                    Vector2 half = Agent_PitchSizing.HalfExtentsFor(_blue.Count, _red.Count);
+                    _pitchNote.text =
+                        $"{_blue.Count}v{_red.Count}  ·  pitch {half.x * 2f:0}m x {half.y * 2f:0}m";
+                }
+            }
+
+            if (_play != null)
+            {
+                _play.SetEnabled(playable);
+                _play.style.opacity = playable ? 1f : 0.4f;
             }
         }
 
@@ -236,6 +365,17 @@ namespace PoSoccer
         {
             if (strip == null) return;
             strip.Clear();
+
+            if (squad.Count == 0)
+            {
+                var empty = new Label("empty — tap a name above");
+                empty.style.fontSize = 22;
+                empty.style.color = Agent_UIStyle.TextMuted;
+                empty.style.unityTextAlign = TextAnchor.MiddleCenter;
+                empty.style.marginTop = 34;
+                strip.Add(empty);
+                return;
+            }
 
             // Cards shrink as the squad grows so ten still fit two ranks of five.
             bool compact = squad.Count > 5;
@@ -245,9 +385,9 @@ namespace PoSoccer
             {
                 int captured = slot;
                 var profile = squad[slot];
-                var card = new Button(() => Cycle(squad, captured));
+                var card = new Button(() => RemoveSlot(squad, captured));
                 card.style.width = width;
-                card.style.height = compact ? 108f : 136f;
+                card.style.height = compact ? 100f : 116f;
                 card.style.marginLeft = 5; card.style.marginRight = 5;
                 card.style.marginBottom = 8;
                 card.style.paddingTop = 4; card.style.paddingBottom = 4;
@@ -260,13 +400,9 @@ namespace PoSoccer
                 card.style.borderTopColor = teamColor; card.style.borderBottomColor = teamColor;
                 card.style.borderLeftColor = teamColor; card.style.borderRightColor = teamColor;
 
-                card.Add(CardLine(profile.playerName, compact ? 22 : 28, FontStyle.Bold, 1f));
-                card.Add(CardLine(DriverLine(profile), compact ? 15 : 18, FontStyle.Normal, 0.75f));
-                card.Add(CardLine(StepsLine(profile), compact ? 15 : 18, FontStyle.Bold, 0.85f));
-                if (!compact)
-                {
-                    card.Add(CardLine(EvalLine(profile), 16, FontStyle.Normal, 0.7f));
-                }
+                card.Add(CardLine(profile.playerName, compact ? 22 : 26, FontStyle.Bold, 1f));
+                card.Add(CardLine(DriverLine(profile), compact ? 15 : 17, FontStyle.Normal, 0.75f));
+                card.Add(CardLine(StepsLine(profile), compact ? 15 : 17, FontStyle.Bold, 0.85f));
                 strip.Add(card);
             }
         }
@@ -300,18 +436,6 @@ namespace PoSoccer
             return $"{FormatSteps(profile.trainingSteps)} steps";
         }
 
-        /// <summary>
-        /// Measured win rate against the full-strength bot. Bot-vs-bot is ~43%, so
-        /// the number is only meaningful next to that - it is shown raw rather than
-        /// dressed up as a grade.
-        /// </summary>
-        static string EvalLine(Reward_Settings profile)
-        {
-            if (profile.brainModel == null) return string.Empty;
-            if (profile.evalWinRate < 0f) return "unrated";
-            return $"{profile.evalWinRate * 100f:0}% vs bot";
-        }
-
         static string FormatSteps(int steps)
         {
             if (steps >= 1_000_000) return $"{steps / 1_000_000f:0.#}M";
@@ -321,6 +445,7 @@ namespace PoSoccer
 
         void StartMatch()
         {
+            if (_blue.Count == 0 || _red.Count == 0) return;
             Agent_MatchSetup.Applied = true;
             Agent_MatchSetup.BlueSquad = _blue.ToArray();
             Agent_MatchSetup.RedSquad = _red.ToArray();
