@@ -60,6 +60,25 @@ namespace PoSoccer
         public float teamBaselineVictory = 0.1f;
         public float goalConceded = -1.0f;
         public float stalemateTimeout = -0.6f;
+        // v5 (2026-08-11): bonus shaping borrowed from the "AI Learns to Play Soccer"
+        // "score with style" tip - small positive gradients for fast/central shots so
+        // the policy converges faster than under pure terminal reward alone. Both
+        // default to 0 so existing profiles train identically until they opt in.
+        // goalSpeedBonus adds (stepsLeftAtGoal * fixedDt * scale) to every member of
+        // the scoring side; default 0.05 means a 60% remaining episode adds 0.015, a
+        // 10% remaining adds 0.0025 - small enough not to compete with goalScorer
+        // (1.2) but visible enough to bias toward fast counters.
+        [Tooltip("Per-second-remaining bonus added to every scoring-side member when a " +
+                 "goal is scored. 0 = off (matches p7 behavior).")]
+        public float goalSpeedBonus = 0.05f;
+        // crossbarProximity rewards shots launched from inside the attacking third.
+        // Dense per-step reward while the ball is in the opponent's goal mouth and
+        // moving toward the net (so it isn't a free pass for parking the ball there).
+        // Default 0.0005 / step caps at ~0.5 over an 1000-step possession, well under
+        // a single goal so it shapes without dominating.
+        [Tooltip("Per-step reward when the ball is in the opponent's goal mouth AND " +
+                 "moving toward the net (close-range shot gradient). 0 = off.")]
+        public float crossbarProximity = 0.0005f;
 
         [Header("Dense rewards (per decision step)")]
         [Tooltip("Per-step time cost. v2 changed from -0.0001 to 0 because stepPenalty " +

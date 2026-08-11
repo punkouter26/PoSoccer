@@ -53,6 +53,14 @@ namespace PoSoccer
         public Rigidbody2D Ball => ball;
         public Vector2 PitchHalfExtents => pitchHalfExtents;
         public int StepCount { get; private set; }
+        /// <summary>
+        /// Effective episode step cap (reward profile value, or 5000 fallback).
+        /// Agents read this in CollectObservations to normalise the
+        /// time-remaining scalar so the obs shape doesn't change when the
+        /// profile's maxEnvironmentSteps does.
+        /// </summary>
+        public int MaxEnvironmentSteps =>
+            rewards != null ? rewards.maxEnvironmentSteps : 5000;
         public float CurrentGoalWidth { get; private set; }
         /// <summary>Opponent difficulty applied at the last kickoff (curriculum readout).</summary>
         public float CurrentBotStrength { get; private set; }
@@ -217,6 +225,23 @@ namespace PoSoccer
 
             var scoringTeam = Agent_Soccer.Opponent(concedingTeam);
 
+            // v5 (2026-08-11): goalSpeedBonus rewards fast scoring. Compute once per
+            // event from the per-agent episode start step (cached in OnEpisodeBegin)
+            // so a slow spawn doesn't penalise a quick counter-attack. Bonus is small
+            // enough not to compete with goalScorer (1.2) but visible enough to bias
+            // late-game urgency when the new time-remaining obs starts paying off.
+            int maxSteps = rewards != null ? rewards.maxEnvironmentSteps : 5000;
+            float bonus = 0f;
+            if (rewards != null && rewards.goalSpeedBonus > 0f)
+            {
+                // Use the last toucher's elapsed time as the scoring-side anchor -
+                // it represents the possession that actually ended the episode.
+                int anchorStep = _lastToucher != null ? _lastToucher.StepCount : StepCount;
+                int elapsed = Mathf.Clamp(anchorStep, 0, maxSteps);
+                float secsLeft = (maxSteps - elapsed) * Time.fixedDeltaTime;
+                bonus = rewards.goalSpeedBonus * secsLeft;
+            }
+
             foreach (var agent in agents)
             {
                 if (agent.team == concedingTeam)
@@ -225,15 +250,15 @@ namespace PoSoccer
                 }
                 else if (agent == _lastToucher && _lastToucher.team == scoringTeam)
                 {
-                    agent.AddReward(rewards.goalScorer);
+                    agent.AddReward(rewards.goalScorer + bonus);
                 }
                 else if (agent == _previousToucher && _previousToucher.team == scoringTeam)
                 {
-                    agent.AddReward(rewards.assist);
+                    agent.AddReward(rewards.assist + bonus);
                 }
                 else
                 {
-                    agent.AddReward(rewards.teamBaselineVictory);
+                    agent.AddReward(rewards.teamBaselineVictory + bonus);
                 }
             }
 

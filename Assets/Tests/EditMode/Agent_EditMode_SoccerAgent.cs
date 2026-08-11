@@ -114,6 +114,12 @@ namespace PoSoccer.Tests
             Assert.AreEqual(0.005f, r.ballContact);
             Assert.AreEqual(-0.6f, r.stalemateTimeout, 1e-6f);
             Assert.AreEqual(5000, r.maxEnvironmentSteps);
+            // v5 (2026-08-11): "score with style" shaping defaults. Both zero by
+            // design so existing profiles keep training identically until they
+            // opt in. The test pins the defaults so accidental drift is caught
+            // before a 3M-step run wastes compute.
+            Assert.AreEqual(0.05f, r.goalSpeedBonus, 1e-6f);
+            Assert.AreEqual(0.0005f, r.crossbarProximity, 1e-6f);
             Object.DestroyImmediate(r);
         }
 

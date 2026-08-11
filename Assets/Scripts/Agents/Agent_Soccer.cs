@@ -127,14 +127,23 @@ namespace PoSoccer
 
         /// <summary>
         /// Vector observation count: 14 self/ball/goal floats + 4 teammate floats
-        /// + 8 opponent floats (2 slots x rel-position/velocity), each zero-padded when
-        /// the slot is empty so one brain contract covers 1v1, 2v2 and 3v3.
+        /// + 8 opponent floats (2 slots x rel-position/velocity) + 1 time-remaining
+        /// scalar, each zero-padded when the slot is empty so one brain contract
+        /// covers 1v1, 2v2 and 3v3.
         ///
         /// 2026-08-04: 18 -> 26. Every .onnx exported before that date expects 18 and is
         /// obsolete - the inference loader rejects a shape mismatch outright, which is
         /// the safe failure (unlike a sensor-arc change, which silently reinterprets).
+        ///
+        /// 2026-08-11: Sensor_Vision split into 4 specialized ray sensors (Ball, Goal,
+        /// Opponents, Walls). Ray inputs grew from 66 to 108 per step; total model
+        /// inputs went 118 -> 162 (vector obs went 52 -> 54). Obsoletes every .onnx
+        /// again - acceptable, none are assigned. The +1 vector float is the
+        /// time-remaining scalar (1 - StepCount/MaxStep) that biases the policy
+        /// toward late-episode urgency; matches the "time remaining" direct obs
+        /// from the "AI Learns to Play Soccer" cheat sheet.
         /// </summary>
-        public const int BaseObservationSize = 26;
+        public const int BaseObservationSize = 27;
 
         /// <summary>
         /// Opponent slots in the vector observation, nearest first, 4 floats each
@@ -297,6 +306,11 @@ namespace PoSoccer
             if (_label != null) _label.rotation = Quaternion.identity;
         }
 
+        // Cached at episode start so the time-remaining obs and the goalSpeedBonus
+        // both measure from the same anchor (a slow start would otherwise cost the
+        // episode seconds of "remaining time" before any decision is made).
+        int _episodeStartStep;
+
         public override void OnEpisodeBegin()
         {
             TouchedBallThisEpisode = false;
@@ -308,6 +322,7 @@ namespace PoSoccer
             Stamina.ResetForEpisode();
             Body.linearVelocity = Vector2.zero;
             Body.angularVelocity = 0f;
+            _episodeStartStep = StepCount;
         }
 
         public override void CollectObservations(VectorSensor sensor)
@@ -315,6 +330,17 @@ namespace PoSoccer
             Vector2 half = env != null ? env.PitchHalfExtents : new Vector2(10f, 6f);
             float invMax = 1f / Mathf.Max(half.x, half.y);
 
+
+            // Time remaining (1) - 1.0 at episode start, 0.0 at the stalemate cap.
+            // Drives late-episode urgency so the policy learns to take shots instead
+            // of parking the bus when the clock is running out. Cheaper than adding
+            // a per-step time penalty (which washes the reward gradient) and more
+            // informative than the stalemate terminal reward alone.
+            {
+                int cap = env != null ? env.MaxEnvironmentSteps : 5000;
+                int elapsed = StepCount - _episodeStartStep;
+                sensor.AddObservation(1f - Mathf.Clamp01((float)elapsed / Mathf.Max(1, cap)));
+            }
             // Self state (4)
             sensor.AddObservation(Body.linearVelocity * 0.1f);          // ~[-1,1] at 10 u/s
             sensor.AddObservation((Vector2)transform.up);               // eye axis
@@ -515,6 +541,23 @@ namespace PoSoccer
                 (env.GetGoalPosition(Opponent(team)) - env.Ball.position).normalized;
             float progress = Vector2.Dot(env.Ball.linearVelocity, ballToOppGoal);
             AddReward(rewards.ballToGoalVelocityScale * Mathf.Clamp(progress * 0.1f, -1f, 1f));
+
+            // Crossbar proximity - close-range shot gradient. Pays per step while the
+            // ball sits inside the attacking goal mouth AND is moving toward the net,
+            // so a parked-ball exploit can't farm it. The "in the mouth" test is a
+            // generous box (~1.5 units around the goal line, half-pitch wide) so the
+            // reward lights up from a realistic shooting range, not just the goalmouth.
+            if (rewards.crossbarProximity > 0f)
+            {
+                Vector2 toOpp = env.GetGoalPosition(Opponent(team)) - env.Ball.position;
+                float dist = toOpp.magnitude;
+                if (dist < 1.5f && progress > 0.05f)
+                {
+                    // Closer + faster = more reward; clamped to keep one step bounded.
+                    float shotShape = Mathf.Clamp01((1.5f - dist) / 1.5f) * Mathf.Clamp01(progress * 2f);
+                    AddReward(rewards.crossbarProximity * shotShape);
+                }
+            }
 
             // Anti-twitch: penalize per-step action change so learned movement is smooth.
             // v2: halved scale (0.001 -> 0.0004) - hard cuts are *correct* for soccer.
