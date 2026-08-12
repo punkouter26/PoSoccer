@@ -125,6 +125,37 @@ namespace PoSoccer.Tests
             yield return RunChase("PROBE-D (blue = trained side)", Agent_Soccer.Team.Blue);
         }
 
+        /// <summary>
+        /// Single-variable isolation probe (2026-08-11): does the policy reach the
+        /// ball when <see cref="Reward_Settings.actionJitterScale"/> is set to 0?
+        /// Phase 10 hit the same plateau as p5-p9 (16.4% over 1000 ep) but the
+        /// chase probe showed top speed 2x and travel 3x — the policy learned to
+        /// thrash, not to drive. actionJitterScale penalizes per-step action
+        /// change, which trains smoothness; a policy trained smooth cannot commit
+        /// to "cut toward the ball" and ends up spinning. This probe mutates the
+        /// in-memory reward profile (no asset write) so the chase runs with the
+        /// anti-twitch reward neutralised and the chassis limit becomes the only
+        /// shaping. If it now reaches the ball, jitter is the bottleneck.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Probe_E_ChaseEfficiency_JitterZeroed()
+        {
+            var mover = _env.agents.First(a => a.team == Agent_Soccer.Team.Blue);
+            var rs = mover.rewards;
+            Assert.IsNotNull(rs, "Blue agent has no Reward_Settings assigned");
+
+            float saved = rs.actionJitterScale;
+            rs.actionJitterScale = 0f;
+            try
+            {
+                yield return RunChase("PROBE-E (jitter = 0, blue)", Agent_Soccer.Team.Blue);
+            }
+            finally
+            {
+                rs.actionJitterScale = saved;
+            }
+        }
+
         IEnumerator RunChase(string label,
             Agent_Soccer.Team mover = Agent_Soccer.Team.Red)
         {
