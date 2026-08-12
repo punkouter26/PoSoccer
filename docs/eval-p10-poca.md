@@ -1,5 +1,100 @@
 # Phase 10 — POCA Self-Play at 3M and 10M — RESULT
 
+> ## ⚠ RETRACTED 2026-08-12 — every number below is measurement error
+>
+> **None of the three phase-10 evals graded the model named in its filename,
+> and none of the three phase-10 training runs used the code they were
+> supposed to test.** The conclusions drawn from them — including the headline
+> "3M POCA = 19.0%, the first real movement in 6 runs" and the decision to ship
+> that brain as v5 — do not survive. Read the retraction, not the report.
+>
+> ### 1. Every eval graded a stale player
+>
+> `Builds/PoSoccer/PoSoccer.exe` and its entire `PoSoccer_Data/` were last
+> written **2026-08-05 17:04**. The three evals ran 2026-08-11 21:08,
+> 2026-08-12 01:04 and 01:08. Nothing in the build changed in between, so all
+> three ran the same 8/5 binary with the **p9-era brain baked in** — the p10
+> exports on disk were never in the player. `update-model.ps1` ran; no rebuild
+> ever followed it.
+>
+> Confirmed independently by the eval's own timer file:
+> `RayPerceptionSensor.Perceive` fired 550,688 times across 275,343 decision
+> steps = **2 per step** (1 sensor × 2 agents). The p10 code splits vision into
+> 4 sensors, which would be 8 per step. The binary predates the split.
+>
+> So the three "results" are three repeat samples of one unchanged model:
+> 16.4 / 19.0 / 17.8, mean **17.7%**, spread 2.6 pp against SD ≈ 1.2 at
+> n=1000. That is textbook binomial noise, and it matches the documented
+> 11–24% scatter for repeat evals of an identical model. The "+2.6 pp is
+> statistically real" claim below compared two samples of the same thing.
+>
+> ### 2. Every training run also used that stale env
+>
+> `env_path` in all three `configuration.yaml` files points at the same 8/5
+> `PoSoccer.exe`. The shipped `STANDARD.onnx` has `obs_0 [batch, 66]` +
+> `obs_1 [batch, 52]` = **118 inputs** — the pre-split contract. The current
+> runtime produces 160. **The 4-sensor split and the terminal-reward shaping
+> that phase 10 exists to test were never executed, not even once.** They are
+> untested, not disproven.
+>
+> ### 3. The ELO evidence agreed all along and was not read
+>
+> Judged on ELO rather than mean reward, as the rules require:
+>
+> | | 3M POCA | 10M POCA |
+> |---|---|---|
+> | `Self-play/ELO` | tag absent entirely | 3 points, flat **1200.5** to 9.28M steps |
+> | `Mean Group Reward` | 0.000 | 0.000 |
+> | `Environment/Cumulative Reward` | −0.76 → 0.50 | 0.54 → 0.53 (max 0.94) |
+>
+> Initial ELO is 1200.0. The rating moved **+0.5 across 10M steps** and then
+> froze. `Mean Group Reward` is identically 0.000 in every summary, so
+> MA-POCA's group-credit channel — the whole reason to choose POCA over PPO —
+> carried no signal. Mean reward climbing to 0.86 while ELO sits still is
+> precisely the decoupling the ELO rule exists to catch.
+>
+> ### The POCA brain, finally graded (2026-08-12)
+>
+> Built a player from the 118-obs code the brain was actually trained on
+> (commit `43e3385`, verified in the live editor by reflecting on
+> `Sensor_Vision.RaysPerDirection == 5` before building) and ran 1000 episodes:
+>
+> | | blue | red | stalemate | mean steps |
+> |---|---|---|---|---|
+> | **3M POCA brain (real, `p10_poca3m_regrade`)** | **18.5%** | 64.9% | 16.6% | 4,381 |
+> | p9 brain (what all three phase-10 evals measured) | 17.7% mean of 16.4 / 19.0 / 17.8 | — | — | — |
+>
+> **+0.8 pp against a combined SD of ~1.7. POCA did not break the plateau.**
+> The retraction stands on its own evidence: the original claim compared two
+> samples of the same p9 brain, and the true POCA value turns out to sit inside
+> the same 16–19% band everything else has occupied since p5.
+>
+> ### What was actually learned
+>
+> Nothing about POCA, perception, or the plateau. What phase 10 established is
+> that the harness could publish six-hour conclusions from a binary nobody had
+> rebuilt. Fixed 2026-08-12:
+>
+> - `build-headless.ps1` baselined the **exe** mtime but tested the **data**
+>   files, so once data was newer than the exe — the normal steady state —
+>   every build reported `OK`, including builds aborted by a held editor lock.
+>   Each artifact now checks against its own prior timestamp, and a held lock
+>   is detected before Unity launches.
+> - `evaluate.ps1` compared the model against the **exe** mtime (which Unity
+>   leaves untouched) and only **warned**. It now compares
+>   `PoSoccer_Data/*.assets` and **fails** with exit 2; `-AllowStale` is the
+>   deliberate override.
+> - Every eval JSON now records `modelInputs`, `modelPath`, `modelWrittenUtc`
+>   and `playerBuiltUtc`, so a result can be falsified after the fact. The
+>   phase-10 files record a run id and a win rate and nothing that reveals
+>   they all describe one stale 118-input player.
+>
+> Still open: nothing inside Unity asserts that the baked model's input count
+> matches the runtime's sensor battery. A 118-input `.onnx` against a 160-input
+> runtime is the sensor-geometry landmine in a form the existing guard misses.
+>
+> **Original report follows, preserved unaltered for the record.**
+
 **Status:** POCA is the first lever to actually move the needle off the
 16-17% plateau, but the gain is bounded — **3M POCA = 19.0%** (real
 +2.6 pp), and **10M POCA = 17.8%** (back to the plateau).

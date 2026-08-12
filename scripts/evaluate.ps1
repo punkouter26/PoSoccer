@@ -17,7 +17,10 @@ param(
     [string]$Profile = "STANDARD",
     [string]$ExePath = "Builds\PoSoccer\PoSoccer.exe",
     [int]$TimeoutMin = 30,
-    [switch]$Rebuild
+    [switch]$Rebuild,
+    # Escape hatch for the staleness gate below. Deliberately awkward to reach:
+    # every wrong phase-10 number came from grading a stale player.
+    [switch]$AllowStale
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,14 +41,34 @@ if (-not $Baseline -and -not (Test-Path $model)) {
 }
 
 # The player evaluates whatever model is baked into the scene, so a stale build
-# silently evaluates the wrong weights. Warn when the build predates the model.
+# silently evaluates the wrong weights.
+#
+# This gate used to compare the model against the .exe mtime and merely warn.
+# Both halves were wrong. Unity frequently rewrites PoSoccer_Data/*.assets - the
+# files that actually carry the baked model - while leaving the .exe untouched,
+# so the .exe timestamp can sit months behind a perfectly fresh build (and, as
+# on 2026-08-05, a perfectly stale one). And a warning in a scrollback is not a
+# gate: three phase-10 evals ran past it and produced three published win rates
+# that all described a p9 brain nobody meant to grade. Compare the data assets,
+# and fail.
 if (-not $Baseline -and (Test-Path $exe)) {
+    $dataDir = Join-Path (Split-Path $exe -Parent) ((Split-Path $exe -LeafBase) + "_Data")
+    $newestData = Get-ChildItem $dataDir -Filter "*.assets" -ErrorAction SilentlyContinue |
+                  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $newestData) {
+        Write-Error "No $dataDir\*.assets - $ExePath is not a complete player build."
+        exit 2
+    }
     $modelTime = (Get-Item $model).LastWriteTime
-    $buildTime = (Get-Item $exe).LastWriteTime
+    $buildTime = $newestData.LastWriteTime
     if ($modelTime -gt $buildTime) {
-        Write-Warning ("Model ($($modelTime.ToString('HH:mm:ss'))) is newer than the player build " +
-                       "($($buildTime.ToString('HH:mm:ss'))). Re-assign m_Model and rebuild, or this " +
-                       "evaluates stale weights.")
+        $msg = ("STALE BUILD: $Profile.onnx ($($modelTime.ToString('yyyy-MM-dd HH:mm'))) is newer than " +
+                "the baked player data ($($buildTime.ToString('yyyy-MM-dd HH:mm'))). This run would grade " +
+                "whatever weights were baked in at build time, not the model you just trained. " +
+                "Rebuild via MCP manage_build (or scripts\build-headless.ps1 with the editor closed), " +
+                "then re-run. Pass -AllowStale only if grading the baked model is what you actually want.")
+        if (-not $AllowStale) { Write-Error $msg; exit 2 }
+        Write-Warning ("-AllowStale set; continuing anyway. " + $msg)
     }
 }
 
@@ -89,6 +112,58 @@ if (-not (Test-Path $out)) {
 }
 
 $r = Get-Content $out -Raw | ConvertFrom-Json
+
+# A model whose input shape disagrees with the runtime's sensor battery does not
+# fail loudly - ML-Agents logs and the agent degrades - so the eval still writes
+# a plausible-looking win rate. Read the player log for that class of failure
+# before believing any number that came out of it.
+$evalLog = Join-Path $root "Logs\eval-$tag.log"
+if (Test-Path $evalLog) {
+    $bad = Select-String -Path $evalLog -Pattern @(
+        "UnityAgentsException", "Exception:", "Model was not", "does not contain",
+        "Unable to use inference", "Falling back to heuristic", "could not be loaded"
+    ) | Select-Object -First 5
+    if ($bad) {
+        Write-Warning "Player log contains failure signatures - the number below may not describe the model you think:"
+        $bad | ForEach-Object { Write-Warning ("  " + $_.Line.Trim()) }
+    }
+}
+
+# Stamp the observation contract this result was graded under. Without it a JSON
+# in results/eval/ is unfalsifiable after the fact: the phase-10 files record a
+# run id and a win rate but nothing that reveals they all graded one stale
+# 118-input player. Best-effort - a missing venv must not fail the eval.
+$py = Join-Path $root ".venv\Scripts\python.exe"
+if ((Test-Path $py) -and (Test-Path $model)) {
+    try {
+        $dims = & $py -c @"
+import onnx, sys
+m = onnx.load(sys.argv[1])
+# Render the symbolic batch dimension as '?' - printing its dim_value of 0
+# makes "obs_0=0x66" look like a hex literal rather than "batch x 66".
+print(';'.join('%s=%s' % (i.name, 'x'.join((d.dim_param or str(d.dim_value)) if (d.dim_param or d.dim_value) else '?'
+                                           for d in i.type.tensor_type.shape.dim))
+               for i in m.graph.input))
+"@ $model 2>$null
+        if ($LASTEXITCODE -eq 0 -and $dims) {
+            $r | Add-Member -NotePropertyName modelInputs -NotePropertyValue ($dims.Trim()) -Force
+        }
+    } catch {
+        # onnx not importable in this venv - the stamp is a nicety, not a gate.
+    }
+}
+$r | Add-Member -NotePropertyName modelPath -NotePropertyValue ($model.Replace($root + "\", "")) -Force
+$r | Add-Member -NotePropertyName modelWrittenUtc -NotePropertyValue ((Get-Item $model).LastWriteTimeUtc.ToString("o")) -Force
+if (Test-Path $exe) {
+    $dataDir = Join-Path (Split-Path $exe -Parent) ((Split-Path $exe -LeafBase) + "_Data")
+    $newestData = Get-ChildItem $dataDir -Filter "*.assets" -ErrorAction SilentlyContinue |
+                  Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($newestData) {
+        $r | Add-Member -NotePropertyName playerBuiltUtc -NotePropertyValue ($newestData.LastWriteTimeUtc.ToString("o")) -Force
+    }
+}
+$r | ConvertTo-Json | Set-Content $out
+
 $winRate = if ($r.episodes) { $r.blueWins / $r.episodes } else { 0 }
 $staleRate = if ($r.episodes) { $r.stalemates / $r.episodes } else { 1 }
 Write-Host ("Eval '{0}': {1} episodes | blue {2} / red {3} / stale {4} | win-rate {5:P1} | mean steps {6:N0}" -f `

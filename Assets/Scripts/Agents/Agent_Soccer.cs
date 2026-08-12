@@ -136,14 +136,24 @@ namespace PoSoccer
         /// the safe failure (unlike a sensor-arc change, which silently reinterprets).
         ///
         /// 2026-08-11: Sensor_Vision split into 4 specialized ray sensors (Ball, Goal,
-        /// Opponents, Walls). Ray inputs grew from 66 to 108 per step; total model
-        /// inputs went 118 -> 162 (vector obs went 52 -> 54). Obsoletes every .onnx
-        /// again - acceptable, none are assigned. The +1 vector float is the
+        /// Opponents, Walls). Ray inputs went 66 -> 54 (the split narrowed each
+        /// sensor to one tag) and vector obs 52 -> 54, so total model inputs went
+        /// 118 -> 108. Obsoletes every .onnx again. The +1 vector float is the
         /// time-remaining scalar (1 - StepCount/MaxStep) that biases the policy
         /// toward late-episode urgency; matches the "time remaining" direct obs
         /// from the "AI Learns to Play Soccer" cheat sheet.
         /// </summary>
         public const int BaseObservationSize = 27;
+
+        /// <summary>
+        /// Stacked vector frames. 2 gives the policy velocity/trend context at the
+        /// slower decision cadence (period 8). This stacks the VectorSensor ONLY -
+        /// ray sensors stack via RayPerceptionSensorComponentBase.ObservationStacks,
+        /// which Sensor_Vision leaves at 1. Conflating the two is what produced the
+        /// wrong "162 model inputs" figure; see Sensor_Vision and
+        /// Agent_EditMode_ObsContract for the arithmetic that is actually checked.
+        /// </summary>
+        public const int StackedObservations = 2;
 
         /// <summary>
         /// Opponent slots in the vector observation, nearest first, 4 floats each
@@ -196,9 +206,7 @@ namespace PoSoccer
                 _behavior.BehaviorName = string.IsNullOrEmpty(brainName) ? "STANDARD" : brainName;
                 _behavior.TeamId = (int)team;
                 _behavior.BrainParameters.VectorObservationSize = BaseObservationSize;
-                // 2 stacked frames give the policy velocity/trend context at the
-                // slower decision cadence (period 8).
-                _behavior.BrainParameters.NumStackedVectorObservations = 2;
+                _behavior.BrainParameters.NumStackedVectorObservations = StackedObservations;
                 _behavior.BrainParameters.ActionSpec =
                     ActionSpec.MakeContinuous(ContinuousActionCount);
                 ApplyEvalMode();

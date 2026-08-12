@@ -14,20 +14,28 @@ namespace PoSoccer
     /// ML-Agents unit, 2023) where splitting a single 4-tag sensor into
     /// goal/own-goal pairs produced the breakthrough.
     ///
-    /// Budget per stack (RayPerceptionSensor.OutputSize = (Tags+2) * (2*RPD+1));
-    /// total = x2 with NumStackedVectorObservations=2:
-    ///   Sensor_Ball        : 2 rays  360   tag Ball   -> 15  ->  30
-    ///   Sensor_Goal        : 1 ray   60    tag Goal   -> 9   ->  18
-    ///   Sensor_Opponents   : 2 rays  360   tag Agent  -> 15  ->  30
-    ///   Sensor_Walls       : 2 rays  360   tag Wall   -> 15  ->  30
-    ///   Ray total                                        -> 108
-    ///   Vector obs (26 x 2)                              ->  52
-    ///   Grand total model inputs                         -> 160
+    /// Budget (RayPerceptionSensor.OutputSize = (Tags+2) * (2*RPD+1)):
+    ///   Sensor_Ball        : 2 rays/dir  tag Ball   -> (1+2)*5 -> 15
+    ///   Sensor_Goal        : 1 ray /dir  tag Goal   -> (1+2)*3 ->  9
+    ///   Sensor_Opponents   : 2 rays/dir  tag Agent  -> (1+2)*5 -> 15
+    ///   Sensor_Walls       : 2 rays/dir  tag Wall   -> (1+2)*5 -> 15
+    ///   Ray total                                             -> 54
+    ///   Vector obs (BaseObservationSize 27 x 2 stacks)        -> 54
+    ///   Grand total model inputs                              -> 108
     ///
-    /// Previous single-sensor contract was 118 inputs (66 ray + 52 vec). This
-    /// version obsoletes every .onnx. Fine - none are assigned as of 2026-08-05;
-    /// the model input shape is reset on the next training run with no stranded
-    /// assets (CLAUDE.md "No trained brain is currently assigned (2026-08-04)").
+    /// CORRECTED 2026-08-12. This block used to double every ray figure and
+    /// claim 108 ray / 160 total, on the belief that
+    /// NumStackedVectorObservations=2 stacks the ray sensors too. It does not -
+    /// that setting only stacks the VectorSensor. Ray sensors stack via their
+    /// own RayPerceptionSensorComponentBase.ObservationStacks, which defaults to
+    /// 1 and is never set here. CLAUDE.md's "162" was wrong the same way.
+    /// Nothing in the shipped code changed; only the arithmetic on this page.
+    ///
+    /// Previous single-sensor contract was 118 inputs (66 ray + 52 vec, when
+    /// BaseObservationSize was 26). Any .onnx from before the split declares
+    /// those shapes and cannot load against this runtime - see
+    /// Agent_EditMode_ObsContract, which fails the build rather than letting a
+    /// mismatched brain degrade silently at eval time.
     ///
     /// Sensor_Goal is team-relative through rewards: +Y points "forward" for
     /// blue (toward Red's goal) and "backward" for red (toward Red's own goal),
@@ -58,6 +66,63 @@ namespace PoSoccer
         const float StandardRayLength = 24f;
         const float WallRayLength = 12f;
 
+        /// <summary>
+        /// One entry per ray sensor. Declared as data rather than four inline
+        /// AddSensor calls so the observation contract is computable without
+        /// entering play mode - Agent_EditMode_ObsContract sums
+        /// <see cref="TotalRayObservationSize"/> off this table and compares it
+        /// against the assigned .onnx. Awake is the only writer; keep it in sync
+        /// by adding sensors here, never by calling AddSensor directly.
+        /// </summary>
+        internal readonly struct SensorSpec
+        {
+            public readonly string Name;
+            public readonly string Tag;
+            public readonly int RaysPerDirection;
+            public readonly float MaxRayDegrees;
+            public readonly float RayLength;
+
+            public SensorSpec(string name, string tag, int raysPerDirection,
+                              float maxRayDegrees, float rayLength)
+            {
+                Name = name;
+                Tag = tag;
+                RaysPerDirection = raysPerDirection;
+                MaxRayDegrees = maxRayDegrees;
+                RayLength = rayLength;
+            }
+
+            // RayPerceptionSensor.OutputSize(). One tag per sensor by design.
+            public int ObservationSize => (1 + 2) * (2 * RaysPerDirection + 1);
+        }
+
+        internal static readonly SensorSpec[] Battery =
+        {
+            new SensorSpec("Sensor_Ball",      "Ball",  2, 180f,                 StandardRayLength),
+            new SensorSpec("Sensor_Goal",      "Goal",  1, GoalHalfArcDegrees,   GoalRayLength),
+            new SensorSpec("Sensor_Opponents", "Agent", 2, 180f,                 StandardRayLength),
+            new SensorSpec("Sensor_Walls",     "Wall",  2, 180f,                 WallRayLength),
+        };
+
+        /// <summary>
+        /// Ray observations this component contributes to the model input.
+        /// ObservationStacks is left at its default of 1, so this is NOT
+        /// multiplied by NumStackedVectorObservations - that setting stacks the
+        /// VectorSensor only.
+        /// </summary>
+        internal static int TotalRayObservationSize
+        {
+            get
+            {
+                int total = 0;
+                for (int i = 0; i < Battery.Length; i++)
+                {
+                    total += Battery[i].ObservationSize;
+                }
+                return total;
+            }
+        }
+
         void Awake()
         {
             // Drop any pre-existing ray sensors so the contract cannot drift
@@ -68,24 +133,23 @@ namespace PoSoccer
                 if (existing[i] != null) Destroy(existing[i]);
             }
 
-            AddSensor("Sensor_Ball",      new[] { "Ball" },  raysPerDirection: 2, maxRayDegrees: 180f, rayLength: StandardRayLength);
-            AddSensor("Sensor_Goal",      new[] { "Goal" },  raysPerDirection: 1, maxRayDegrees: GoalHalfArcDegrees, rayLength: GoalRayLength);
-            AddSensor("Sensor_Opponents", new[] { "Agent" }, raysPerDirection: 2, maxRayDegrees: 180f, rayLength: StandardRayLength);
-            AddSensor("Sensor_Walls",     new[] { "Wall" },  raysPerDirection: 2, maxRayDegrees: 180f, rayLength: WallRayLength);
+            for (int i = 0; i < Battery.Length; i++)
+            {
+                AddSensor(Battery[i]);
+            }
         }
 
-        void AddSensor(string sensorName, string[] tags, int raysPerDirection,
-                       float maxRayDegrees, float rayLength)
+        void AddSensor(SensorSpec spec)
         {
             var s = gameObject.AddComponent<RayPerceptionSensorComponent2D>();
-            s.SensorName = sensorName;
-            s.RaysPerDirection = raysPerDirection;
+            s.SensorName = spec.Name;
+            s.RaysPerDirection = spec.RaysPerDirection;
             // ML-Agents takes MaxRayDegrees as the HALF-arc around the +Y eye
             // axis, so 180 = full circle and 30 = a 60 deg forward wedge.
-            s.MaxRayDegrees = maxRayDegrees;
-            s.RayLength = rayLength;
+            s.MaxRayDegrees = spec.MaxRayDegrees;
+            s.RayLength = spec.RayLength;
             s.SphereCastRadius = 0.1f;
-            s.DetectableTags = new List<string>(tags);
+            s.DetectableTags = new List<string> { spec.Tag };
         }
     }
 }
