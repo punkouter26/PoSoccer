@@ -29,9 +29,16 @@ namespace PoSoccer
         /// Applies every cosmetic element to <paramref name="root"/>. Returns the
         /// identity-letter transform when this call created it, otherwise null —
         /// the caller keeps it upright in Update.
+        ///
+        /// 2026-08-11: added <paramref name="showPlayerLabel"/> so the user-facing
+        /// scene can opt out of the "S/M/K/N" letter on each agent without editing
+        /// the scene. The team frame, body tint and team eye still draw; only the
+        /// TextMesh letter is skipped when false. Defaults to true so existing
+        /// callers stay visually identical.
         /// </summary>
         public static Transform Build(Transform root, Reward_Settings rewards,
-            Agent_Soccer.Team team, float frameInset, float frameThickness, float frameZ)
+            Agent_Soccer.Team team, float frameInset, float frameThickness, float frameZ,
+            bool showPlayerLabel = true)
         {
             if (root == null || rewards == null)
             {
@@ -64,7 +71,8 @@ namespace PoSoccer
             }
 
             // Identity letter (S/M/K/N) on the body, driven by the assigned profile.
-            if (!string.IsNullOrEmpty(rewards.playerName) && root.Find("Label") == null)
+            // Skipped when showPlayerLabel = false (clean-pitch scene option).
+            if (showPlayerLabel && !string.IsNullOrEmpty(rewards.playerName) && root.Find("Label") == null)
             {
                 var labelGo = new GameObject("Label");
                 labelGo.transform.SetParent(root, false);

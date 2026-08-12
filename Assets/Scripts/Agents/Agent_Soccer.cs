@@ -169,6 +169,13 @@ namespace PoSoccer
         [SerializeField] private float _frameInset = 0.18f;     // how far OUTSIDE the body sprite the frame sits
         [SerializeField] private float _frameThickness = 0.10f;  // line width
         [SerializeField] private float _frameZ = 0.01f;          // behind the body, in front of the pitch
+        // 2026-08-11: opt-out for the "S/M/K/N" identity letter. The chassis
+        // sprite, body tint, team eye, and team frame still draw; only the
+        // TextMesh letter is skipped when false. Defaults to ON so existing
+        // serialized agents stay visually identical until the user toggles
+        // it in the Inspector. Use this for clean-pitch exhibition scenes.
+        [Tooltip("Show the S/M/K/N identity letter on the agent body. Turn off in clean-pitch exhibition scenes.")]
+        [SerializeField] private bool _showPlayerLabel = true;
         protected override void Awake()
         {
             base.Awake();
@@ -297,7 +304,8 @@ namespace PoSoccer
             // live in Agent_SoccerView so this file stays observations, actions,
             // locomotion and rewards.
             _label = Agent_SoccerView.Build(
-                transform, rewards, team, _frameInset, _frameThickness, _frameZ);
+                transform, rewards, team, _frameInset, _frameThickness, _frameZ,
+                _showPlayerLabel);
         }
 
         void Update()

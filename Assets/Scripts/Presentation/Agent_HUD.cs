@@ -20,6 +20,16 @@ namespace PoSoccer
         [Tooltip("First team to this many goals ends the match (0 = endless).")]
         public int matchGoals = 5;
         public string menuScene = "SCN_Menu";
+        // 2026-08-11: a single master switch so the user-facing scene can opt
+        // out of the scoreboard, ball-control meter, identity chips, MENU
+        // button and toast. enableMatchFlow only gates the score readout and
+        // the end panel - the rest of the bands still render in the training
+        // scene because nothing in the original code path was conditional.
+        // Defaults to ON so every existing scene keeps its current look
+        // without any scene-asset edit. Set to false in the Inspector to
+        // hide everything in this HUD without changing the scene.
+        [Tooltip("Master switch: when false, builds nothing in OnEnable. The whole HUD (top + bottom bands + toast) disappears. Use for clean pitches where you only want the chassis sprites and team frame.")]
+        public bool showHud = true;
 
         UIDocument _doc;
         Label _score, _stepLabel, _toast;
@@ -37,6 +47,15 @@ namespace PoSoccer
             {
                 Debug.LogWarning("Agent_HUD: assign a PanelSettings asset; HUD disabled.");
                 enabled = false;
+                return;
+            }
+
+            // showHud = false: skip every visual element (top + bottom bands +
+            // toast) so the pitch reads clean. We still build a small invisible
+            // root so anything trying to log in Update doesn't NRE.
+            if (!showHud)
+            {
+                _root.Clear();
                 return;
             }
 
