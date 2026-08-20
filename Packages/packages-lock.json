@@ -35,7 +35,7 @@
       "hash": "ceac8d6946b1125fe782cd171fbcb245b567dbf9"
     },
     "com.ivanmurzak.unity.mcp": {
-      "version": "0.87.0",
+      "version": "0.89.0",
       "depth": 0,
       "source": "registry",
       "dependencies": {
@@ -197,7 +197,7 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.burst": {
-      "version": "1.8.29",
+      "version": "1.8.30",
       "depth": 0,
       "source": "registry",
       "dependencies": {
@@ -217,11 +217,11 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.collab-proxy": {
-      "version": "2.13.3",
+      "version": "2.13.5",
       "depth": 0,
       "source": "registry",
       "dependencies": {
-        "com.unity.collections": "2.6.2"
+        "com.unity.collections": "2.6.8"
       },
       "url": "https://packages.unity.com"
     },
@@ -490,11 +490,11 @@
       }
     },
     "com.unity.visualscripting": {
-      "version": "1.9.11",
+      "version": "1.9.12",
       "depth": 0,
       "source": "registry",
       "dependencies": {
-        "com.unity.ugui": "1.0.0",
+        "com.unity.ugui": "2.0.0",
         "com.unity.modules.jsonserialize": "1.0.0"
       },
       "url": "https://packages.unity.com"
