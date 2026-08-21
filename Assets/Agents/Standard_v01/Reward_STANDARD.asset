@@ -16,11 +16,11 @@ MonoBehaviour:
   personalityNotes: THE BASELINE. Balanced all-rounder - the reference brain every
     personality is measured against.
   playerColor: {r: 0.75, g: 0.75, b: 0.78, a: 1}
-  brainModel: {fileID: 0}
-  trainingSteps: 3000432
-  trainingRunId: soccer_p10_poca_00
-  trainedOn: 2026-08-11
-  evalWinRate: 0.185
+  brainModel: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
+  trainingSteps: 3000026
+  trainingRunId: soccer_p11_pilot
+  trainedOn: 2026-08-20
+  evalWinRate: 0.176
   evalEpisodes: 1000
   bodyScale: 1
   bodyMass: 75
@@ -29,6 +29,8 @@ MonoBehaviour:
   teamBaselineVictory: 0.2
   goalConceded: -1
   stalemateTimeout: -0.6
+  goalSpeedBonus: 0.05
+  crossbarProximity: 0.0005
   stepPenalty: 0
   ballProximityScale: 0.002
   useDifferentialProximity: 1

@@ -56,6 +56,10 @@ $ErrorActionPreference = "Stop"
 $venv = if (Test-Path "$root\.venv2\Scripts\tensorboard.exe") { "$root\.venv2" } else { "$root\.venv" }
 $tbExe   = "$venv\Scripts\tensorboard.exe"
 $tbLog   = Join-Path $root "results\tensorboard.log"
+# On a fresh clone results/ does not exist yet (it is gitignored), and
+# Start-Process -RedirectStandardOutput fails outright on a missing parent
+# directory - which reads as "TensorBoard is broken" rather than "no runs yet".
+New-Item -ItemType Directory -Force $results | Out-Null
 if (-not (Test-Path $tbExe)) { throw "TensorBoard not found at $tbExe. Run .\scripts\setup-training-env.ps1 first." }
 $proc = Start-Process -FilePath $tbExe -ArgumentList @("--logdir", $results, "--port", "$Port", "--bind_all") `
                       -PassThru -RedirectStandardOutput $tbLog -RedirectStandardError "$tbLog.err" `

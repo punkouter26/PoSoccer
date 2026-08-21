@@ -94,6 +94,17 @@ namespace PoSoccer
         Vector3 _ballSpawn;
         bool _episodeEnding;
 
+        // ── Telemetry (2026-08-20) ──────────────────────────────────────────
+        // Reward alone cannot distinguish "the policy is scoring" from "the policy
+        // is standing still while the opponent scores own goals". Three phases of
+        // hypotheses died on that ambiguity, so the numbers that separate them are
+        // now streamed to TensorBoard next to the reward curve via StatsRecorder.
+        // Zero-alloc: two parallel arrays indexed by the agents list, reset per episode.
+        float[] _distanceTravelled;
+        float[] _speedSum;
+        int[] _speedSamples;
+        Vector2[] _lastPosition;
+
         // Execution order (-50) puts this before Agent_Soccer.Awake, which is where
         // the brain contract is frozen - the profile swap must land before that.
         void Awake()
@@ -189,6 +200,7 @@ namespace PoSoccer
         void FixedUpdate()
         {
             StepCount++;
+            SampleLocomotion();
             int cap = stepCapOverride > 0 ? stepCapOverride
                 : rewards != null ? rewards.maxEnvironmentSteps : 5000;
             if (StepCount >= cap)
@@ -262,6 +274,14 @@ namespace PoSoccer
                 }
             }
 
+            // Was this goal earned, or a gift? The scoring side is decided by which
+            // net the ball entered, NOT by who kicked it - so a flailing weak bot can
+            // put it in its own goal and pay every opponent teamBaselineVictory + bonus
+            // for doing nothing. own_goal_rate is the number that tells those apart.
+            bool ownGoal = _lastToucher != null && _lastToucher.team == concedingTeam;
+            bool noToucher = _lastToucher == null;
+            RecordGoalStats(ownGoal, noToucher, bonus);
+
             EpisodeEnded?.Invoke(scoringTeam);
 
             // Group-level signal for MA-POCA credit assignment (2v2 / 3v3)
@@ -289,6 +309,9 @@ namespace PoSoccer
 
             foreach (var agent in agents) agent.AddReward(rewards.stalemateTimeout);
 
+            RecordEpisodeStats();
+            Academy.Instance.StatsRecorder.Add("PoSoccer/stalemate", 1f);
+
             EpisodeEnded?.Invoke(null);
 
             if (_blueGroup != null)
@@ -304,6 +327,98 @@ namespace PoSoccer
             ResetPitch();
         }
 
+        // ── Telemetry ───────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Per-FixedUpdate locomotion sampling. Cheap (one sqrt per agent) and
+        /// zero-alloc after the first episode: the arrays are sized once.
+        /// </summary>
+        void SampleLocomotion()
+        {
+            if (_lastPosition == null || _lastPosition.Length != agents.Count) return;
+
+            for (int i = 0; i < agents.Count; i++)
+            {
+                var agent = agents[i];
+                if (agent == null) continue;
+
+                Vector2 now = agent.transform.position;
+                _distanceTravelled[i] += Vector2.Distance(now, _lastPosition[i]);
+                _lastPosition[i] = now;
+
+                if (agent.Body != null)
+                {
+                    _speedSum[i] += agent.Body.linearVelocity.magnitude;
+                    _speedSamples[i]++;
+                }
+            }
+        }
+
+        void ResetLocomotionTracking()
+        {
+            int n = agents.Count;
+            if (_lastPosition == null || _lastPosition.Length != n)
+            {
+                _distanceTravelled = new float[n];
+                _speedSum = new float[n];
+                _speedSamples = new int[n];
+                _lastPosition = new Vector2[n];
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                _distanceTravelled[i] = 0f;
+                _speedSum[i] = 0f;
+                _speedSamples[i] = 0;
+                _lastPosition[i] = agents[i] != null
+                    ? (Vector2)agents[i].transform.position
+                    : Vector2.zero;
+            }
+        }
+
+        /// <summary>
+        /// Blue-side locomotion, written once per episode. Blue is always the
+        /// trained side (train-phase1.ps1 forces Red to HeuristicOnly), so mixing
+        /// the bot's numbers in would mask exactly the collapse this measures.
+        /// </summary>
+        void RecordEpisodeStats()
+        {
+            if (_lastPosition == null) return;
+
+            var stats = Academy.Instance.StatsRecorder;
+            for (int i = 0; i < agents.Count; i++)
+            {
+                var agent = agents[i];
+                if (agent == null || agent.team != Agent_Soccer.Team.Blue) continue;
+
+                stats.Add("PoSoccer/blue_distance_m", _distanceTravelled[i]);
+                if (_speedSamples[i] > 0)
+                {
+                    stats.Add("PoSoccer/blue_mean_speed", _speedSum[i] / _speedSamples[i]);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Goal provenance. own_goal_rate is the decisive one: it is the share of
+        /// goals whose last toucher played for the CONCEDING side. A policy that
+        /// farms those is paid without ever moving, which reads as healthy reward
+        /// and healthy curriculum promotion while locomotion stays at zero.
+        /// speed_bonus is logged raw because it is paid to every scoring-side
+        /// member including non-touchers, so its size decides whether a free goal
+        /// out-earns an honest one.
+        /// </summary>
+        void RecordGoalStats(bool ownGoal, bool noToucher, float speedBonus)
+        {
+            var stats = Academy.Instance.StatsRecorder;
+            stats.Add("PoSoccer/own_goal_rate", ownGoal ? 1f : 0f);
+            stats.Add("PoSoccer/untouched_goal_rate", noToucher ? 1f : 0f);
+            stats.Add("PoSoccer/goal_speed_bonus", speedBonus);
+            stats.Add("PoSoccer/goal_step", StepCount);
+            stats.Add("PoSoccer/stalemate", 0f);
+            RecordEpisodeStats();
+        }
+
         // ── Reset & curriculum ──────────────────────────────────────────────
 
         void ResetPitch()
@@ -311,6 +426,7 @@ namespace PoSoccer
             StepCount = 0;
             _lastToucher = null;
             _previousToucher = null;
+            ResetLocomotionTracking();
 
             CurrentGoalWidth = Academy.Instance.EnvironmentParameters
                 .GetWithDefault("goal_width", defaultGoalWidth);

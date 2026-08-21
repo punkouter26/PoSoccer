@@ -42,10 +42,26 @@ namespace PoSoccer
     /// so the policy learns that the same input means "opponent goal" for blue
     /// and "own goal" for red via the reward signal.
     ///
-    /// Awake wipes any pre-existing ray sensors on the GameObject first so a
-    /// scene-serialized 11-ray sensor cannot silently stack with the new
-    /// 4-sensor battery. DefaultExecutionOrder(-100) keeps this Awake ahead
-    /// of Agent sensor initialization, so the contract is set exactly once.
+    /// Awake reconciles the ray sensors already on the GameObject against
+    /// <see cref="Battery"/> IN PLACE, and only destroys strays beyond the
+    /// battery size. DefaultExecutionOrder(-100) keeps this Awake ahead of
+    /// Agent sensor initialization, so the contract is set exactly once.
+    ///
+    /// FIXED 2026-08-20 - this used to call Destroy() on every pre-existing ray
+    /// sensor and then add four fresh ones, which broke training the first time
+    /// the 4-sensor split actually ran. UnityEngine.Object.Destroy is DEFERRED
+    /// to the end of the frame, so the old components were still enumerable
+    /// when ML-Agents built its sensor list later in the same frame. That only
+    /// bit the CLONED pitches: Agent_TrainingGrid.Awake (execution order 0)
+    /// Instantiates pitchRoot AFTER this Awake (-100) has already added four
+    /// sensors to the original, so every clone carried four copied components
+    /// into its own Awake, destroyed them on paper, added four more, and
+    /// initialized with EIGHT. The original pitch reported a 4-sensor spec and
+    /// every clone reported an 8-sensor one, so mlagents-learn died on its
+    /// first reset with "Observation at index=1 ... Expected shape (9,) but got
+    /// (15,)" - Sensor_Goal (9) versus the duplicate Sensor_Ball (15) that the
+    /// extra components shifted into slot 1. Reconfiguring in place cannot
+    /// produce that mismatch because the component count never changes.
     /// </summary>
     [DefaultExecutionOrder(-100)]
     [DisallowMultipleComponent]
@@ -125,23 +141,35 @@ namespace PoSoccer
 
         void Awake()
         {
-            // Drop any pre-existing ray sensors so the contract cannot drift
-            // between runs or scenes. Safe even when none exist.
+            // Reconcile in place. A freshly loaded agent has none of these and
+            // takes the AddComponent path; a pitch cloned by Agent_TrainingGrid
+            // arrives with the four components already copied and takes the
+            // reconfigure path. Either way the GameObject leaves this method
+            // with exactly Battery.Length ray sensors, configured from the table.
             var existing = GetComponents<RayPerceptionSensorComponent2D>();
-            for (int i = 0; i < existing.Length; i++)
-            {
-                if (existing[i] != null) Destroy(existing[i]);
-            }
 
             for (int i = 0; i < Battery.Length; i++)
             {
-                AddSensor(Battery[i]);
+                RayPerceptionSensorComponent2D sensor = i < existing.Length ? existing[i] : null;
+                if (sensor == null)
+                {
+                    sensor = gameObject.AddComponent<RayPerceptionSensorComponent2D>();
+                }
+                ConfigureSensor(sensor, Battery[i]);
+            }
+
+            // Anything past the battery is a stray from an older contract (e.g.
+            // a scene-serialized 11-ray sensor). DestroyImmediate, not Destroy:
+            // ML-Agents enumerates this GameObject's sensors later in THIS
+            // frame, so a deferred destroy would leave the stray in the spec.
+            for (int i = Battery.Length; i < existing.Length; i++)
+            {
+                if (existing[i] != null) DestroyImmediate(existing[i]);
             }
         }
 
-        void AddSensor(SensorSpec spec)
+        static void ConfigureSensor(RayPerceptionSensorComponent2D s, SensorSpec spec)
         {
-            var s = gameObject.AddComponent<RayPerceptionSensorComponent2D>();
             s.SensorName = spec.Name;
             s.RaysPerDirection = spec.RaysPerDirection;
             // ML-Agents takes MaxRayDegrees as the HALF-arc around the +Y eye
