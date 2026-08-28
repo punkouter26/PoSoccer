@@ -96,12 +96,35 @@ namespace PoSoccer
             public int ObservationSize => (1 + 2) * (2 * RaysPerDirection + 1);
         }
 
+        /// <summary>Placeholder replaced per-agent with the opposing team's tag.</summary>
+        internal const string OPPONENT_TAG_PLACEHOLDER = "__OPPONENT__";
+
+        /// <summary>
+        /// The ray battery.
+        ///
+        /// RAY COUNTS. These were 2 per direction over a 180 degree half-arc,
+        /// which is 5 rays across the full circle - and because -180 and +180 are
+        /// the same direction, only FOUR distinct directions, 90 degrees apart.
+        /// The blind gap between adjacent rays grows as d*sin(45deg) = 0.71d, and
+        /// with an agent half-width of 0.4 plus the 0.1 spherecast radius that
+        /// guarantees detection only within ~0.71 units. The 11-ray/300-degree
+        /// sensor it replaced guaranteed ~1.9 units, so the phase 10 split made
+        /// perception strictly worse while appearing to improve it - and the
+        /// stale-build incident meant nobody ever measured it.
+        ///
+        /// 6 per direction gives 13 rays / 12 distinct directions / 30 degrees
+        /// apart, so the gap is d*sin(15deg) = 0.259d and detection is guaranteed
+        /// within ~1.93 units: parity with the old sensor, but now with full 360
+        /// coverage AND friend/foe separation. Walls are large and continuous so
+        /// they need less angular precision; the goal sensor keeps its narrow
+        /// forward wedge by design.
+        /// </summary>
         internal static readonly SensorSpec[] Battery =
         {
-            new SensorSpec("Sensor_Ball",      "Ball",  2, 180f,                 StandardRayLength),
-            new SensorSpec("Sensor_Goal",      "Goal",  1, GoalHalfArcDegrees,   GoalRayLength),
-            new SensorSpec("Sensor_Opponents", "Agent", 2, 180f,                 StandardRayLength),
-            new SensorSpec("Sensor_Walls",     "Wall",  2, 180f,                 WallRayLength),
+            new SensorSpec("Sensor_Ball",      "Ball",                    6, 180f,               StandardRayLength),
+            new SensorSpec("Sensor_Goal",      "Goal",                    2, GoalHalfArcDegrees, GoalRayLength),
+            new SensorSpec("Sensor_Opponents", OPPONENT_TAG_PLACEHOLDER,  6, 180f,               StandardRayLength),
+            new SensorSpec("Sensor_Walls",     "Wall",                    4, 180f,               WallRayLength),
         };
 
         /// <summary>
@@ -125,23 +148,70 @@ namespace PoSoccer
 
         void Awake()
         {
-            // Drop any pre-existing ray sensors so the contract cannot drift
-            // between runs or scenes. Safe even when none exist.
+            // RECONFIGURE IN PLACE - do not destroy and re-add.
+            //
+            // This used to Destroy() the existing components and AddComponent()
+            // fresh ones. Destroy is DEFERRED to the end of the frame while
+            // AddComponent is immediate, so for one frame the GameObject carried
+            // both sets - and Agent.OnEnable, which snapshots the sensor list,
+            // runs inside that same frame. The agent therefore initialised with
+            // EIGHT ray sensors instead of four.
+            //
+            // It only bites on cloned pitches. Sensor_Vision runs at -100, so the
+            // authored pitch's agents have already added their four components by
+            // the time Agent_TrainingGrid (order 0) clones the pitch; every clone
+            // inherits those four, then adds four more. The original pitch ends up
+            // with 4 sensors and all 15 clones with 8, so the trainer sees agents
+            // that disagree about their own observation shape and rejects the
+            // environment:
+            //   "Observation at index=1 ... Expected shape (15,) but got (39,)"
+            //
+            // This has been latent since the four-sensor split (2026-08-11) and was
+            // never hit, because every phase-10 run was executed against a stale
+            // build that predated the split. The first run to actually execute this
+            // code is the one that found it.
             var existing = GetComponents<RayPerceptionSensorComponent2D>();
-            for (int i = 0; i < existing.Length; i++)
-            {
-                if (existing[i] != null) Destroy(existing[i]);
-            }
+
+            // The opponent sensor needs to know which side this agent is on, and
+            // Agent_Soccer.team is a serialized field so it is readable from Awake
+            // regardless of component order.
+            var soccer = GetComponent<Agent_Soccer>();
+            string opponentTag = soccer != null
+                ? TeamTag(Agent_Soccer.Opponent(soccer.team))
+                : TeamTag(Agent_Soccer.Team.Red);
 
             for (int i = 0; i < Battery.Length; i++)
             {
-                AddSensor(Battery[i]);
+                var component = i < existing.Length && existing[i] != null
+                    ? existing[i]
+                    : gameObject.AddComponent<RayPerceptionSensorComponent2D>();
+                Configure(component, Battery[i], opponentTag);
+            }
+
+            // Surplus can only appear if the battery shrinks in code. DestroyImmediate
+            // because a deferred Destroy is exactly what caused the bug above.
+            for (int i = Battery.Length; i < existing.Length; i++)
+            {
+                if (existing[i] != null) DestroyImmediate(existing[i]);
             }
         }
 
-        void AddSensor(SensorSpec spec)
+        /// <summary>
+        /// Tag carried by a team's players.
+        ///
+        /// Until now every player was tagged "Agent", so "Sensor_Opponents"
+        /// detected teammates and opponents identically - it was a
+        /// Sensor_AnyPlayer, and the dedicated-opponent-ray idea that phase 10
+        /// was built around never actually existed. Agent_Soccer applies these
+        /// tags at Awake; nothing else in the project reads the old "Agent" tag.
+        /// </summary>
+        public static string TeamTag(Agent_Soccer.Team team)
         {
-            var s = gameObject.AddComponent<RayPerceptionSensorComponent2D>();
+            return team == Agent_Soccer.Team.Blue ? "TeamBlue" : "TeamRed";
+        }
+
+        static void Configure(RayPerceptionSensorComponent2D s, SensorSpec spec, string opponentTag)
+        {
             s.SensorName = spec.Name;
             s.RaysPerDirection = spec.RaysPerDirection;
             // ML-Agents takes MaxRayDegrees as the HALF-arc around the +Y eye
@@ -149,7 +219,10 @@ namespace PoSoccer
             s.MaxRayDegrees = spec.MaxRayDegrees;
             s.RayLength = spec.RayLength;
             s.SphereCastRadius = 0.1f;
-            s.DetectableTags = new List<string> { spec.Tag };
+            s.DetectableTags = new List<string>
+            {
+                spec.Tag == OPPONENT_TAG_PLACEHOLDER ? opponentTag : spec.Tag,
+            };
         }
     }
 }

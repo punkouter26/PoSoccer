@@ -48,6 +48,24 @@ namespace PoSoccer
             {
                 Camera.main.gameObject.AddComponent<Agent_CameraFollow>();
             }
+
+            // Spectator layer (replay, match flow, crowd, commentary), attached
+            // the same way and for the same reason: no scene asset has to carry a
+            // reference, so a scene cannot drift out of sync with the code.
+            // Installed only in a scene meant for an audience - this runs at -200,
+            // ahead of Agent_TrainingGrid cloning the pitch, so a training run
+            // never even allocates these components, let alone ticks them.
+            // Telemetry goes in EVERY scene, training included - a diagnostic you
+            // have to switch scenes to reach is a diagnostic nobody uses. It costs
+            // nothing while hidden: no profiler recorders are allocated until the
+            // overlay is opened, and Update early-outs.
+            if (GetComponent<Agent_Telemetry>() == null) gameObject.AddComponent<Agent_Telemetry>();
+
+            var hud = FindFirstObjectByType<Agent_HUD>();
+            if (Agent_Presentation.IsMatchScene(hud))
+            {
+                Agent_Presentation.Install(FindFirstObjectByType<Agent_EnvController>());
+            }
         }
     }
 }

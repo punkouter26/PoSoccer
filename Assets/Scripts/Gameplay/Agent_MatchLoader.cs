@@ -34,8 +34,27 @@ namespace PoSoccer
                  "authored pitch, which is what trained brains learned on.")]
         [SerializeField] private bool _scalePitchToSquad = true;
 
+        /// <summary>
+        /// Loading the match scene without going through the menu is a documented
+        /// trap: Agent_MatchSetup is empty, so the lineup silently falls back to
+        /// whatever happens to be serialized and you are testing a squad nobody
+        /// chose. It used to fail silently; now it says so.
+        /// </summary>
+        void WarnIfLineupWasNeverChosen()
+        {
+            if (Agent_MatchSetup.Applied) return;
+            if (Agent_EvalStats.EvalMode) return;
+            if (Unity.MLAgents.Academy.Instance.IsCommunicatorOn) return;
+
+            Debug.LogWarning(
+                "Agent_MatchLoader: no menu selection found (Agent_MatchSetup.Applied is false). " +
+                "Falling back to the lineup serialized in the scene. Start from SCN_Menu to " +
+                "choose a squad - see CLAUDE.md.");
+        }
+
         void Awake()
         {
+            WarnIfLineupWasNeverChosen();
             var env = GetComponent<Agent_EnvController>();
 
             int blueSize = Mathf.Clamp(

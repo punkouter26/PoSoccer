@@ -1,0 +1,62 @@
+# Phase 11b - INTRINSIC MOTIVATION. Run ONLY after phase 11 has a number.
+#
+# Five runs of extrinsic-only PPO against the scripted bot have produced a flat
+# 16-17%: p5 (30M) 16.2, p6 (perception) 17.1, p7 (reward table) 16.6,
+# p8 (locomotion) 16.9, p10 (POCA, regraded) 18.5. Four different hypotheses,
+# one flat result. That pattern is the signature of an exploration problem, not
+# a capacity or a reward-shaping problem - the policy finds a mediocre local
+# optimum quickly and never leaves it.
+#
+# Curiosity gives a bonus for transitions the forward model cannot predict, which
+# pays for visiting states the extrinsic reward never rewards on the way in -
+# carrying the ball into the final third, for instance, which pays nothing until
+# it becomes a goal.
+#
+# STRENGTH IS DELIBERATELY LOW (0.02). Curiosity that outweighs the extrinsic
+# signal produces an agent that enjoys novelty and ignores the scoreboard, which
+# on this pitch means spinning near walls where the contact dynamics are hardest
+# to predict. It is a nudge out of the local optimum, not an objective.
+#
+# This is a SECOND VARIABLE on top of phase 11. Do not run the two together and
+# then attribute the result to either one - that is precisely how p5/p6/p7 ended
+# up uninterpretable.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.995
+        strength: 1.0
+      curiosity:
+        gamma: 0.99
+        strength: 0.02
+        learning_rate: 3.0e-4
+        network_settings:
+          hidden_units: 128
+          num_layers: 2
+    max_steps: 3000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 500000
+
+environment_parameters:
+  goal_width: 6.0
+  bot_strength:
+    sampler_type: uniform
+    sampler_parameters:
+      min_value: 0.2
+      max_value: 1.0

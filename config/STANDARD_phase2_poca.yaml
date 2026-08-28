@@ -1,6 +1,18 @@
 # Phase 2 — MA-POCA self-play for 1v1 up to 3v3 team dynamics.
 # Both teams run the "SoccerAgent" behavior with distinct TeamIds (Blue=0, Red=1);
 # Agent_EnvController registers SimpleMultiAgentGroups when a side has >1 player.
+#
+# READ THIS BEFORE JUDGING A SELF-PLAY RUN BY REWARD.
+# Self-play rewards are zero-sum, so mean reward is not a measure of skill - it is
+# a measure of which side happened to be sampled. The phase 10 POCA run made
+# exactly this mistake: Mean Group Reward climbed to 0.86 and was reported as
+# progress, while Self-play/ELO sat at 1200.5 - i.e. 0.5 points above its initial
+# 1200.0 - flat across 9.28M steps. The rating never moved. The regrade put the
+# policy at 18.5% against the p9 brain's 17.7%, inside combined noise.
+#
+# GATE: Self-play/ELO in TensorBoard. If ELO has not risen materially above
+# initial_elo, the run has learned nothing regardless of what reward is doing.
+# Kill it rather than extending it.
 behaviors:
   STANDARD:
     trainer_type: poca
@@ -19,7 +31,9 @@ behaviors:
       num_layers: 2
     reward_signals:
       extrinsic:
-        gamma: 0.99
+        # 0.995: DecisionPeriod 8 at 100 Hz is 12.5 decisions/s, so 0.99 gave an
+        # effective horizon of only ~8 seconds against 50-second episodes.
+        gamma: 0.995
         strength: 1.0
     max_steps: 30000000
     time_horizon: 1000
@@ -36,8 +50,10 @@ behaviors:
       initial_elo: 1200.0
 
 # Curriculum gates on training progress (fraction of max_steps): self-play
-# rewards are zero-sum, so reward-gating never advances, and this mlagents
-# version has no Elo measure. 0-20% wide net, 20-50% mid, then tight.
+# rewards are zero-sum, so reward-gating never advances. 0-20% wide net,
+# 20-50% mid, then tight. (An earlier note here claimed this mlagents version
+# has no Elo measure - it does: Self-play/ELO is published, and phase 10's flat
+# 1200.5 reading is the whole reason the header above exists.)
 environment_parameters:
   goal_width:
     curriculum:

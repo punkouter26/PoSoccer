@@ -1,0 +1,48 @@
+# Phase 14 - NETWORK CAPACITY.
+#
+# The observation vector nearly doubled on 2026-08-27: 108 -> 178 model inputs
+# (120 ray + 58 vector), after the opponent sensor was given real friend/foe
+# separation and the ray count was restored to useful angular resolution.
+#
+# Every previous run used hidden_units 256 / num_layers 2, chosen when the input
+# was 108 and a good deal of it was noise. Nobody has tested whether the network
+# is now simply too small to use what it is being shown. This is the cheapest
+# untested structural hypothesis on the board.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 512
+      num_layers: 3
+    reward_signals:
+      extrinsic:
+        # 0.995 at 12.5 decisions/s ~= a 16 second effective horizon.
+        gamma: 0.995
+        strength: 1.0
+    max_steps: 8000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 500000
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # Uniform over the full range so the policy meets the full-strength bot during
+  # training, not only at eval time (carried forward from phase 9).
+  bot_strength:
+    sampler_type: uniform
+    sampler_parameters:
+      min_value: 0.2
+      max_value: 1.0

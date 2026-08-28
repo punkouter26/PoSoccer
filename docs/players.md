@@ -45,3 +45,30 @@ physics materials live in `Assets/Agents/Standard_v01/`.
 
 `SCN_Exhibition.unity` pits any two brains against each other: assign each agent's
 `BehaviorParameters.Model` + `InferenceOnly` and press Play.
+
+
+## Measured: the four personalities are behaviourally indistinguishable (2026-08-27)
+
+Multi-run evaluation means, 1000 episodes each unless noted:
+
+| Profile | Steps trained | Blue wins |
+|---|---|---|
+| STANDARD | 30.0M | 16.2% |
+| MATT | 2.5M | 17.2% |
+| NICK | 2.5M | 17.2% |
+| KIM | 2.5M | 16.2% |
+
+A 12x difference in training budget produced a spread smaller than the
+measurement noise (SD ~1.2 at n=1000). The reward-DNA differences between the
+profiles - `defensivePositionScale`, `possessionScale`, tuned `goalScorer` - are
+real in the config and invisible in the result.
+
+**Decision:** keep the roster. It is the game's hook, the bodies and colours
+differ, and the menu reads better with four names. But stop paying to train four
+separate brains until *one* of them beats the bot: four runs cost four times the
+compute to produce one number. Train STANDARD, ship it to all four slots, and
+treat the personalities as cosmetic loadouts plus reward DNA that has not yet
+been shown to matter.
+
+Revisit once the benchmark is met - personality divergence is a plausible thing
+to tune *after* there is a policy worth differentiating.

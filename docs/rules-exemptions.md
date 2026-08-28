@@ -143,3 +143,34 @@ it errs on the side of *more* physics stability, not less.
 only as part of a deliberate from-scratch retrain, where the whole
 locomotion model would be re-measured anyway — never as a standalone
 compliance edit.
+
+## Stamina recovery deviates from the PRD's flat 25/s (2026-08-27)
+
+**PRD:** "100 max, 60/s drain while boosting, 25/s recharge."
+
+**Shipped:** 25/s is now the *peak* recharge rate. Two changes make it
+bio-realistic rather than linear:
+
+1. **Post-exertion delay** (`recoveryDelaySeconds`, 0.6 s). Recovery does not
+   begin the instant a sprint ends.
+2. **Depletion scaling** (`depletedRecoveryFactor`, 0.45). Recovery out of full
+   depletion runs at ~45% of the peak rate and ramps toward 25/s as the tank
+   refills.
+
+**Why:** a flat rate means the cheapest possible strategy is to sprint to zero,
+stop for exactly four seconds, and repeat, with no penalty for how deep the hole
+was. That is not how energy systems work and it removes any reason to pace.
+
+**Cost:** any `.onnx` trained before this date experiences different stamina
+dynamics. There are none, so this is free today; it will not be free later.
+Pinned by `Agent_EditMode_SoccerAgent.Stamina_*`.
+
+## Stamina wear no longer persists across training episodes (2026-08-27)
+
+`resetWearOnEpisode` is serialized `false` in both scenes, which was correct for
+exhibition play (fatigue across a match) and **wrong for training**: wear accrued
+to its 0.4 cap after ~200 s of cumulative boosting - inside the first ~1% of a
+3M-step run - so every run trained a body pinned at the wear floor, and
+`Stamina.Ratio` normalises by `EffectiveMax` so the observation hid it. The flag
+is now overridden whenever a trainer is attached or an evaluation is running; the
+serialized value still governs exhibition play.

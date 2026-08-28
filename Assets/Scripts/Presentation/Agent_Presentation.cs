@@ -1,0 +1,55 @@
+using UnityEngine;
+
+namespace PoSoccer
+{
+    /// <summary>
+    /// Gate and installer for the spectator layer (replay, match flow, crowd,
+    /// commentary).
+    ///
+    /// THE GATE MATTERS MORE THAN THE INSTALLER. SCN_Training and SCN_Exhibition
+    /// carry an identical object set, so nothing about the hierarchy distinguishes
+    /// them at runtime. The one honest discriminator is Agent_HUD.enableMatchFlow,
+    /// which is serialized 0 in SCN_Training and 1 in SCN_Exhibition. Everything
+    /// here also refuses to run when a trainer is attached or an evaluation is in
+    /// progress, so a headless run can never pay for a light show - and, more
+    /// importantly, can never have its timing perturbed by one. A replay freezing
+    /// the clock during an eval would corrupt the very numbers the benchmark
+    /// exists to produce.
+    ///
+    /// Components are attached in code rather than serialized into the scene, in
+    /// the same spirit as Agent_Bootstrap attaching Agent_CameraFollow and
+    /// Agent_Soccer auto-adding Sensor_Vision: the scene assets stay untouched, so
+    /// there is no way for a scene to drift out of sync with the code.
+    /// </summary>
+    public static class Agent_Presentation
+    {
+        /// <summary>
+        /// True only in a scene meant for a human audience. False in training, in
+        /// evaluation, and whenever a trainer is connected.
+        /// </summary>
+        public static bool IsMatchScene(Agent_HUD hud)
+        {
+            if (hud == null || !hud.enableMatchFlow) return false;
+            if (Agent_EvalStats.EvalMode) return false;
+            return !Unity.MLAgents.Academy.Instance.IsCommunicatorOn;
+        }
+
+        /// <summary>
+        /// Adds the spectator components to the pitch root, once. Safe to call
+        /// when the gate is closed - each component checks the gate itself in
+        /// Start and disables, which keeps the decision in one place.
+        /// </summary>
+        public static void Install(Agent_EnvController env)
+        {
+            if (env == null) return;
+            var go = env.gameObject;
+
+            if (go.GetComponent<Agent_Replay>() == null) go.AddComponent<Agent_Replay>();
+            if (go.GetComponent<Agent_MatchFlow>() == null) go.AddComponent<Agent_MatchFlow>();
+            if (go.GetComponent<Agent_Commentary>() == null) go.AddComponent<Agent_Commentary>();
+            if (go.GetComponent<Agent_Crowd>() == null) go.AddComponent<Agent_Crowd>();
+            if (go.GetComponent<Agent_Surfaces>() == null) go.AddComponent<Agent_Surfaces>();
+            if (go.GetComponent<Agent_ParticleFX>() == null) go.AddComponent<Agent_ParticleFX>();
+        }
+    }
+}

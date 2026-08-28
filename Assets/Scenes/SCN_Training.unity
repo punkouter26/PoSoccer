@@ -567,6 +567,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_Stadium
   litMaterial: {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   globalFill: 0.5
+  _celebrationSeconds: 2.2
+  _celebrationHz: 6
+  _tonemapping: 1
 --- !u!4 &218900242
 Transform:
   m_ObjectHideFlags: 0
@@ -1340,8 +1343,21 @@ MonoBehaviour:
   whistle: {fileID: 8300000, guid: 8e4157b493ce7594881d3f5548e87ab5, type: 3}
   crowdLoop: {fileID: 8300000, guid: 07661d89f6ff0f142a56d0ba2b477525, type: 3}
   music: {fileID: 0}
+  crowdBoo: {fileID: 0}
   crowdBase: 0.16
   crowdSwellMax: 0.45
+  _masterVolume: 1
+  _sfxVolume: 1
+  _crowdVolume: 1
+  _musicVolume: 0.25
+  _voices: 8
+  _spatialBlend: 0.8
+  _minDistance: 6
+  _maxDistance: 40
+  _stereoSpread: 0.7
+  _duckAmount: 0.55
+  _duckRelease: 1.4
+  _frozenCutoff: 850
 --- !u!114 &588775821
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1886,7 +1902,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 0}
+  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
   m_InferenceDevice: 0
   m_BehaviorType: 0
   m_BehaviorName: My Behavior
@@ -1913,6 +1929,8 @@ MonoBehaviour:
   wearPerBoostSecond: 0.002
   wearFloor: 0.6
   resetWearOnEpisode: 0
+  recoveryDelaySeconds: 0.6
+  depletedRecoveryFactor: 0.45
 --- !u!61 &1579506623
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -2198,7 +2216,7 @@ MonoBehaviour:
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
-  m_Model: {fileID: 0}
+  m_Model: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
   m_InferenceDevice: 0
   m_BehaviorType: 0
   m_BehaviorName: My Behavior
@@ -2225,6 +2243,8 @@ MonoBehaviour:
   wearPerBoostSecond: 0.002
   wearFloor: 0.6
   resetWearOnEpisode: 0
+  recoveryDelaySeconds: 0.6
+  depletedRecoveryFactor: 0.45
 --- !u!61 &1593781677
 BoxCollider2D:
   m_ObjectHideFlags: 0

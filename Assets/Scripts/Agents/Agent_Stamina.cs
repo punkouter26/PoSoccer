@@ -24,6 +24,17 @@ namespace PoSoccer
         [Tooltip("If true, wear resets on every episode (training). Leave false for game-play fatigue across cycles.")]
         public bool resetWearOnEpisode = false;
 
+        [Header("Recovery")]
+        [Tooltip("Seconds after boosting stops before stamina begins to recover. A real " +
+                 "athlete does not start refilling the instant they stop sprinting.")]
+        public float recoveryDelaySeconds = 0.6f;
+        [Tooltip("Recovery rate multiplier when completely drained. Recovery from full " +
+                 "depletion is slower than topping up, so this stays below 1.")]
+        [Range(0.2f, 1f)]
+        public float depletedRecoveryFactor = 0.45f;
+
+        float _recoveryCooldown;
+
         public float Current { get; private set; }
         public float Wear { get; private set; }
 
@@ -33,6 +44,20 @@ namespace PoSoccer
 
         void Awake() => Current = maxStamina;
 
+        /// <summary>
+        /// True while a trainer or an evaluation run is driving the environment.
+        ///
+        /// Wear must ALWAYS reset per episode in those modes. Serialized false in
+        /// both scenes, wear accrued at 0.002 per second of boosting toward a 0.4
+        /// cap - reached after only ~200 seconds of cumulative boost, i.e. inside
+        /// the first ~1% of a 3M-step run. Every run after that trained a body
+        /// pinned at the wear floor, and because Ratio normalises by EffectiveMax
+        /// the observation hid it. That is a silently non-stationary environment,
+        /// which is the one thing an RL setup must not have.
+        /// </summary>
+        static bool HeadlessRun =>
+            Agent_EvalStats.EvalMode || Unity.MLAgents.Academy.Instance.IsCommunicatorOn;
+
         /// <summary>Advance the stamina simulation one physics tick.</summary>
         public void Tick(bool boosting, float deltaTime)
         {
@@ -40,17 +65,34 @@ namespace PoSoccer
             {
                 Current = Mathf.Max(0f, Current - drainPerSecond * deltaTime);
                 Wear = Mathf.Min(1f - wearFloor, Wear + wearPerBoostSecond * deltaTime);
+                _recoveryCooldown = recoveryDelaySeconds;
+                return;
             }
-            else
-            {
-                Current = Mathf.Min(EffectiveMax, Current + rechargePerSecond * deltaTime);
-            }
+
+            // Recovery is delayed, then ramps with how full the tank already is:
+            // fast when topping up, slow out of full depletion.
+            _recoveryCooldown -= deltaTime;
+            if (_recoveryCooldown > 0f) return;
+
+            // Only the part of the timestep AFTER the delay expired counts. The
+            // first version credited the whole tick the moment the delay lapsed,
+            // which quietly handed back more stamina than elapsed time allowed.
+            float active = Mathf.Min(deltaTime, -_recoveryCooldown);
+            _recoveryCooldown = 0f;
+
+            float fullness = EffectiveMax > 0f ? Current / EffectiveMax : 0f;
+            float rate = rechargePerSecond *
+                         Mathf.Lerp(depletedRecoveryFactor, 1f, Mathf.Sqrt(Mathf.Clamp01(fullness)));
+            Current = Mathf.Min(EffectiveMax, Current + rate * active);
         }
 
         public void ResetForEpisode()
         {
-            if (resetWearOnEpisode) Wear = 0f;
+            // Wear FIRST: EffectiveMax is derived from it, so filling the tank
+            // before clearing wear would start every episode short of full.
+            if (resetWearOnEpisode || HeadlessRun) Wear = 0f;
             Current = EffectiveMax;
+            _recoveryCooldown = 0f;
         }
     }
 }

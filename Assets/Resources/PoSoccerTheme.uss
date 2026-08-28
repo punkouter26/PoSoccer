@@ -1,0 +1,442 @@
+/*
+ * PoSoccer design system.
+ *
+ * Replaces 223 inline `.style.` assignments spread across Agent_HUD and
+ * Agent_MainMenu, which is why padding and type sizes had drifted apart between
+ * the two screens - there was no shared definition for them to drift from.
+ *
+ * Units are in the PanelSettings reference space: 1080 x 1920, ScaleWithScreenSize
+ * matching WIDTH. So 1 unit here is 1/1080th of the screen width on any device.
+ * (Agent_UIStyle's docstring used to claim 1170 x 2532; that was never true.)
+ *
+ * Dynamic values stay in C#: per-profile player colours, meter widths and team
+ * tints are data, not design, and belong with the code that computes them.
+ */
+
+:root {
+    /* Palette */
+    --color-bg: rgb(13, 23, 18);
+    --color-panel: rgba(0, 0, 0, 0.45);
+    --color-panel-solid: rgb(18, 26, 22);
+    --color-scrim: rgba(0, 0, 0, 0.78);
+    --color-text: rgb(255, 255, 255);
+    --color-text-muted: rgb(179, 191, 184);
+    --color-team-blue: rgb(51, 128, 255);
+    --color-team-red: rgb(255, 64, 51);
+    --color-accent: rgb(41, 140, 71);
+    --color-gold: rgb(255, 214, 51);
+    --color-edge-light: rgba(255, 255, 255, 0.16);
+    --color-edge-dark: rgba(0, 0, 0, 0.35);
+
+    /* Spacing scale - every margin and padding in the game comes from here */
+    --space-1: 4;
+    --space-2: 8;
+    --space-3: 12;
+    --space-4: 16;
+    --space-5: 24;
+    --space-6: 32;
+    --space-7: 48;
+
+    /* Radii */
+    --radius-sm: 8;
+    --radius-md: 16;
+    --radius-lg: 24;
+
+    /* Type scale */
+    --font-xs: 24;
+    --font-s: 30;
+    --font-m: 44;
+    --font-l: 64;
+    --font-xl: 120;
+    --font-display: 118;
+}
+
+/* ---------------------------------------------------------------- layout - */
+
+.screen {
+    flex-grow: 1;
+    justify-content: space-between;
+}
+
+.screen--menu {
+    background-color: var(--color-bg);
+    align-items: center;
+    justify-content: space-evenly;
+    padding-top: var(--space-5);
+    padding-bottom: var(--space-5);
+}
+
+.band {
+    align-items: center;
+    padding-top: var(--space-5);
+    padding-bottom: var(--space-5);
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
+}
+
+.row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+}
+
+.stack-center {
+    align-items: center;
+}
+
+/* ------------------------------------------------------------ typography - */
+
+.text-muted {
+    color: var(--color-text-muted);
+    font-size: var(--font-s);
+}
+
+.score {
+    font-size: var(--font-l);
+    -unity-font-style: bold;
+    color: var(--color-text);
+}
+
+.clock {
+    font-size: var(--font-s);
+    color: var(--color-text-muted);
+}
+
+.title {
+    font-size: var(--font-display);
+    -unity-font-style: bold;
+    color: var(--color-text);
+}
+
+/* --------------------------------------------------------------- surface - */
+
+/*
+ * Elevation without box-shadow, which UI Toolkit does not support: a light top
+ * edge and a dark bottom edge read as a lifted surface against the pitch.
+ */
+.panel {
+    background-color: var(--color-panel);
+    border-top-left-radius: var(--radius-md);
+    border-top-right-radius: var(--radius-md);
+    border-bottom-left-radius: var(--radius-md);
+    border-bottom-right-radius: var(--radius-md);
+    border-top-width: 1;
+    border-bottom-width: 2;
+    border-top-color: var(--color-edge-light);
+    border-bottom-color: var(--color-edge-dark);
+    padding-top: var(--space-5);
+    padding-bottom: var(--space-5);
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
+}
+
+.panel--scrim {
+    background-color: var(--color-scrim);
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+    border-top-width: 0;
+    border-bottom-width: 0;
+    /*
+     * Fails VISIBLE on purpose. The end panel is raised while the clock is
+     * frozen; if transitions ever failed to run, an `opacity: 0` default would
+     * leave the player staring at a dead pitch with no result and no buttons.
+     * So the resting state is shown, and `is-entering` - added on creation and
+     * removed one frame later - supplies the animation.
+     */
+    opacity: 1;
+    scale: 1 1;
+    transition-property: opacity, scale;
+    transition-duration: 0.22s, 0.22s;
+    transition-timing-function: ease-out-cubic, ease-out-cubic;
+}
+
+.panel--scrim.is-entering {
+    opacity: 0;
+    scale: 0.96 0.96;
+}
+
+/* --------------------------------------------------------------- buttons - */
+
+.btn {
+    font-size: var(--font-s);
+    color: var(--color-text);
+    background-color: var(--color-panel);
+    border-top-left-radius: var(--radius-md);
+    border-top-right-radius: var(--radius-md);
+    border-bottom-left-radius: var(--radius-md);
+    border-bottom-right-radius: var(--radius-md);
+    border-top-width: 1;
+    border-bottom-width: 2;
+    border-left-width: 0;
+    border-right-width: 0;
+    border-top-color: var(--color-edge-light);
+    border-bottom-color: var(--color-edge-dark);
+    padding-left: var(--space-6);
+    padding-right: var(--space-6);
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
+    transition-property: background-color, scale;
+    transition-duration: 0.12s, 0.12s;
+    transition-timing-function: ease-out, ease-out;
+}
+
+/* States the previous inline styling could not express at all. */
+.btn:hover {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+.btn:active {
+    scale: 0.96 0.96;
+    background-color: rgba(255, 255, 255, 0.22);
+}
+
+.btn:disabled {
+    opacity: 0.4;
+}
+
+.btn--primary {
+    background-color: var(--color-accent);
+    -unity-font-style: bold;
+    font-size: var(--font-m);
+    padding-left: var(--space-7);
+    padding-right: var(--space-7);
+    padding-top: var(--space-5);
+    padding-bottom: var(--space-5);
+    margin-top: var(--space-4);
+}
+
+.btn--primary:hover {
+    background-color: rgb(56, 173, 92);
+}
+
+.btn--play {
+    font-size: 74;
+    -unity-font-style: bold;
+    background-color: var(--color-accent);
+    padding-left: 150;
+    padding-right: 150;
+    padding-top: 26;
+    padding-bottom: 26;
+}
+
+.btn--ghost {
+    background-color: var(--color-panel);
+    margin-top: var(--space-4);
+    padding-left: var(--space-7);
+    padding-right: var(--space-7);
+    padding-top: var(--space-5);
+    padding-bottom: var(--space-5);
+    font-size: var(--font-m);
+    -unity-font-style: bold;
+}
+
+.btn--roster {
+    height: 78;
+    font-size: var(--font-s);
+    color: rgb(0, 0, 0);
+    -unity-font-style: bold;
+    padding-left: 26;
+    padding-right: 26;
+    margin-left: var(--space-1);
+    margin-right: var(--space-1);
+}
+
+/* ------------------------------------------------------------------ hud - */
+
+.chip {
+    align-items: center;
+    margin-left: 10;
+    margin-right: 10;
+}
+
+.chip__badge {
+    width: 84;
+    height: 84;
+    -unity-text-align: middle-center;
+    font-size: var(--font-m);
+    -unity-font-style: bold;
+    color: rgb(0, 0, 0);
+    border-top-left-radius: var(--radius-sm);
+    border-top-right-radius: var(--radius-sm);
+    border-bottom-left-radius: var(--radius-sm);
+    border-bottom-right-radius: var(--radius-sm);
+    border-bottom-width: 6;
+}
+
+.chip__driver {
+    font-size: var(--font-xs);
+    margin-top: var(--space-1);
+    -unity-font-style: bold;
+}
+
+.meter {
+    flex-direction: row;
+    width: 600;
+    height: 14;
+    margin-bottom: var(--space-4);
+    background-color: rgba(255, 255, 255, 0.15);
+    border-top-left-radius: 7;
+    border-top-right-radius: 7;
+    border-bottom-left-radius: 7;
+    border-bottom-right-radius: 7;
+}
+
+.meter__fill {
+    height: 14;
+    transition-property: width;
+    transition-duration: 0.25s;
+    transition-timing-function: ease-out;
+}
+
+.meter__fill--blue {
+    background-color: var(--color-team-blue);
+    border-top-left-radius: 7;
+    border-bottom-left-radius: 7;
+}
+
+.meter__fill--red {
+    background-color: var(--color-team-red);
+    border-top-right-radius: 7;
+    border-bottom-right-radius: 7;
+}
+
+/* ------------------------------------------------------------ broadcast - */
+
+/*
+ * The callout lanes. Each animates scale and opacity so a goal punches in
+ * instead of appearing, which is most of what separates a HUD from a
+ * broadcast package.
+ */
+.toast {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 38%;
+    -unity-text-align: middle-center;
+    font-size: var(--font-xl);
+    -unity-font-style: bold;
+    color: var(--color-text);
+    opacity: 0;
+    scale: 0.7 0.7;
+    transition-property: opacity, scale;
+    transition-duration: 0.18s, 0.18s;
+    transition-timing-function: ease-out, ease-out-back;
+}
+
+.toast.is-shown {
+    opacity: 1;
+    scale: 1 1;
+}
+
+.commentary {
+    position: absolute;
+    left: var(--space-6);
+    right: var(--space-6);
+    top: 52%;
+    -unity-text-align: middle-center;
+    font-size: var(--font-m);
+    -unity-font-style: bold;
+    color: var(--color-text);
+    white-space: normal;
+    opacity: 0;
+    translate: 0 12px;
+    transition-property: opacity, translate;
+    transition-duration: 0.2s, 0.2s;
+    transition-timing-function: ease-out, ease-out;
+}
+
+.commentary.is-shown {
+    opacity: 1;
+    translate: 0 0;
+}
+
+.banner {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 24%;
+    -unity-text-align: middle-center;
+    font-size: var(--font-m);
+    -unity-font-style: bold;
+    opacity: 0;
+    transition-property: opacity;
+    transition-duration: 0.25s;
+}
+
+.banner.is-shown {
+    opacity: 1;
+}
+
+.letterbox {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 11%;
+    background-color: rgb(0, 0, 0);
+    opacity: 0;
+    transition-property: opacity;
+    transition-duration: 0.2s;
+}
+
+.letterbox.is-shown {
+    opacity: 1;
+}
+
+.replay-tag {
+    position: absolute;
+    left: var(--space-7);
+    top: 14%;
+    font-size: var(--font-m);
+    -unity-font-style: bold;
+    color: var(--color-team-red);
+    opacity: 0;
+    transition-property: opacity;
+    transition-duration: 0.2s;
+}
+
+.replay-tag.is-shown {
+    opacity: 1;
+}
+
+/* ------------------------------------------------------------ telemetry - */
+
+.telemetry {
+    position: absolute;
+    top: 140;
+    left: 20;
+    padding-top: 14;
+    padding-bottom: 14;
+    padding-left: 18;
+    padding-right: 18;
+    background-color: rgba(0, 0, 0, 0.72);
+    color: rgb(166, 255, 179);
+    font-size: 26;
+    -unity-font-style: bold;
+    white-space: normal;
+    border-top-left-radius: var(--radius-sm);
+    border-top-right-radius: var(--radius-sm);
+    border-bottom-left-radius: var(--radius-sm);
+    border-bottom-right-radius: var(--radius-sm);
+}
+
+/* --------------------------------------------------------------- motion - */
+
+/*
+ * Staged entrance for menu rows. The C# adds .enter-from, then clears it a
+ * frame later, and the transition does the rest.
+ */
+.enter {
+    transition-property: opacity, translate;
+    transition-duration: 0.3s, 0.3s;
+    transition-timing-function: ease-out-cubic, ease-out-cubic;
+}
+
+.enter-from {
+    opacity: 0;
+    translate: 0 28px;
+}

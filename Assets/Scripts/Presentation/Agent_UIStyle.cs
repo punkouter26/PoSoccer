@@ -4,9 +4,17 @@ using UnityEngine.UIElements;
 namespace PoSoccer
 {
     /// <summary>
-    /// Single source of truth for runtime UI styling. All values are in the
-    /// 1170x2532 reference-resolution units the shared PanelSettings scales from,
-    /// so menu and HUD stay visually consistent.
+    /// Bridge between C# and the USS design system in
+    /// Assets/Resources/PoSoccerTheme.uss, which is now the single source of
+    /// truth for spacing, type and colour.
+    ///
+    /// Values below are in the shared PanelSettings reference space: 1080x1920,
+    /// ScaleWithScreenSize matching WIDTH. This docstring previously claimed
+    /// 1170x2532, which was never the configured resolution.
+    ///
+    /// The constants remain because dynamic styling legitimately needs them from
+    /// code - a per-profile player colour or a computed meter width is data, not
+    /// design. Static styling belongs in the stylesheet.
     /// </summary>
     public static class Agent_UIStyle
     {
@@ -29,6 +37,56 @@ namespace PoSoccer
         public const int FontL = 64;
         public const int FontXL = 120;
 
+        /// <summary>USS class marking a transient element as currently visible.</summary>
+        public const string SHOWN = "is-shown";
+
+        /// <summary>USS class supplying a one-frame entrance offset.</summary>
+        public const string ENTERING = "is-entering";
+
+        const string THEME_RESOURCE = "PoSoccerTheme";
+        static StyleSheet _theme;
+        static bool _themeMissingLogged;
+
+        /// <summary>
+        /// Attaches the shared stylesheet to a panel root. Safe to call more than
+        /// once per root. Loaded from Resources rather than a serialized field so
+        /// no scene has to carry a reference to it.
+        /// </summary>
+        public static void ApplyTheme(VisualElement root)
+        {
+            if (root == null) return;
+            if (_theme == null) _theme = Resources.Load<StyleSheet>(THEME_RESOURCE);
+            if (_theme == null)
+            {
+                if (!_themeMissingLogged)
+                {
+                    _themeMissingLogged = true;
+                    Debug.LogWarning($"Agent_UIStyle: '{THEME_RESOURCE}' not found in Resources; " +
+                                     "UI falls back to inline styling.");
+                }
+                return;
+            }
+            if (!root.styleSheets.Contains(_theme)) root.styleSheets.Add(_theme);
+        }
+
+        /// <summary>Toggles the shared visibility class used by every transient lane.</summary>
+        public static void SetShown(VisualElement element, bool shown)
+        {
+            if (element == null) return;
+            element.EnableInClassList(SHOWN, shown);
+        }
+
+        /// <summary>
+        /// Plays an element's entrance: applies the offset class, then clears it
+        /// on the next frame so the USS transition animates from it.
+        /// </summary>
+        public static void PlayEntrance(VisualElement element, string fromClass = ENTERING)
+        {
+            if (element == null) return;
+            element.AddToClassList(fromClass);
+            element.schedule.Execute(() => element.RemoveFromClassList(fromClass)).ExecuteLater(16);
+        }
+
         public static void Round(VisualElement e, int radius = Radius)
         {
             e.style.borderTopLeftRadius = radius;
@@ -45,13 +103,49 @@ namespace PoSoccer
             e.style.paddingRight = pad;
         }
 
-        public static void ApplySafeArea(VisualElement element)
+        /// <summary>Safe-area insets as (top, bottom, left, right) in screen pixels.</summary>
+        static Vector4 SafeAreaPadding()
         {
             Rect safe = Screen.safeArea;
-            element.style.paddingTop = Screen.height - safe.yMax;
-            element.style.paddingBottom = safe.yMin;
-            element.style.paddingLeft = safe.xMin;
-            element.style.paddingRight = Screen.width - safe.xMax;
+            return new Vector4(
+                Screen.height - safe.yMax,
+                safe.yMin,
+                safe.xMin,
+                Screen.width - safe.xMax);
+        }
+
+        public static void ApplySafeArea(VisualElement element)
+        {
+            if (element == null) return;
+            Vector4 padding = SafeAreaPadding();
+            element.style.paddingTop = padding.x;
+            element.style.paddingBottom = padding.y;
+            element.style.paddingLeft = padding.z;
+            element.style.paddingRight = padding.w;
+        }
+
+        /// <summary>
+        /// Applies the safe area now AND keeps it correct afterwards.
+        ///
+        /// ApplySafeArea on its own runs once in OnEnable and never again, so any
+        /// later change to the reported insets - a resolution change, split
+        /// screen, or just resizing the Game View - left stale padding baked in.
+        /// The guard against re-entry matters: writing padding inside a
+        /// GeometryChangedEvent handler causes another geometry change, so this
+        /// only re-applies when the computed insets actually differ.
+        /// </summary>
+        public static void BindSafeArea(VisualElement element)
+        {
+            if (element == null) return;
+            Vector4 applied = SafeAreaPadding();
+            ApplySafeArea(element);
+            element.RegisterCallback<GeometryChangedEvent>(_ =>
+            {
+                Vector4 current = SafeAreaPadding();
+                if (current == applied) return;
+                applied = current;
+                ApplySafeArea(element);
+            });
         }
 
         /// <summary>
@@ -68,12 +162,7 @@ namespace PoSoccer
                 b.text = Agent_Audio.Muted ? "SND OFF" : "SND ON";
             })
             { text = Agent_Audio.Muted ? "SND OFF" : "SND ON" };
-            b.style.fontSize = FontS;
-            b.style.color = TextPrimary;
-            b.style.backgroundColor = PanelBg;
-            Round(b);
-            b.style.paddingLeft = 28; b.style.paddingRight = 28;
-            b.style.paddingTop = 14; b.style.paddingBottom = 14;
+            b.AddToClassList("btn");
             return b;
         }
     }

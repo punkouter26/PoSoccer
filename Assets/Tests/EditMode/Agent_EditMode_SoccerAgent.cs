@@ -72,11 +72,55 @@ namespace PoSoccer.Tests
         [Test]
         public void Stamina_RechargesAt25PerSecondWhenIdle()
         {
+            // The PRD's flat 25/s is now the PEAK rate, approached as the tank
+            // fills. Recovery from deep depletion is deliberately slower, and does
+            // not begin the instant sprinting stops. Deviation recorded in
+            // docs/rules-exemptions.md.
+            //
+            // Measured just below full and over a short window, so the reading is
+            // the RATE and not the ceiling clamping it - a longer window here fills
+            // the tank and reports an artificially low average.
+            float rate = RecoveryRate(unitsToDrain: 5f, window: 0.1f);
+
+            Assert.That(rate, Is.EqualTo(25f).Within(1.5f),
+                "Near-full recovery should run at the PRD's 25/s peak rate");
+        }
+
+        [Test]
+        public void Stamina_RecoveryIsDelayedAfterExertion()
+        {
             var s = NewStamina();
-            s.Tick(true, 1f);              // drain 60
+            s.Tick(true, 1f);                       // boost, arming the delay
             float drained = s.Current;
-            s.Tick(false, 1f);             // recharge 25
-            Assert.AreEqual(drained + 25f, s.Current, 0.5f);
+
+            // Half the delay: nothing should come back yet.
+            s.Tick(false, s.recoveryDelaySeconds * 0.5f);
+            Assert.AreEqual(drained, s.Current, 1e-4f,
+                "Stamina began recovering before the post-exertion delay elapsed");
+        }
+
+        [Test]
+        public void Stamina_RecoversMoreSlowlyWhenDeeplyDepleted()
+        {
+            float emptyRate = RecoveryRate(unitsToDrain: 100f, window: 0.1f);
+            float nearFullRate = RecoveryRate(unitsToDrain: 5f, window: 0.1f);
+
+            Assert.Less(emptyRate, nearFullRate,
+                "Recovery from empty should be slower than topping up");
+        }
+
+        /// <summary>
+        /// Drains a set number of units, serves out the post-exertion delay, then
+        /// measures the recovery rate over a short window.
+        /// </summary>
+        float RecoveryRate(float unitsToDrain, float window)
+        {
+            var s = NewStamina();
+            s.Tick(true, unitsToDrain / s.drainPerSecond);
+            s.Tick(false, s.recoveryDelaySeconds);   // delay only, no recovery
+            float before = s.Current;
+            s.Tick(false, window);
+            return (s.Current - before) / window;
         }
 
         [Test]

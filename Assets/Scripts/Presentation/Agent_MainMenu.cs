@@ -64,36 +64,29 @@ namespace PoSoccer
             ApplyPreset(2);
 
             root.Clear();
+            Agent_UIStyle.ApplyTheme(root);
+
             var safe = new VisualElement();
-            safe.style.flexGrow = 1;
-            Agent_UIStyle.ApplySafeArea(safe);
-            safe.style.backgroundColor = Agent_UIStyle.Background;
-            safe.style.alignItems = Align.Center;
-            // SpaceEvenly, not Center: the squads change height as players are
-            // added, so a centered block leaves a dead band above and below at
-            // small squad sizes. Distributing the slack fills the screen at 1v1
-            // and collapses cleanly to no gaps at 10v10.
-            safe.style.justifyContent = Justify.SpaceEvenly;
-            safe.style.paddingTop = 24;
-            safe.style.paddingBottom = 24;
+            // .screen--menu carries the background, centring and padding. The
+            // SpaceEvenly choice is deliberate and documented in the stylesheet:
+            // the squads change height as players are added, so a centred block
+            // leaves a dead band above and below at small squad sizes.
+            safe.AddToClassList("screen");
+            safe.AddToClassList("screen--menu");
+            // Safe area stays in code: a device measurement, not a design token.
+            Agent_UIStyle.BindSafeArea(safe);
             root.Add(safe);
 
-            // All sizes are in 1080x1920 reference-resolution units (9:16 per
-            // UNITY_RULES; PanelSettings scales the panel to the actual screen,
-            // match-width). Title and subtitle share a group so SpaceEvenly does
-            // not push them apart.
             var header = new VisualElement();
-            header.style.alignItems = Align.Center;
+            header.AddToClassList("stack-center");
+            header.AddToClassList("enter");
 
             var title = new Label("PoSoccer");
-            title.style.fontSize = 118;
-            title.style.color = Color.white;
-            title.style.unityFontStyleAndWeight = FontStyle.Bold;
+            title.AddToClassList("title");
             header.Add(title);
 
             var subtitle = new Label("tap a name to add · tap a card to remove");
-            subtitle.style.fontSize = 30;
-            subtitle.style.color = Agent_UIStyle.TextMuted;
+            subtitle.AddToClassList("text-muted");
             header.Add(subtitle);
             safe.Add(header);
 
@@ -107,26 +100,42 @@ namespace PoSoccer
             // Pitch note rides just above PLAY so the size readout reads as a
             // caption on the button rather than a floating third element.
             var footer = new VisualElement();
-            footer.style.alignItems = Align.Center;
+            footer.AddToClassList("stack-center");
+            footer.AddToClassList("enter");
 
             _pitchNote = new Label(string.Empty);
-            _pitchNote.style.fontSize = 28;
-            _pitchNote.style.color = Agent_UIStyle.TextMuted;
+            _pitchNote.AddToClassList("text-muted");
             _pitchNote.style.marginBottom = 16;
             footer.Add(_pitchNote);
 
             _play = new Button(StartMatch) { text = "PLAY" };
-            _play.style.fontSize = 74;
-            _play.style.unityFontStyleAndWeight = FontStyle.Bold;
-            _play.style.paddingLeft = 150; _play.style.paddingRight = 150;
-            _play.style.paddingTop = 26; _play.style.paddingBottom = 26;
-            _play.style.backgroundColor = Agent_UIStyle.Accent;
-            _play.style.color = Agent_UIStyle.TextPrimary;
-            Agent_UIStyle.Round(_play);
+            _play.AddToClassList("btn");
+            _play.AddToClassList("btn--play");
             footer.Add(_play);
+
+            // Sound could previously only be muted from inside a match, which is
+            // the one place you cannot reach without starting one first.
+            var options = new VisualElement();
+            options.AddToClassList("row");
+            options.style.marginTop = 18;
+            options.Add(Agent_UIStyle.SoundToggleButton());
+            footer.Add(options);
+
+            _backHint = new Label("press back again to exit");
+            _backHint.AddToClassList("text-muted");
+            _backHint.style.marginTop = 12;
+            _backHint.style.opacity = 0f;
+            footer.Add(_backHint);
+
             safe.Add(footer);
 
             RefreshAll();
+
+            // Staged entrance: header first, footer last. Each element animates
+            // from the offset in .enter-from once the class is cleared a frame
+            // later, so the menu assembles itself instead of snapping into place.
+            StageEntrance(header, 0);
+            StageEntrance(footer, 90);
         }
 
         static Reward_Settings[] Compact(params Reward_Settings[] entries)
@@ -166,6 +175,20 @@ namespace PoSoccer
         /// red fields the benchmark bot. That is the matchup the benchmark grades,
         /// so the presets and the eval harness agree on what "NvN vs bot" means.
         /// </summary>
+        /// <summary>
+        /// Applies the entrance offset now and clears it after a delay, letting
+        /// the USS transition animate the element in. Delay is in milliseconds
+        /// and staggers elements down the screen.
+        /// </summary>
+        static void StageEntrance(VisualElement element, long delayMs)
+        {
+            if (element == null) return;
+            element.AddToClassList("enter-from");
+            element.schedule
+                .Execute(() => element.RemoveFromClassList("enter-from"))
+                .ExecuteLater(delayMs + 16);
+        }
+
         void ApplyPreset(int perSide)
         {
             _blue.Clear();
@@ -261,8 +284,8 @@ namespace PoSoccer
             {
                 var profile = _roster[i];
                 var b = new Button(() => AddToSquad(squad, profile)) { text = profile.playerName };
-                b.style.height = 78;
-                b.style.fontSize = 30;
+                b.AddToClassList("btn");
+                b.AddToClassList("btn--roster");
                 b.style.unityFontStyleAndWeight = FontStyle.Bold;
                 b.style.paddingLeft = 26; b.style.paddingRight = 26;
                 b.style.marginLeft = 4; b.style.marginRight = 4;
@@ -450,6 +473,32 @@ namespace PoSoccer
             if (steps >= 1_000_000) return $"{steps / 1_000_000f:0.#}M";
             if (steps >= 1_000) return $"{steps / 1_000f:0}k";
             return steps.ToString();
+        }
+
+        Label _backHint;
+        float _backArmedUntil;
+
+        /// <summary>
+        /// Android's back button arrives as Escape through the Input System. The
+        /// menu is the root of the navigation stack, so back means exit - but a
+        /// single tap quitting the game outright is hostile, hence the standard
+        /// press-twice confirmation rather than a modal nobody reads.
+        /// </summary>
+        void Update()
+        {
+            var keyboard = UnityEngine.InputSystem.Keyboard.current;
+            if (keyboard == null || !keyboard.escapeKey.wasPressedThisFrame) return;
+
+            if (Time.unscaledTime < _backArmedUntil)
+            {
+                Application.Quit();
+                return;
+            }
+
+            _backArmedUntil = Time.unscaledTime + 2f;
+            if (_backHint == null) return;
+            _backHint.style.opacity = 1f;
+            _backHint.schedule.Execute(() => _backHint.style.opacity = 0f).ExecuteLater(2000);
         }
 
         void StartMatch()

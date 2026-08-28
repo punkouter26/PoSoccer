@@ -1,0 +1,85 @@
+# Phase 11 - PERCEPTION ACTUALLY FIXED, PLUS TWO ENVIRONMENT BUGS.
+#
+# Phase 10 claimed a "dedicated opponent ray sensor". It was not one. Every
+# player carried the tag "Agent", and Sensor_Opponents detected that tag - so it
+# saw teammates and opponents identically. It was a Sensor_AnyPlayer. The
+# friend/foe separation the whole phase was built around never existed, and the
+# stale-build incident meant nobody measured it either way.
+#
+# Worse, the split REDUCED angular resolution. RaysPerDirection was 2 over a
+# 180 degree half-arc: 5 rays across the circle, and since -180 and +180 coincide,
+# only 4 distinct directions 90 degrees apart. Blind gap = d*sin(45) = 0.71d, so
+# with agent half-width 0.4 + 0.1 spherecast, an opponent was GUARANTEED visible
+# only within ~0.71 units. The 11-ray/300-degree sensor it replaced guaranteed
+# ~1.9 units. Phase 10 made perception worse while appearing to improve it.
+#
+# What changed in the environment for this run:
+#   1. Team tags (TeamBlue / TeamRed). Sensor_Opponents now detects the OPPOSING
+#      team only - the sensor phase 10 was supposed to add.
+#   2. RaysPerDirection 2 -> 6 (ball, opponents), 4 (walls), 2 (goal). 12 distinct
+#      directions 30 degrees apart, guaranteed detection ~1.93 units.
+#   3. Stamina wear now resets per episode in headless runs. It did not before:
+#      wear accrued at 0.002/s of boosting to a 0.4 cap, reached after ~200s of
+#      cumulative boost - inside the first ~1% of a 3M-step run. EVERY previous
+#      run trained a body pinned at the wear floor, and because Stamina.Ratio
+#      normalises by EffectiveMax, the observation hid it. The environment was
+#      silently non-stationary.
+#   4. The wall kick is now observable (2 new vector floats: band proximity and
+#      cooldown-ready). It applies a large scripted impulse to the ball inside a
+#      1-unit boundary band, and nothing in the observation space encoded that -
+#      unmodellable dynamics, not difficulty.
+#
+# Observation contract: 120 ray + 58 vector = 178 model inputs (was 108).
+# Obsoletes every .onnx. There are none assigned, so this costs nothing.
+#
+# gamma 0.99 -> 0.995. DecisionPeriod 8 at 100 Hz is 12.5 decisions/s, so 0.99
+# gave an effective horizon of ~100 decisions ~= 8 seconds, against episodes up
+# to 50 seconds. The policy structurally could not value a build-up longer than
+# eight seconds. 0.995 roughly doubles that.
+#
+# SINGLE VARIABLE, sort of: items 1-2 are the hypothesis, items 3-4 are bug
+# fixes that should never have been variables in the first place. Curiosity is
+# deliberately NOT here - see STANDARD_phase11b_curiosity.yaml.
+#
+# 3M pilot per the phase 8 lesson. Export, then run
+# Probe_D_ChaseEfficiency_BlueTrainedSide. If the agent still creeps at ~0.6 m/s,
+# do NOT escalate to 20M - something else is still wrong and compute will not
+# find it.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        # 0.995 at 12.5 decisions/s ~= a 16 second effective horizon.
+        gamma: 0.995
+        strength: 1.0
+    max_steps: 3000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 500000
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # Uniform over the full range so the policy meets the full-strength bot during
+  # training, not only at eval time (carried forward from phase 9).
+  bot_strength:
+    sampler_type: uniform
+    sampler_parameters:
+      min_value: 0.2
+      max_value: 1.0

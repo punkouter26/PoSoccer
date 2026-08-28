@@ -80,8 +80,21 @@ namespace PoSoccer
         /// </summary>
         public static event System.Action<Transform> PitchReconfigured;
 
+        /// <summary>
+        /// Fires when possession changes hands - i.e. when a DIFFERENT agent
+        /// touches the ball than the one who touched it last. Deliberately not
+        /// once per physical contact: a player dribbling generates a contact
+        /// every few ticks, which would make the commentary and the man-of-the-
+        /// match touch counts read as noise. Presentation-only; no reward or
+        /// observation depends on it.
+        /// </summary>
+        public event System.Action<Agent_Soccer> BallTouched;
+
         /// <summary>Most recent ball toucher (the scorer credit holder), for UI.</summary>
         public Agent_Soccer LastToucher => _lastToucher;
+
+        /// <summary>Toucher before <see cref="LastToucher"/> - the assist holder.</summary>
+        public Agent_Soccer PreviousToucher => _previousToucher;
 
         SimpleMultiAgentGroup _blueGroup;
         SimpleMultiAgentGroup _redGroup;
@@ -214,6 +227,7 @@ namespace PoSoccer
             {
                 _previousToucher = _lastToucher;
                 _lastToucher = toucher;
+                BallTouched?.Invoke(toucher);
             }
         }
 

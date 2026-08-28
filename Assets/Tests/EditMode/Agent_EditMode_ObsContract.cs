@@ -34,12 +34,12 @@ namespace PoSoccer.Tests
         {
             // Pins the arithmetic the docs quote, so a silent drift in either half
             // shows up here rather than in a training run three hours later.
-            Assert.That(Sensor_Vision.TotalRayObservationSize, Is.EqualTo(54),
+            Assert.That(Sensor_Vision.TotalRayObservationSize, Is.EqualTo(120),
                 "Ray observations changed. Sensor_Vision.Battery is the source of truth - " +
                 "update the tables in Sensor_Vision, Agent_Soccer and CLAUDE.md together.");
             Assert.That(Agent_Soccer.BaseObservationSize * Agent_Soccer.StackedObservations,
-                Is.EqualTo(54), "Vector observations changed (BaseObservationSize x StackedObservations).");
-            Assert.That(ExpectedModelInputSize, Is.EqualTo(108));
+                Is.EqualTo(58), "Vector observations changed (BaseObservationSize x StackedObservations).");
+            Assert.That(ExpectedModelInputSize, Is.EqualTo(178));
         }
 
         [Test]

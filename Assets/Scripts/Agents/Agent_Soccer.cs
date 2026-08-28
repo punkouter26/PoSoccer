@@ -9,9 +9,18 @@ namespace PoSoccer
 {
     /// <summary>
     /// Top-down 2D soccer agent (SoccerAgent_v01).
-    /// Continuous actions: [0] move fwd/back along +Y eye axis, [1] turn torque, [2] boost.
-    /// Observations: 14 base floats + 4 per teammate slot (see CollectObservations).
+    ///
+    /// Continuous actions (4): [0] drive along the +Y eye axis, [1] lateral strafe,
+    /// [2] turn torque, [3] boost.
+    /// Vector observations: <see cref="BaseObservationSize"/>, stacked
+    /// <see cref="StackedObservations"/> times. Ray observations come from
+    /// Sensor_Vision and are NOT stacked.
     /// Pure momentum ball interaction — all ball control is physics contact.
+    ///
+    /// This docstring previously claimed three actions and "14 base floats", against
+    /// four actions and 27 observations. Agent_EditMode_ObsContract pins the numbers;
+    /// the prose is now written in terms of those same constants so it cannot drift
+    /// away from them again.
     /// </summary>
     [RequireComponent(typeof(Rigidbody2D))]
     [RequireComponent(typeof(Agent_Stamina))]
@@ -60,9 +69,11 @@ namespace PoSoccer
         [Tooltip("Boost action activation threshold (PRD: 0.1).")]
         [FormerlySerializedAs("boostThreshold")]
         [SerializeField] private float _boostThreshold = 0.1f;
-        [Tooltip("Human rotation limit (deg/s). Athletes cannot spin faster than ~a full turn per second.")]
+        [Tooltip("Rotation limit (deg/s) at rest. A standing athlete pivots at roughly " +
+                 "400-600 deg/s; 360 was under-modelling a plant-and-turn. The sprint turn " +
+                 "factor already collapses this at speed, which is where the real limit is.")]
         [FormerlySerializedAs("maxAngularVelocityDeg")]
-        [SerializeField] private float _maxAngularVelocityDeg = 360f;
+        [SerializeField] private float _maxAngularVelocityDeg = 500f;
         [Tooltip("How fast the applied drive force can change (N/s). Muscle ramps over ~0.2s at jog, ~0.45s to full sprint.")]
         [FormerlySerializedAs("forceSlewRate")]
         [SerializeField] private float _forceSlewRate = 1200f;
@@ -81,6 +92,15 @@ namespace PoSoccer
         [Tooltip("Seconds between pops from the same player (corner scrums are continuous contact).")]
         [FormerlySerializedAs("wallKickCooldown")]
         [SerializeField] private float _wallKickCooldown = 0.5f;
+
+        /// <summary>
+        /// Fires when the corner-escape wall kick pops the ball back into open
+        /// play. Presentation only - Agent_ParticleFX draws the shockwave that
+        /// makes this real mechanic visible, which it previously was not.
+        /// Instance event, not static: SCN_Training clones 16 pitches and a static
+        /// one would cross-talk between them.
+        /// </summary>
+        public event System.Action<Vector2, Vector2> WallKicked;
 
         [Header("Wiring (set by env controller at runtime)")]
         public Agent_EnvController env;
@@ -118,6 +138,7 @@ namespace PoSoccer
         // the same top speed and acceleration - bigger muscles move a bigger body -
         // while heavier players still carry more momentum into contact.
         float _driveForce;
+        Agent_Contact _contact;
 
         void CacheDriveForce()
         {
@@ -142,8 +163,17 @@ namespace PoSoccer
         /// time-remaining scalar (1 - StepCount/MaxStep) that biases the policy
         /// toward late-episode urgency; matches the "time remaining" direct obs
         /// from the "AI Learns to Play Soccer" cheat sheet.
+        ///
+        /// 2026-08-27: 27 -> 29. The two new floats make the corner-escape wall kick
+        /// OBSERVABLE. TryWallKick applies a large scripted impulse to the ball
+        /// whenever a player touches it inside a 1-unit band at the boundary, but
+        /// nothing in the observation space encoded "I am in that band" - the wall
+        /// ray only guaranteed detection within ~0.7 units, so from the policy's
+        /// point of view a big impulse arrived at unpredictable moments. That is
+        /// unmodellable dynamics, not difficulty. Now the policy can see the band
+        /// and the cooldown, so the mechanic becomes a tool rather than noise.
         /// </summary>
-        public const int BaseObservationSize = 27;
+        public const int BaseObservationSize = 29;
 
         /// <summary>
         /// Stacked vector frames. 2 gives the policy velocity/trend context at the
@@ -189,9 +219,21 @@ namespace PoSoccer
         protected override void Awake()
         {
             base.Awake();
-            // Sensor_Vision owns the RayPerceptionSensor2D config (11 rays, 2-4
-            // detectable tags) that produces the obs_0 slot the trained brains
-            // were taught on. DefaultExecutionOrder(-100) on Sensor_Vision guarantees
+
+            // Before anything else: the team tag is what the opponent ray sensor
+            // keys on, so it has to exist before any sensor casts a ray.
+            ApplyTeamTag();
+
+            // Added here rather than via [RequireComponent]: that attribute logs
+            // "Creating missing Agent_Contact component ..." for every agent on
+            // every scene load - 24 lines per load in the exhibition scene - and
+            // log noise on that scale is how a real warning gets missed.
+            _contact = GetComponent<Agent_Contact>();
+            if (_contact == null) _contact = gameObject.AddComponent<Agent_Contact>();
+
+            // Sensor_Vision owns the RayPerceptionSensor2D battery - one sensor per
+            // object class, each with a single detectable tag - that produces the
+            // obs_0 slot. DefaultExecutionOrder(-100) on Sensor_Vision guarantees
             // its Awake runs before Agent initialization, so the RayPerceptionSensor
             // is attached + configured before DecisionRequester fires.
             if (GetComponent<Sensor_Vision>() == null)
@@ -311,14 +353,22 @@ namespace PoSoccer
             // Cosmetics (body colour, team eye, frame outline, identity letter)
             // live in Agent_SoccerView so this file stays observations, actions,
             // locomotion and rewards.
-            _label = Agent_SoccerView.Build(
-                transform, rewards, team, _frameInset, _frameThickness, _frameZ,
-                _showPlayerLabel);
+            //
+            // Skipped entirely on a headless run. The training grid clones 16
+            // pitches, so this was building four LineRenderers and a TextMesh per
+            // agent, 32 times over, for pixels no one will ever see - pure cost on
+            // the throughput that decides how long a run takes.
+            if (!Agent_EvalStats.EvalMode && !Unity.MLAgents.Academy.Instance.IsCommunicatorOn)
+            {
+                _label = Agent_SoccerView.Build(
+                    transform, rewards, team, _frameInset, _frameThickness, _frameZ,
+                    _showPlayerLabel);
+            }
         }
 
         void Update()
         {
-            // Letters stay readable no matter which way the body faces.
+            // Null on headless runs, where no cosmetics were built at all.
             if (_label != null) _label.rotation = Quaternion.identity;
         }
 
@@ -336,9 +386,23 @@ namespace PoSoccer
             System.Array.Clear(_prevActions, 0, _prevActions.Length);
             _prevBallDist = float.PositiveInfinity;
             Stamina.ResetForEpisode();
+            if (_contact == null) _contact = GetComponent<Agent_Contact>();
+            if (_contact != null) _contact.ResetForEpisode();
             Body.linearVelocity = Vector2.zero;
             Body.angularVelocity = 0f;
             _episodeStartStep = StepCount;
+        }
+
+        /// <summary>
+        /// Stamps the team tag so the opponent ray sensor can tell friend from
+        /// foe. Applied here rather than serialized in the scene because the team
+        /// itself can be reassigned at runtime by Agent_MatchLoader, and a stale
+        /// tag would silently make an agent invisible to one side's sensor.
+        /// </summary>
+        void ApplyTeamTag()
+        {
+            string wanted = Sensor_Vision.TeamTag(team);
+            if (!gameObject.CompareTag(wanted)) gameObject.tag = wanted;
         }
 
         public override void CollectObservations(VectorSensor sensor)
@@ -346,6 +410,22 @@ namespace PoSoccer
             Vector2 half = env != null ? env.PitchHalfExtents : new Vector2(10f, 6f);
             float invMax = 1f / Mathf.Max(half.x, half.y);
 
+
+            // Wall-kick affordance (2): how close the ball is to the kick band,
+            // and whether the cooldown has elapsed. See BaseObservationSize.
+            {
+                float bandProximity = 0f;
+                if (env != null && env.Ball != null)
+                {
+                    Vector2 ballLocal = env.Ball.position - (Vector2)env.transform.position;
+                    float slack = Mathf.Min(half.x - Mathf.Abs(ballLocal.x),
+                                            half.y - Mathf.Abs(ballLocal.y));
+                    // 1 at the boundary, 0 at the band edge and beyond.
+                    bandProximity = 1f - Mathf.Clamp01(slack / Mathf.Max(0.01f, _wallKickBand));
+                }
+                sensor.AddObservation(bandProximity);
+                sensor.AddObservation(Time.time >= _nextWallKick ? 1f : 0f);
+            }
 
             // Time remaining (1) - 1.0 at episode start, 0.0 at the stalemate cap.
             // Drives late-episode urgency so the policy learns to take shots instead
@@ -471,8 +551,12 @@ namespace PoSoccer
             // stepping, so direction reversals take human-like time.
             float staminaPower = _tiredPowerFloor + (1f - _tiredPowerFloor) * Stamina.Ratio;
             if (_driveForce <= 0f) CacheDriveForce();
+            if (_contact == null) _contact = GetComponent<Agent_Contact>();
+            // A player rocked by a heavy collision drives with less authority for a
+            // moment. Multiplicative, never zero - see Agent_Contact.
+            float authority = _contact != null ? _contact.DriveAuthority : 1f;
             Vector2 targetDrive =
-                intent * (_driveForce * (IsBoosting ? _boostMultiplier : 1f) * staminaPower);
+                intent * (_driveForce * (IsBoosting ? _boostMultiplier : 1f) * staminaPower * authority);
             _driveVec = Vector2.MoveTowards(_driveVec, targetDrive, _forceSlewRate * dt);
 
             // Traction budget: everything the feet do - launching, cutting, braking -
@@ -711,6 +795,7 @@ namespace PoSoccer
             env.Ball.AddForce(dir * (corner ? _wallKickImpulse : _wallKickImpulse * 0.5f),
                 ForceMode2D.Impulse);
             _nextWallKick = Time.time + _wallKickCooldown;
+            WallKicked?.Invoke(env.Ball.position, dir);
         }
 
         public static Team Opponent(Team t) => t == Team.Blue ? Team.Red : Team.Blue;
