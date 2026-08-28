@@ -2,7 +2,20 @@
 
 Generated **2026-08-05** against `master` @ `5f25701`.
 
-> **The project currently ships zero `.onnx`.** All four personality models
+> **CORRECTED 2026-08-20 - the claim below is out of date.** `Assets/Agents/Standard_v01/STANDARD.onnx`
+> (1,310,168 B) is present in `master` again; it came back with the phase-10 POCA commit
+> `69b2125` after this page was written. It is still **unassignable**, but for a new reason:
+> it declares **two** observation inputs (`obs_0`, `obs_1` - the old single ray-sensor
+> contract), while `Sensor_Vision`'s 4-sensor split now produces **five** observation
+> tensors (4 ray + 1 vector, 108 inputs total). The tensor *count* differs, not just the
+> width, so no amount of resizing helps - only a fresh export from a post-split run.
+> `brainModel` is still `{fileID: 0}` on all five profiles, so behaviour is unchanged and
+> every player still falls back to `Agent_HeuristicBot`.
+>
+> Note also that a fresh clone leaves this file as a ~130-byte Git LFS pointer stub until
+> `git lfs install --local; git lfs pull` runs - see the LFS landmine in CLAUDE.md.
+
+> ~~**The project currently ships zero `.onnx`.**~~ All four personality models
 > (`STANDARD`, `MATT`, `NICK`, `KIM`) were deleted from `Assets/Agents/` on 2026-08-05.
 > They declared **102** inputs against a **118**-input runtime, so the inference loader
 > rejected them outright — every player already fell back to `Agent_HeuristicBot`.
