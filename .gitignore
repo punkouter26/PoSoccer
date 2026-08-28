@@ -124,3 +124,7 @@ desktop.ini
 # Reappears on every Android/IL2CPP build; not project state. Ignored 2026-08-04.
 /[Aa]ssets/packages-merged-link/
 /[Aa]ssets/packages-merged-link.meta
+
+# Play publishing tooling venv — deliberately not .venv, which carries
+# load-bearing ml-agents/torch pins.
+Tools/publish-venv/
