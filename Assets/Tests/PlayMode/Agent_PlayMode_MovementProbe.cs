@@ -187,6 +187,10 @@ namespace PoSoccer.Tests
             float arrival = -1f, t = 0f;
             int samples = 0;
 
+            float sumAbsMove = 0f, sumAbsLat = 0f, sumAbsTurn = 0f, sumBoost = 0f;
+            float prevMove = 0f, prevTurn = 0f, peakMove = 0f;
+            int flipsMove = 0, flipsTurn = 0;
+
             for (int i = 0; i < 400; i++)      // 4 s
             {
                 yield return new WaitForFixedUpdate();
@@ -203,6 +207,18 @@ namespace PoSoccer.Tests
                 float v = red.Body.linearVelocity.magnitude;
                 if (v > maxSpeed) maxSpeed = v;
                 sumSpeed += v; samples++;
+
+                // Split "collapsed policy" from "thrashing policy": a collapsed one
+                // emits near-zero magnitudes, a thrashing one emits large values whose
+                // sign keeps flipping so they cancel. Mean |action| tells them apart;
+                // the sign-flip counts say how much of the output is self-cancelling.
+                Vector4 a = red.LastRawActions;
+                sumAbsMove += Mathf.Abs(a.x); sumAbsLat += Mathf.Abs(a.y);
+                sumAbsTurn += Mathf.Abs(a.z); sumBoost += a.w;
+                if (a.x * prevMove < 0f) flipsMove++;
+                if (a.z * prevTurn < 0f) flipsTurn++;
+                prevMove = a.x; prevTurn = a.z;
+                if (Mathf.Abs(a.x) > peakMove) peakMove = Mathf.Abs(a.x);
 
                 if (arrival < 0f && Vector2.Distance(p, ball.position) < 1.0f) arrival = t;
             }
@@ -223,6 +239,13 @@ namespace PoSoccer.Tests
                           $"maxSpeed={maxSpeed:0.00} m/s  meanSpeed={sumSpeed / samples:0.00} m/s");
             sb.AppendLine($"  headingChurn={headingChurn:0}deg over {t:0.0}s " +
                           $"({headingChurn / t:0} deg/s avg)");
+            sb.AppendLine($"  RAW ACTIONS (pre-gain) mean|move|={sumAbsMove / samples:0.000}  " +
+                          $"mean|lat|={sumAbsLat / samples:0.000}  " +
+                          $"mean|turn|={sumAbsTurn / samples:0.000}  " +
+                          $"meanBoost={sumBoost / samples:0.000}");
+            sb.AppendLine($"  peak|move|={peakMove:0.000}  " +
+                          $"signFlips move={flipsMove} turn={flipsTurn} of {samples} steps " +
+                          $"=> {(sumAbsMove / samples < 0.15f ? "COLLAPSED (near-zero output)" : flipsMove > samples / 8 ? "THRASHING (large, sign-flipping)" : "healthy magnitudes")}");
             Debug.Log(sb.ToString());
         }
     }

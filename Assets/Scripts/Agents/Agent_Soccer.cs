@@ -513,8 +513,25 @@ namespace PoSoccer
         /// Sits behind the body (sortingOrder = -2) so it never covers the eye
         /// or the identity letter.
         /// </summary>
+        /// <summary>
+        /// Raw continuous actions from the most recent decision, BEFORE ActionGain
+        /// and clamping. Diagnostic only - nothing in gameplay reads it.
+        ///
+        /// This exists because "the agent barely moves" has two completely different
+        /// causes that the speed traces cannot tell apart: a collapsed policy emitting
+        /// near-zero magnitudes, versus a thrashing one emitting large sign-flipping
+        /// values that cancel through the traction budget. The comments on ActionGain
+        /// below assert the former, but that was never measured on a probe run - and
+        /// phases 6-16 were all built on unmeasured assumptions about this policy.
+        /// </summary>
+        public Vector4 LastRawActions { get; private set; }
+
         public override void OnActionReceived(ActionBuffers actions)
         {
+            LastRawActions = new Vector4(
+                actions.ContinuousActions[0], actions.ContinuousActions[1],
+                actions.ContinuousActions[2], actions.ContinuousActions[3]);
+
             // Action gain: trained brains converged on cautious magnitudes
             // (~0.1-0.5; anti-twitch reward + small ball-proximity gradient
             // rewards trained them to creep). Raw drive force scaled by those
