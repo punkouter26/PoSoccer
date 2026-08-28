@@ -198,14 +198,16 @@ namespace PoSoccer
             EnsureGoalFrame(blueGoal, new Color(0.15f, 0.55f, 1f, 1f));   // Blue goal mouth
             EnsureGoalFrame(redGoal, new Color(1f, 0.5f, 0.05f, 1f));     // Orange goal mouth
 
-            bool useGroups = TeamSize(Agent_Soccer.Team.Blue) > 1 || TeamSize(Agent_Soccer.Team.Red) > 1;
-            if (useGroups)
-            {
-                _blueGroup = new SimpleMultiAgentGroup();
-                _redGroup = new SimpleMultiAgentGroup();
-                foreach (var agent in agents)
-                    GroupFor(agent.team).RegisterAgent(agent);
-            }
+            // ALWAYS register groups - even in 1v1 - so MA-POCA's AddGroupReward
+            // path in OnGoalScored actually fires. SCN_Training has exactly one
+            // agent per side, so the original TeamSize > 1 guard never tripped
+            // and every POCA run landed at exactly 0.000 group reward. A single-
+            // agent SimpleMultiAgentGroup is a legal no-op wrapper; the group
+            // reward becomes the agent's reward at EndGroupEpisode time.
+            _blueGroup = new SimpleMultiAgentGroup();
+            _redGroup = new SimpleMultiAgentGroup();
+            foreach (var agent in agents)
+                GroupFor(agent.team).RegisterAgent(agent);
 
             ResetPitch();
         }

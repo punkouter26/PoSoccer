@@ -174,3 +174,30 @@ to its 0.4 cap after ~200 s of cumulative boosting - inside the first ~1% of a
 `Stamina.Ratio` normalises by `EffectiveMax` so the observation hid it. The flag
 is now overridden whenever a trainer is attached or an evaluation is running; the
 serialized value still governs exhibition play.
+
+## uGUI (and TextMeshPro) installed to unbreak the build (2026-08-28)
+
+UNITY_RULES says **UI Toolkit only** and CLAUDE.md records "no TextMeshPro".
+`Packages/manifest.json` now carries `com.unity.ugui`, which resolves to 2.5.0
+(`source: builtin`) and puts `UnityEngine.UI.dll` and `Unity.TextMeshPro.dll`
+into the player.
+
+**Why:** `com.besty.unity-skills` is pinned to a floating `#main` branch. It
+drifted to a commit whose sources `using UnityEngine.UI;` and
+`using UnityEngine.EventSystems;` unconditionally while its asmdef declares
+neither, across 23 files. With no uGUI in the project those are hard CS0234s,
+and Unity refuses to build a player while **any** editor assembly fails to
+compile - `Error building Player because scripts have compile errors in the
+editor`. That blocked every headless training build, which is the whole
+benchmark. The dependency is far too pervasive to patch locally, and
+PackageCache edits do not survive a re-resolve.
+
+**Cost:** a larger player and two UI stacks present in the project. No runtime
+UI was changed - everything still builds its UI in code through `Agent_UIStyle`
+and UI Toolkit, and nothing in `PoSoccer.Runtime` references uGUI or TMP. The
+rule still governs what we *author*.
+
+**The real fix** is to pin `com.besty.unity-skills` to a commit that compiles
+without uGUI, or drop the package. A floating `#main` in `manifest.json` means
+an upstream commit can break this project's builds with no local change, which
+is how this arrived. Removing the package makes this exemption unnecessary.

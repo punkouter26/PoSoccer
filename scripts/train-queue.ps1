@@ -37,10 +37,17 @@ function Write-Queue([string]$msg) {
 
 # Ordered most-informative-first, so a truncated night still answers the
 # important question. Each entry: RunId, Config, InitFrom (optional).
+# NO -InitFrom anywhere. It makes mlagents call torch.load, which emits a
+# FutureWarning on stderr, and train-phase1.ps1 runs with
+# $ErrorActionPreference = "Stop" - so a harmless warning becomes a terminating
+# error and the job dies in 12 seconds. Training from scratch also removes a
+# confound: a warm start from p11 would make "did more compute help" partly a
+# question about p11's checkpoint.
 $jobs = @(
-    @{ Id = 'soccer_p12_scale';     Config = 'STANDARD_phase12_scale.yaml';     InitFrom = 'soccer_p11_perception' },
+    @{ Id = 'soccer_p12_scale';     Config = 'STANDARD_phase12_scale.yaml';     InitFrom = '' },
     @{ Id = 'soccer_p13_curiosity'; Config = 'STANDARD_phase13_curiosity.yaml'; InitFrom = '' },
-    @{ Id = 'soccer_p14_capacity';  Config = 'STANDARD_phase14_capacity.yaml';  InitFrom = '' }
+    @{ Id = 'soccer_p14_capacity';  Config = 'STANDARD_phase14_capacity.yaml';  InitFrom = '' },
+    @{ Id = 'soccer_p15_poca';      Config = 'STANDARD_phase2_poca.yaml';       InitFrom = '' }
 )
 
 Write-Queue "QUEUE START - budget $BudgetHours h, deadline $($deadline.ToString('HH:mm:ss'))"
@@ -63,12 +70,24 @@ foreach ($job in $jobs) {
     }
 
     $jobLog = Join-Path $root "results\train_$($job.Id).log"
-    $args = @('-RunId', $job.Id, '-EnvPath', $EnvPath, '-NumEnvs', "$NumEnvs", '-Config', $job.Config)
-    if ($job.InitFrom) { $args += @('-InitFrom', $job.InitFrom) }
+    # HASHTABLE splat, not an array. Two traps here, both hit already:
+    #  - naming it $args collides with PowerShell's automatic variable, so the
+    #    splat forwards THIS script's parameters (-BudgetHours) instead;
+    #  - an ARRAY splat passes its elements positionally, so train-phase1.ps1
+    #    bound '-EnvPath' as the value of its second positional parameter and
+    #    died with "Cannot convert value '-EnvPath' to type System.Int32".
+    # A hashtable binds by name and is immune to both.
+    $jobArgs = @{
+        RunId   = $job.Id
+        EnvPath = $EnvPath
+        NumEnvs = $NumEnvs
+        Config  = $job.Config
+    }
+    if ($job.InitFrom) { $jobArgs['InitFrom'] = $job.InitFrom }
 
     $started = Get-Date
     try {
-        & "$root\scripts\train-phase1.ps1" @args *>&1 | Tee-Object -FilePath $jobLog
+        & "$root\scripts\train-phase1.ps1" @jobArgs *>&1 | Tee-Object -FilePath $jobLog
     } catch {
         Write-Queue "  ERROR in $($job.Id): $($_.Exception.Message)"
     }

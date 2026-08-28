@@ -35,7 +35,7 @@ behaviors:
         # effective horizon of only ~8 seconds against 50-second episodes.
         gamma: 0.995
         strength: 1.0
-    max_steps: 30000000
+    max_steps: 8000000
     time_horizon: 1000
     summary_freq: 20000
     checkpoint_interval: 500000

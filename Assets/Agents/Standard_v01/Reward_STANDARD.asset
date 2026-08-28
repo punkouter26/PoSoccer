@@ -1,4 +1,4 @@
-%YAML 1.1
+﻿%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
 MonoBehaviour:
@@ -17,9 +17,9 @@ MonoBehaviour:
     personality is measured against.
   playerColor: {r: 0.75, g: 0.75, b: 0.78, a: 1}
   brainModel: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
-  trainingSteps: 3000956
-  trainingRunId: soccer_p11_perception
-  trainedOn: 2026-08-27
+  trainingSteps: 8000025
+  trainingRunId: soccer_p14_capacity
+  trainedOn: 2026-08-28
   evalWinRate: -1
   evalEpisodes: 0
   bodyScale: 1

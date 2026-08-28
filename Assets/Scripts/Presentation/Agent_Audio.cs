@@ -114,6 +114,19 @@ namespace PoSoccer
 
         void Start()
         {
+            // Headless training/eval has no listener and no reason to mix audio.
+            // `--no-graphics` only kills rendering: mlagents launches the player
+            // with -batchmode -nographics, and audio kept running underneath, so
+            // 4 env processes x 16 pitches at time_scale 20 turned the looping
+            // crowd bed into a constant drone on the training machine. Bail out
+            // before subscribing so no handler can wake the desk back up.
+            if (Application.isBatchMode ||
+                SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+            {
+                enabled = false;
+                return;
+            }
+
             _env = GetComponent<Agent_EnvController>();
             _env.EpisodeEnded += OnEpisodeEnded;
             Agent_MatchFX.BallContact.Hit += OnBallHit;
