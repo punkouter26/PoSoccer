@@ -55,8 +55,22 @@ namespace PoSoccer.Tests
                     $"{path} actionJitterScale - too high and the policy learns to stand still");
                 Assert.AreEqual(code.useDifferentialProximity, a.useDifferentialProximity,
                     $"{path} useDifferentialProximity");
+                Assert.AreEqual(code.facingAlignmentScale, a.facingAlignmentScale, 1e-9f,
+                    $"{path} facingAlignmentScale - dominates the dense terms if too high");
                 Assert.Greater(a.ballProximityScale, a.actionJitterScale,
                     $"{path}: approaching the ball must out-pay holding still");
+
+                // Arriving must out-pay aiming. Differential proximity telescopes to
+                // scale * distanceClosed over a chase, while facingAlignment is paid
+                // EVERY step - so they are only comparable across a whole approach.
+                // Over the movement probe's 10.44 m / 400-step chase the old values
+                // paid 0.021 for closing the full distance against 0.080 for merely
+                // pointing at the ball, and the policy learned to point and strafe.
+                const float ProbeChaseMetres = 10.44f;
+                const float ProbeChaseSteps = 400f;
+                Assert.Greater(a.ballProximityScale * ProbeChaseMetres,
+                               a.facingAlignmentScale * ProbeChaseSteps,
+                    $"{path}: closing the ball must out-pay facing it over a full chase");
             }
             Object.DestroyImmediate(code);
         }
@@ -152,8 +166,14 @@ namespace PoSoccer.Tests
             // v2: stepPenalty zeroed - it washed out the whole reward gradient.
             Assert.AreEqual(0f, r.stepPenalty, 1e-6f);
             // v2: differential proximity replaced absolute proximity.
-            Assert.AreEqual(0.002f, r.ballProximityScale, 1e-6f);
-            Assert.AreEqual(0.0002f, r.facingAlignmentScale, 1e-6f);
+            // v3 (2026-08-28): 0.002 -> 0.02 and facing 0.0002 -> 0.00005. Differential
+            // proximity telescopes to scale * distanceClosed, so the old table paid 0.021
+            // for closing the probe's full 10.44 m chase against 0.080 for merely pointing
+            // at the ball for those 400 steps. Aiming out-earned arriving ~4:1 and the
+            // policy learned to circle-strafe: measured lateral 0.314 vs forward 0.285,
+            // boost never once positive, 13% of the distance covered.
+            Assert.AreEqual(0.02f, r.ballProximityScale, 1e-6f);
+            Assert.AreEqual(0.00005f, r.facingAlignmentScale, 1e-6f);
             // v3: 0.05 -> 0.005. At 0.05, 14 touches outscored a goal (0.7).
             Assert.AreEqual(0.005f, r.ballContact);
             Assert.AreEqual(-0.6f, r.stalemateTimeout, 1e-6f);

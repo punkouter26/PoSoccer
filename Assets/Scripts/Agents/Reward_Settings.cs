@@ -88,10 +88,23 @@ namespace PoSoccer
         [Tooltip("Differential proximity reward scale. v2: replaces absolute proximity " +
                  "(which rewarded idling near the ball) with (prevDist - curDist) * scale " +
                  "so an agent approaching faster than its teammate earns positive reward.")]
-        public float ballProximityScale = 0.002f;
+        // v3 (2026-08-28): 0.002 -> 0.02. Differential proximity TELESCOPES - the
+        // per-step deltas over a chase sum to scale * (startDist - endDist), so the
+        // whole 10.44 m sprint in the movement probe paid 0.002 * 10.44 = 0.021,
+        // while facingAlignment paid up to 0.0002 * 400 steps = 0.080. Aiming at the
+        // ball out-earned arriving at it ~4:1, and the measured policy did exactly
+        // that: it circle-strafed (lateral 0.314 vs forward 0.285) to hold the nose
+        // on the ball, never boosted, and covered 13% of the distance. See
+        // Agent_PlayMode_MovementProbe RAW ACTIONS output.
+        public float ballProximityScale = 0.02f;
         [Tooltip("Use the v2 differential-proximity mode. Set false for the legacy absolute-proximity mode.")]
         public bool useDifferentialProximity = true;
-        public float facingAlignmentScale = 0.0002f;
+        [Tooltip("Per-step reward for pointing the eye axis at the ball. Deliberately " +
+                 "small: facing is INSTRUMENTAL, not a goal, and the ray sensors plus " +
+                 "the vector obs already supply direction. Paid every step, so it " +
+                 "outgrows the telescoping proximity term easily - at 0.0002 it was " +
+                 "the dominant dense term and taught strafing over running.")]
+        public float facingAlignmentScale = 0.00005f;
         [Tooltip("Reward per step for ball velocity toward the opponent goal (the 'shoot goalward' gradient).")]
         public float ballToGoalVelocityScale = 0.001f;
         [Tooltip("Penalty scale on per-step action change (anti-twitch; smooth, deliberate movement). " +

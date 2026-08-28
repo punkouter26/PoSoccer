@@ -32,9 +32,9 @@ MonoBehaviour:
   goalSpeedBonus: 0.05
   crossbarProximity: 0.0005
   stepPenalty: 0
-  ballProximityScale: 0.002
+  ballProximityScale: 0.02
   useDifferentialProximity: 1
-  facingAlignmentScale: 0.0002
+  facingAlignmentScale: 5e-05
   ballToGoalVelocityScale: 0.001
   actionJitterScale: 0.0004
   wallProximityPenalty: 0.0005
