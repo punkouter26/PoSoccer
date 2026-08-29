@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -82,6 +82,10 @@ namespace PoSoccer
         int _threeFingerLatch;
 
         /// <summary>Shows or hides the overlay. Profiler recorders exist only while shown.</summary>
+        /// <summary>Whether the overlay is currently on screen. Read by
+        /// Agent_Chrome's DEBUG button, which toggles rather than sets.</summary>
+        public bool IsVisible => _visible;
+
         public void SetVisible(bool visible)
         {
             if (visible == _visible && (visible || _text != null)) return;

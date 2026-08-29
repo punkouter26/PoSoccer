@@ -43,8 +43,16 @@
     --radius-lg: 24;
 
     /* Type scale */
-    --font-xs: 24;
-    --font-s: 30;
+    /* Sizes are grounded in Android's type scale, not taste. PanelSettings is
+       ScaleWithScreenSize at a 1080-wide reference matching WIDTH, so on a
+       1080 px portrait phone one UI pixel is one physical pixel. Material's
+       floors therefore convert directly:
+         12sp caption ~ 34 px      14sp body ~ 39 px      16sp subtitle ~ 45 px
+       --font-xs was 24 (~0.7 mm cap height) and --font-s was 30, both under the
+       12sp floor, which is why the roster cards, chip driver tags, pitch note
+       and every .btn read as fine print on a phone and fine on a monitor. */
+    --font-xs: 34;
+    --font-s: 38;
     --font-m: 44;
     --font-l: 64;
     --font-xl: 120;
@@ -415,7 +423,11 @@
     padding-right: 18;
     background-color: rgba(0, 0, 0, 0.72);
     color: rgb(166, 255, 179);
-    font-size: 26;
+    /* 26 was a desktop-only size. Agent_Chrome's DEBUG button makes this panel
+       reachable on a phone, so it has to clear the same 12sp floor as the rest.
+       ~15 rows at 34 px is ~630 px of a 1920 px screen - height is not a
+       constraint here. */
+    font-size: 34;
     -unity-font-style: bold;
     white-space: normal;
     border-top-left-radius: var(--radius-sm);

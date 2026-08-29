@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace PoSoccer
@@ -32,7 +32,11 @@ namespace PoSoccer
         // Rhythm (reference px)
         public const int Pad = 24;
         public const int Radius = 16;
-        public const int FontS = 30;
+        // MUST match --font-xs / --font-s in Resources/PoSoccerTheme.uss. Two
+        // sources of truth for one scale is how half the UI ends up a size
+        // nobody chose. See the USS for the sp arithmetic behind these numbers.
+        public const int FontXS = 34;
+        public const int FontS = 38;
         public const int FontM = 44;
         public const int FontL = 64;
         public const int FontXL = 120;

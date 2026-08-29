@@ -29,14 +29,68 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 
+# ml-agents binds one socket per env worker at basePort + workerId and checks
+# availability at STARTUP, so a worker range must be clear before a run begins.
+#
+# 2026-08-29, diagnosed properly on the second attempt: KIM died with
+#   UnityWorkerInUseException: worker number 7 is still in use
+# and the first theory - a race against the previous profile's teardown - was
+# WRONG. Port 5037 was held by **adb**, the Android Debug Bridge, whose server
+# listens on 5037 by definition. train-all gave KIM base port 5030, so at
+# -NumEnvs 8 its range 5030-5037 ran straight into it. At -NumEnvs 4 the range
+# stops at 5033 and the collision cannot happen, which is why raising the env
+# count "caused" a bug that was latent all along. Any machine with a phone
+# plugged in would have hit it.
+#
+# Two lessons baked in below: start well clear of adb, and probe with
+# Get-NetTCPConnection rather than by trying to bind. A bind test on IPv4
+# loopback reports "free" for a port already held on IPv6 [::] - which is how
+# ml-agents' own workers bind - so it cheerfully green-lights a range that is
+# fully occupied.
+$ADB_PORT = 5037
+
+function Get-BusyPorts {
+    param([int]$BasePort, [int]$Count)
+    $wanted = @($BasePort..($BasePort + $Count - 1))
+    $listening = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+                   Select-Object -ExpandProperty LocalPort -Unique)
+    # adb may not be listening this second but will grab 5037 the moment a device
+    # is plugged in, so treat it as permanently reserved rather than merely busy.
+    return @($wanted | Where-Object { $listening -contains $_ -or $_ -eq $ADB_PORT })
+}
+
+function Wait-ForWorkerPorts {
+    param([int]$BasePort, [int]$Count, [int]$TimeoutSec = 90)
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $busy = Get-BusyPorts -BasePort $BasePort -Count $Count
+        if ($busy.Count -eq 0) { return $true }
+        if ($busy -contains $ADB_PORT) { return $false }   # reserved, never frees
+        Write-Host ("  waiting for worker ports to free: " + ($busy -join ", "))
+        Start-Sleep -Seconds 3
+    }
+    return $false
+}
+
+# Walk the base port forward until the whole worker range is clear.
+function Resolve-BasePort {
+    param([int]$BasePort, [int]$Count)
+    for ($attempt = 0; $attempt -lt 40; $attempt++) {
+        if (Wait-ForWorkerPorts -BasePort $BasePort -Count $Count) { return $BasePort }
+        $busy = Get-BusyPorts -BasePort $BasePort -Count $Count
+        Write-Warning ("base port $BasePort unusable (busy/reserved: " + ($busy -join ", ") +
+                       "); shifting to " + ($BasePort + $Count))
+        $BasePort += $Count
+    }
+    throw "Could not find a free worker-port range starting near $BasePort."
+}
+
 # Prefer .venv2 when present - the canonical .venv can be locked by Unity at
 # runtime. Matches train-phase1.ps1 rather than hardcoding .venv.
 $venv = if (Test-Path "$root\.venv2\Scripts\mlagents-learn.exe") { "$root\.venv2" } else { "$root\.venv" }
 $py = Join-Path $venv "Scripts\mlagents-learn.exe"
 if (-not (Test-Path $py)) { throw "No trainer at $py - run scripts/setup-training-env.ps1 first." }
 
-# NB: not named $env - that collides with PowerShell's environment provider,
-# which this script uses below to pass POSOCCER_PROFILE to the player.
 $envExe = Join-Path $root $EnvPath
 if (-not (Test-Path $envExe)) { throw "No player build at $envExe - build SCN_Training first." }
 
@@ -86,7 +140,8 @@ $env:POSOCCER_OPPONENT = if ($SelfPlay) { "" } else { "bot" }
 Write-Host ("opponent: " + $(if ($SelfPlay) { "SELF-PLAY (both teams on the trainer)" } else { "scripted bot (POSOCCER_OPPONENT=bot)" }))
 
 try {
-    $basePort = 5010
+    # 5100+ keeps every worker range clear of adb (5037) by construction.
+    $basePort = 5100
     foreach ($name in $Profiles) {
         $runId = "soccer_${Tag}_$($name.ToLower())"
         $config = Join-Path $root "config\TRAIN_${name}_${ConfigTag}.yaml"
@@ -94,6 +149,9 @@ try {
 
         Write-Host ""
         Write-Host "=== training $name  (run-id $runId, port $basePort, config TRAIN_${name}_${ConfigTag}.yaml) ==="
+
+        # Never start on a range adb or a leftover worker still holds.
+        $basePort = Resolve-BasePort -BasePort $basePort -Count $NumEnvs
 
         # Inherited by the player processes mlagents-learn spawns.
         $env:POSOCCER_PROFILE = $name
@@ -108,8 +166,12 @@ try {
             Write-Warning "$name exited with code $LASTEXITCODE - continuing to the next profile."
         }
 
-        # No orphaned trainer/env players between runs.
+        # No orphaned trainer/env players between runs. The sleep is not
+        # superstition: cleanup-training.ps1 returns as soon as it has issued the
+        # kills, but the OS releases the listening sockets slightly later, and the
+        # next profile checks them at startup.
         & (Join-Path $PSScriptRoot "cleanup-training.ps1")
+        Start-Sleep -Seconds 5
 
         # Promote straight into the personality's GUID-stable slot. NOTE: this
         # copies the .onnx and stamps provenance, but on a NEW slot it cannot wire
@@ -117,7 +179,7 @@ try {
         # until it is, the personality still plays as a heuristic bot.
         & (Join-Path $PSScriptRoot "update-model.ps1") -RunId $runId -Profile $name
 
-        $basePort += 20   # keep concurrent/leftover workers from colliding
+        $basePort += [Math]::Max(20, $NumEnvs * 2)   # never overlap the range just used
     }
 }
 finally {

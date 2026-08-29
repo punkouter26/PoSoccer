@@ -685,6 +685,7 @@ MonoBehaviour:
   boostAggression: 0.5
   interiorHalfExtents: {x: 17, y: 26}
   unstickAfter: 1.25
+  perceptionRadius: 0
 --- !u!114 &219326535
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -738,6 +739,7 @@ MonoBehaviour:
   _frameInset: 0.18
   _frameThickness: 0.1
   _frameZ: 0.01
+  _showPlayerLabel: 1
 --- !u!114 &219326537
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -787,6 +789,8 @@ MonoBehaviour:
   wearPerBoostSecond: 0.002
   wearFloor: 0.6
   resetWearOnEpisode: 0
+  recoveryDelaySeconds: 0.6
+  depletedRecoveryFactor: 0.45
 --- !u!61 &219326539
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -1610,6 +1614,7 @@ MonoBehaviour:
   pitchHalfExtents: {x: 18, y: 27}
   ballSpawnJitter: 1
   defaultGoalWidth: 7.32
+  defaultBotStrength: 1
   stepCapOverride: 2500
   magnusScale: 0.0005
   ballDampingRange: {x: 0.08, y: 0.15}
@@ -1678,6 +1683,7 @@ MonoBehaviour:
   defaultBlue2: {fileID: 11400000, guid: 59a6a1fc32970544e878f00aeb667f79, type: 2}
   defaultRed: {fileID: 11400000, guid: b17156f06611faf4eb5e77368965c421, type: 2}
   defaultRed2: {fileID: 11400000, guid: b17156f06611faf4eb5e77368965c421, type: 2}
+  _scalePitchToSquad: 1
 --- !u!114 &588775821
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1696,8 +1702,21 @@ MonoBehaviour:
   whistle: {fileID: 8300000, guid: 8e4157b493ce7594881d3f5548e87ab5, type: 3}
   crowdLoop: {fileID: 8300000, guid: 07661d89f6ff0f142a56d0ba2b477525, type: 3}
   music: {fileID: 0}
+  crowdBoo: {fileID: 0}
   crowdBase: 0.16
   crowdSwellMax: 0.45
+  _masterVolume: 1
+  _sfxVolume: 1
+  _crowdVolume: 1
+  _musicVolume: 0.25
+  _voices: 8
+  _spatialBlend: 0.8
+  _minDistance: 6
+  _maxDistance: 40
+  _stereoSpread: 0.7
+  _duckAmount: 0.55
+  _duckRelease: 1.4
+  _frozenCutoff: 850
 --- !u!114 &588775822
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1711,6 +1730,53 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_MatchFX
   particleSprite: {fileID: -3603556060819865620, guid: bce568d8b568ee048b7f4b898e374e53, type: 3}
+--- !u!1 &623780765
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 623780767}
+  - component: {fileID: 623780766}
+  m_Layer: 0
+  m_Name: Chrome
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &623780766
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 623780765}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cfad8d99ec044174c889aebde74f601b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_Chrome
+  _menuScene: SCN_Menu
+  _fpsInterval: 0.25
+  _showFps: 1
+--- !u!4 &623780767
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 623780765}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &760298331
 GameObject:
   m_ObjectHideFlags: 0
@@ -2065,6 +2131,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_Stadium
   litMaterial: {fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}
   globalFill: 0.5
+  _celebrationSeconds: 2.2
+  _celebrationHz: 6
+  _tonemapping: 1
 --- !u!4 &1291179483
 Transform:
   m_ObjectHideFlags: 0
@@ -2264,6 +2333,53 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_SpriteSortPoint: 0
   m_BlendShapeWeights: []
+--- !u!1 &1500333642
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1500333644}
+  - component: {fileID: 1500333643}
+  m_Layer: 0
+  m_Name: Telemetry
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1500333643
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1500333642}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ba32686c7f4ff54b89c4a5e0d62c17c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_Telemetry
+  _visibleOnStart: 0
+  _sampleWindow: 240
+  _refreshInterval: 0.25
+--- !u!4 &1500333644
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1500333642}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1579506615
 GameObject:
   m_ObjectHideFlags: 0
@@ -2357,6 +2473,7 @@ MonoBehaviour:
   _frameInset: 0.18
   _frameThickness: 0.1
   _frameZ: 0.01
+  _showPlayerLabel: 1
 --- !u!114 &1579506621
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2406,6 +2523,8 @@ MonoBehaviour:
   wearPerBoostSecond: 0.002
   wearFloor: 0.6
   resetWearOnEpisode: 0
+  recoveryDelaySeconds: 0.6
+  depletedRecoveryFactor: 0.45
 --- !u!61 &1579506623
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -2556,6 +2675,7 @@ MonoBehaviour:
   boostAggression: 0.5
   interiorHalfExtents: {x: 17, y: 26}
   unstickAfter: 1.25
+  perceptionRadius: 0
 --- !u!1 &1593781668
 GameObject:
   m_ObjectHideFlags: 0
@@ -2613,6 +2733,7 @@ MonoBehaviour:
   boostAggression: 0.5
   interiorHalfExtents: {x: 17, y: 26}
   unstickAfter: 1.25
+  perceptionRadius: 0
 --- !u!114 &1593781673
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2666,6 +2787,7 @@ MonoBehaviour:
   _frameInset: 0.18
   _frameThickness: 0.1
   _frameZ: 0.01
+  _showPlayerLabel: 1
 --- !u!114 &1593781675
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2715,6 +2837,8 @@ MonoBehaviour:
   wearPerBoostSecond: 0.002
   wearFloor: 0.6
   resetWearOnEpisode: 0
+  recoveryDelaySeconds: 0.6
+  depletedRecoveryFactor: 0.45
 --- !u!61 &1593781677
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -2905,6 +3029,7 @@ MonoBehaviour:
   boostAggression: 0.5
   interiorHalfExtents: {x: 17, y: 26}
   unstickAfter: 1.25
+  perceptionRadius: 0
 --- !u!114 &1785677905
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2958,6 +3083,7 @@ MonoBehaviour:
   _frameInset: 0.18
   _frameThickness: 0.1
   _frameZ: 0.01
+  _showPlayerLabel: 1
 --- !u!114 &1785677907
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3007,6 +3133,8 @@ MonoBehaviour:
   wearPerBoostSecond: 0.002
   wearFloor: 0.6
   resetWearOnEpisode: 0
+  recoveryDelaySeconds: 0.6
+  depletedRecoveryFactor: 0.45
 --- !u!61 &1785677909
 BoxCollider2D:
   m_ObjectHideFlags: 0
@@ -3313,6 +3441,7 @@ MonoBehaviour:
   enableMatchFlow: 1
   matchGoals: 5
   menuScene: SCN_Menu
+  showHud: 1
 --- !u!114 &1977980028
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3953,3 +4082,5 @@ SceneRoots:
   - {fileID: 129460680}
   - {fileID: 1977980029}
   - {fileID: 1291179483}
+  - {fileID: 623780767}
+  - {fileID: 1500333644}

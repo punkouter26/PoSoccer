@@ -20,9 +20,9 @@ MonoBehaviour:
     home when defending.'
   playerColor: {r: 1, g: 0.5, b: 0.12, a: 1}
   brainModel: {fileID: 0}
-  trainingSteps: 2513536
-  trainingRunId: soccer_v2_matt
-  trainedOn: 2026-08-02
+  trainingSteps: 10000311
+  trainingRunId: soccer_p21_matt
+  trainedOn: 2026-08-29
   evalWinRate: -1
   evalEpisodes: 0
   bodyScale: 1.25

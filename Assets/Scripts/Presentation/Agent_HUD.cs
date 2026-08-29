@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 
@@ -192,18 +192,16 @@ namespace PoSoccer
                 controls.AddToClassList("row");
                 controls.style.marginTop = 12;
 
-                var menu = SmallButton("MENU", () =>
-                {
-                    Agent_TimeFreeze.ReleaseAll();
-                    SceneManager.LoadScene(menuScene);
-                });
+                // MENU used to live here. It now sits in the upper-right corner,
+                // owned by Agent_Chrome, so that the corner layout is identical in
+                // the menu and in a match. Two MENU buttons on one screen is worse
+                // than either position on its own. Agent_Chrome.ReturnToMenu keeps
+                // the Agent_TimeFreeze.ReleaseAll() that used to happen here.
                 var sound = Agent_UIStyle.SoundToggleButton();
-                sound.style.marginLeft = 12;   // spacing between two peers, not a token
 
                 var pause = SmallButton("II", TogglePause);
                 pause.style.marginLeft = 12;
 
-                controls.Add(menu);
                 controls.Add(sound);
                 controls.Add(pause);
                 band.Add(controls);

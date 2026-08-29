@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
@@ -317,7 +317,7 @@ namespace PoSoccer
         {
             var b = new Button(onClick) { text = text };
             b.style.height = 74;
-            b.style.fontSize = 30;
+            b.style.fontSize = Agent_UIStyle.FontS;
             b.style.unityFontStyleAndWeight = FontStyle.Bold;
             b.style.paddingLeft = 30; b.style.paddingRight = 30;
             b.style.marginLeft = 5; b.style.marginRight = 5;
@@ -401,7 +401,7 @@ namespace PoSoccer
             if (squad.Count == 0)
             {
                 var empty = new Label("empty — tap a name above");
-                empty.style.fontSize = 26;
+                empty.style.fontSize = Agent_UIStyle.FontXS;
                 empty.style.color = Agent_UIStyle.TextMuted;
                 empty.style.unityTextAlign = TextAnchor.MiddleCenter;
                 empty.style.marginTop = 34;
@@ -410,8 +410,10 @@ namespace PoSoccer
             }
 
             // Cards shrink as the squad grows so ten still fit two ranks of five.
+            // Compact widened 170 -> 182 to buy room for legible type; five cards
+            // plus margins is 5 * 192 = 960 px, still inside the 1080 panel.
             bool compact = squad.Count > 5;
-            float width = compact ? 170f : 210f;
+            float width = compact ? 182f : 210f;
 
             for (int slot = 0; slot < squad.Count; slot++)
             {
@@ -419,7 +421,7 @@ namespace PoSoccer
                 var profile = squad[slot];
                 var card = new Button(() => RemoveSlot(squad, captured));
                 card.style.width = width;
-                card.style.height = compact ? 142f : 174f;
+                card.style.height = compact ? 150f : 174f;
                 card.style.marginLeft = 5; card.style.marginRight = 5;
                 card.style.marginBottom = 8;
                 card.style.paddingTop = 4; card.style.paddingBottom = 4;
@@ -432,9 +434,17 @@ namespace PoSoccer
                 card.style.borderTopColor = teamColor; card.style.borderBottomColor = teamColor;
                 card.style.borderLeftColor = teamColor; card.style.borderRightColor = teamColor;
 
-                card.Add(CardLine(profile.playerName, compact ? 24 : 32, FontStyle.Bold, 1f));
-                card.Add(CardLine(DriverLine(profile), compact ? 16 : 21, FontStyle.Normal, 0.75f));
-                card.Add(CardLine(StepsLine(profile), compact ? 16 : 21, FontStyle.Bold, 0.85f));
+                // 16 px and 21 px were roughly 0.7 mm and 0.9 mm of cap height on a
+                // phone - present, but not readable. At 5v5 the card cannot hold
+                // three lines at a legible size, so the step count (the least
+                // useful of the three while picking a squad) is dropped instead of
+                // shrinking everything below the floor.
+                card.Add(CardLine(profile.playerName, compact ? 34 : 44, FontStyle.Bold, 1f));
+                card.Add(CardLine(DriverLine(profile), compact ? 30 : 34, FontStyle.Normal, 0.8f));
+                if (!compact)
+                {
+                    card.Add(CardLine(StepsLine(profile), 34, FontStyle.Bold, 0.85f));
+                }
                 strip.Add(card);
             }
         }
