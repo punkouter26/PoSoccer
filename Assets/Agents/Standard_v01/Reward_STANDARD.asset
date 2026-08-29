@@ -1,4 +1,4 @@
-﻿%YAML 1.1
+%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
 MonoBehaviour:
@@ -15,13 +15,13 @@ MonoBehaviour:
   playerName: STANDARD
   personalityNotes: THE BASELINE. Balanced all-rounder - the reference brain every
     personality is measured against.
-  playerColor: {r: 0.75, g: 0.75, b: 0.78, a: 1}
+  playerColor: {r: 0.25, g: 0.75, b: 0.35, a: 1}
   brainModel: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
-  trainingSteps: 3000324
-  trainingRunId: soccer_p17_rewardv3
-  trainedOn: 2026-08-28
-  evalWinRate: -1
-  evalEpisodes: 0
+  trainingSteps: 10000034
+  trainingRunId: soccer_p21curric_standard
+  trainedOn: 2026-08-29
+  evalWinRate: 0.2571
+  evalEpisodes: 350
   bodyScale: 1
   bodyMass: 75
   goalScorer: 1.2
@@ -31,7 +31,7 @@ MonoBehaviour:
   stalemateTimeout: -0.6
   goalSpeedBonus: 0.05
   crossbarProximity: 0.0005
-  stepPenalty: 0
+  stepPenalty: -5e-05
   ballProximityScale: 0.02
   useDifferentialProximity: 1
   facingAlignmentScale: 5e-05

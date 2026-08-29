@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace PoSoccer
 {
@@ -81,10 +81,28 @@ namespace PoSoccer
         public float crossbarProximity = 0.0005f;
 
         [Header("Dense rewards (per decision step)")]
-        [Tooltip("Per-step time cost. v2 changed from -0.0001 to 0 because stepPenalty " +
-                 "washed out the entire reward gradient (O(1) of the episode budget). " +
-                 "Terminal reward already provides temporal credit.")]
-        public float stepPenalty = 0f;
+        [Tooltip("Per-step time cost. v2 zeroed the old -0.0001 because it washed out the " +
+                 "entire reward gradient; v4 restores it at -0.00005, which is half the " +
+                 "magnitude and lands well under the stalemate terminal. See below.")]
+        // v4 (2026-08-29): 0 -> -0.00005. The v2 objection was about MAGNITUDE, not the
+        // mechanism: the episode cap is 9000 steps, so the old -0.0001 cost -0.9 per
+        // episode - near-identical to goalConceded (-1.0) - and drowned every other term
+        // while the reward table around it was still miscalibrated. At -0.00005 a full
+        // 9000-step episode costs -0.45, below stalemateTimeout (-0.6) and well under
+        // goalScorer (+1.2), so it biases toward finishing without dominating the outcome.
+        //
+        // WHY A PER-STEP COST SPECIFICALLY. After the body-frame fix the probe showed a
+        // policy that drives at a deliberate magnitude of 0.320 (sign-stable, 19 flips in
+        // 400 steps - that is the policy mean, not exploration), giving ~1.5 m/s against a
+        // 9.54 m/s chassis. Nothing in the table paid for hurrying: the proximity term is
+        // differential, so it telescopes to ballProximityScale * (dStart - dEnd) and pays
+        // the same whether the ball is reached in 2 seconds or 20. The only existing time
+        // pressure was the stalemateTimeout terminal, and at gamma 0.99 the horizon is
+        // 1/(1-0.99) = 100 decisions ~ 8 s of game time, so a terminal 560 decisions away
+        // arrives multiplied by ~0.004. A per-step cost is charged immediately at every
+        // step and therefore does not depend on that propagation, which is exactly why it
+        // is the right instrument at a short horizon.
+        public float stepPenalty = -0.00005f;
         [Tooltip("Differential proximity reward scale. v2: replaces absolute proximity " +
                  "(which rewarded idling near the ball) with (prevDist - curDist) * scale " +
                  "so an agent approaching faster than its teammate earns positive reward.")]

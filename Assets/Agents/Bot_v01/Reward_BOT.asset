@@ -20,7 +20,7 @@ MonoBehaviour:
     push, unstick from corners). brainModel stays null forever, so this profile always
     resolves to the bot. Reward values mirror STANDARD so a brain trained on STANDARD
     rewards faces a like-for-like opponent; they are inert during exhibition play.'
-  playerColor: {r: 0.62, g: 0.78, b: 0.3, a: 1}
+  playerColor: {r: 0.85, g: 0.2, b: 0.2, a: 1}
   bodyScale: 1
   bodyMass: 75
   goalScorer: 1.2
@@ -28,7 +28,7 @@ MonoBehaviour:
   teamBaselineVictory: 0.2
   goalConceded: -1
   stalemateTimeout: -0.6
-  stepPenalty: 0
+  stepPenalty: -5e-05
   ballProximityScale: 0.02
   useDifferentialProximity: 1
   facingAlignmentScale: 5e-05

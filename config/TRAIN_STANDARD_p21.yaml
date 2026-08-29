@@ -1,0 +1,111 @@
+# p21 - the curriculum lever. Two changes, one of which is a correction, not an experiment.
+#
+# CORRECTION: threshold 0.50 -> 0.21 on every bot_strength lesson.
+# The promotion criterion is `measure: reward`, evaluated on the SAME reward that
+# p20's stepPenalty depresses. Eval measured meanEpisodeSteps 5784, so the time
+# cost is 5784 * 0.00005 = 0.289 per episode. A 0.50 threshold on p20's scale
+# therefore demands what 0.79 demanded on p18's - p20 made promotion strictly
+# HARDER at the same time as it improved behaviour, which nobody intended.
+# 0.50 - 0.289 = 0.21 restores the same effective bar. This is undoing an offset I
+# introduced; it is NOT the falling ladder that let p5 graduate on noise (that one
+# dropped the bar as difficulty ROSE - here every lesson keeps one flat value, and
+# min_lesson_length stays 1000).
+#
+# EXPERIMENT: max_steps 3M -> 10M.
+# p17, p18 and p20 all finished on Lesson0_Feeble (bot_strength 0.2) while eval
+# grades at 1.0, so no policy in this project has ever trained against a competent
+# opponent - which is why two large locomotion wins (5.3x distance, 3.8x top speed)
+# converted losses into draws instead of wins. The ladder needs room to actually be
+# climbed. 10M at the measured ~670 s/M is roughly 110 minutes.
+#
+# Judge this run by which lessons it reaches, not by mean reward: promotion raises
+# bot_strength, which pushes reward back down by design.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 10000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # One flat threshold, applied to every lesson: the policy must be genuinely
+  # winning (goalScorer 0.7 vs goalConceded -1.0, so a sustained +0.5 mean means
+  # scoring materially more than it concedes) before the opponent gets stronger.
+  # min_lesson_length 1000 makes a lucky streak far too expensive to fake.
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.35
+      # Support positioning and corner craft switch on at 0.5 - the first real step up.
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.65
+      # The boost-shot switches on at 0.8.
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  num_envs: 1
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

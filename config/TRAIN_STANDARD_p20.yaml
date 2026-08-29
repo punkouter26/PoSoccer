@@ -1,0 +1,106 @@
+# p20 - single variable vs p18 (soccer_p18bf_standard): stepPenalty 0 -> -0.00005.
+#
+# The trainer config is IDENTICAL to p18 (gamma stays 0.99 - p19 tested 0.999 and
+# came out worse: mean over the last 1M steps -0.308 vs p18's -0.139). The single
+# change lives in the Reward_*.asset table, not here, and is documented in
+# Reward_Settings.stepPenalty.
+#
+# p18 fixed the observation frame and the probe went 0.99 m -> 3.61 m of a 10.44 m
+# chase, but arrival is still never: the policy drives at a deliberate magnitude of
+# 0.320 (sign-stable - that is the mean, not exploration noise), giving ~1.5 m/s
+# against a 9.54 m/s chassis. Nothing in the reward table paid for hurrying, because
+# differential proximity telescopes to scale * (dStart - dEnd) and pays identically
+# for a 2-second approach and a 20-second one.
+#
+# -0.00005 over the 9000-step cap costs -0.45 per full-length episode: under
+# stalemateTimeout (-0.6), well under goalScorer (+1.2). Half the magnitude v2
+# removed for washing out the gradient (-0.0001 -> -0.9, near goalConceded's -1.0).
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 3000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # One flat threshold, applied to every lesson: the policy must be genuinely
+  # winning (goalScorer 0.7 vs goalConceded -1.0, so a sustained +0.5 mean means
+  # scoring materially more than it concedes) before the opponent gets stronger.
+  # min_lesson_length 1000 makes a lucky streak far too expensive to fake.
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.35
+      # Support positioning and corner craft switch on at 0.5 - the first real step up.
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.65
+      # The boost-shot switches on at 0.8.
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.50
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  num_envs: 1
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

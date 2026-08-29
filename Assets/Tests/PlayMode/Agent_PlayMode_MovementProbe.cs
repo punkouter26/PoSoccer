@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Linq;
 using System.Text;
 using NUnit.Framework;
@@ -161,9 +161,15 @@ namespace PoSoccer.Tests
         {
             // 2026-08-04: the trained policy is ALWAYS Blue - scripts/train-phase1.ps1 sets
             // POSOCCER_OPPONENT=bot, which forces Red to HeuristicOnly. Measuring Red with a
-            // Blue-trained model runs it out of distribution (self velocity, eye axis and
-            // relBall are world-frame while the goal terms are team-relative), which reads
-            // as "the policy cannot move". Probe the side the policy actually trained on.
+            // Blue-trained model used to run it badly out of distribution, which read as
+            // "the policy cannot move", so probe the side the policy actually trained on.
+            //
+            // 2026-08-28: the out-of-distribution half of that reasoning is now largely
+            // obsolete. Self velocity, the ball and every opponent/teammate term are emitted
+            // in the agent's BODY frame (Agent_Soccer.ToBodyFrame), and the goal terms were
+            // already team-relative, so a Blue-trained policy no longer sees a mirrored world
+            // when it is driven as Red. Keep probing the trained side anyway - it is still
+            // the honest measurement, and the side choice now costs nothing either way.
             var red = _env.agents.First(a => a.team == mover);
             var blue = _env.agents.First(a => a.team != mover);
 

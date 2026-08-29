@@ -1,4 +1,4 @@
-using Unity.MLAgents;
+﻿using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
@@ -172,6 +172,16 @@ namespace PoSoccer
         /// point of view a big impulse arrived at unpredictable moments. That is
         /// unmodellable dynamics, not difficulty. Now the policy can see the band
         /// and the cooldown, so the mechanic becomes a tool rather than noise.
+        ///
+        /// 2026-08-28: still 29, but the FRAME changed and that is far more dangerous
+        /// than a count change. Every relative position/velocity is now emitted in the
+        /// agent's BODY frame (see ToBodyFrame) instead of world frame, and the two
+        /// world eye-axis floats became yaw rate + signed bearing to the ball. The
+        /// tensor shape is identical, so every .onnx trained before this date LOADS
+        /// WITHOUT A WARNING and silently reads a different world - the same class of
+        /// failure as a sensor-arc change. Treat this as a full retrain of all four
+        /// personalities; a pre-2026-08-28 checkpoint is not comparable to a later one
+        /// no matter what its eval JSON says.
         /// </summary>
         public const int BaseObservationSize = 29;
 
@@ -405,11 +415,43 @@ namespace PoSoccer
             if (!gameObject.CompareTag(wanted)) gameObject.tag = wanted;
         }
 
+        /// <summary>
+        /// Rotates a world-frame vector into this agent's body frame:
+        /// x = sideways (+ = to the agent's right), y = forward (+ = where it faces).
+        ///
+        /// 2026-08-28: THIS is why nine phases of training could not reach the ball.
+        /// The action space has always been body-frame - OnActionReceived builds
+        /// intent as (transform.up * move + transform.right * lateral) - while every
+        /// relative observation was emitted in WORLD frame. So "drive at the ball"
+        /// was not a lookup, it was a product the network had to synthesise:
+        /// move = dot(relBall_world, up_world), lateral = dot(relBall_world, right_world).
+        /// An MLP approximates that bilinear rotation only piecewise, and the body
+        /// spins through the full circle (184 deg of heading churn measured), so the
+        /// policy had to learn a different linear map for every heading it ever held.
+        /// The ray sensors were egocentric the whole time, so the network was also
+        /// handed two contradictory coordinate systems for the same world.
+        ///
+        /// That is exactly the "misdirected, not collapsed" signature probed in
+        /// 50d235f: confident action magnitudes pointed the wrong way. It is a
+        /// representation defect, not a reward or perception or capacity defect,
+        /// which is why phases 6-17 (opponent obs, reward rebalance, curriculum
+        /// gating, wider rays, POCA, curiosity, more capacity, 30M steps) each moved
+        /// the win rate by less than noise.
+        ///
+        /// Cheap and zero-alloc: two dot products, no trig, no allocation.
+        /// </summary>
+        static Vector2 ToBodyFrame(Vector2 world, Vector2 rightAxis, Vector2 forwardAxis)
+            => new Vector2(Vector2.Dot(world, rightAxis), Vector2.Dot(world, forwardAxis));
+
         public override void CollectObservations(VectorSensor sensor)
         {
             Vector2 half = env != null ? env.PitchHalfExtents : new Vector2(10f, 6f);
             float invMax = 1f / Mathf.Max(half.x, half.y);
 
+            // Body axes, resolved once. Every relative vector below is expressed
+            // against these so the observation frame matches the action frame.
+            Vector2 rightAxis = transform.right;
+            Vector2 forwardAxis = transform.up;
 
             // Wall-kick affordance (2): how close the ball is to the kick band,
             // and whether the cooldown has elapsed. See BaseObservationSize.
@@ -437,44 +479,75 @@ namespace PoSoccer
                 int elapsed = StepCount - _episodeStartStep;
                 sensor.AddObservation(1f - Mathf.Clamp01((float)elapsed / Mathf.Max(1, cap)));
             }
-            // Self state (4)
-            sensor.AddObservation(Body.linearVelocity * 0.1f);          // ~[-1,1] at 10 u/s
-            sensor.AddObservation((Vector2)transform.up);               // eye axis
+
+            // Ball, resolved early - the steering channels below key off it.
+            Vector2 toBall = Vector2.zero, ballVel = Vector2.zero;
+            bool haveBall = env != null && env.Ball != null;
+            if (haveBall)
+            {
+                toBall = env.Ball.position - Body.position;
+                ballVel = env.Ball.linearVelocity;
+            }
+
+            // Self state (4). Body-frame velocity: y is how fast it is running
+            // FORWARD, x how fast it is sliding sideways - both directly comparable
+            // to the move/lateral actions that produce them.
+            sensor.AddObservation(ToBodyFrame(Body.linearVelocity, rightAxis, forwardAxis) * 0.1f);
+
+            // The world eye axis used to live here. Under a body frame it is the
+            // constant (0,1) and carries no information, so the two floats now feed
+            // the turn channel, which had no proprioception at all:
+            //   - current yaw rate, normalised by the turn cap
+            //   - signed bearing to the ball in [-1,1] (-1 = hard left, +1 = hard right)
+            // The turn action can now track a target instead of inferring one from a
+            // world-frame heading it also had to rotate.
+            sensor.AddObservation(Mathf.Clamp(
+                Body.angularVelocity / Mathf.Max(1f, _maxAngularVelocityDeg), -1f, 1f));
+            {
+                float bearing01 = 0f;
+                if (haveBall && toBall.sqrMagnitude > 1e-6f)
+                {
+                    // Sign is chosen to match the torque, not intuition: AddTorque
+                    // takes + as counter-clockwise (left) in Unity 2D, and
+                    // SignedAngle(forward, toBall) is likewise + when the ball is to
+                    // the LEFT. Leaving both unnegated means the turn head can be
+                    // close to the identity - "bearing +0.3" wants "turn +0.3" -
+                    // instead of having to learn a sign flip on top of everything else.
+                    bearing01 = Vector2.SignedAngle(forwardAxis, toBall) / 180f;
+                }
+                sensor.AddObservation(bearing01);
+            }
 
             // Stamina (1)
             sensor.AddObservation(Stamina.Ratio);
 
-            // Ball (4)
-            Vector2 relBall = Vector2.zero, ballVel = Vector2.zero;
-            if (env != null && env.Ball != null)
-            {
-                relBall = (env.Ball.position - Body.position) * invMax;
-                ballVel = env.Ball.linearVelocity * 0.1f;
-            }
-            sensor.AddObservation(relBall);
-            sensor.AddObservation(ballVel);
+            // Ball (4) - body frame.
+            sensor.AddObservation(ToBodyFrame(toBall, rightAxis, forwardAxis) * invMax);
+            sensor.AddObservation(ToBodyFrame(ballVel, rightAxis, forwardAxis) * 0.1f);
 
-            // Goals (5)
+            // Goals (5) - body frame. Distance stays a scalar (frame-invariant).
             Vector2 relOpp = Vector2.zero, relOwn = Vector2.zero;
             float distToOppGoal = 0f;
             if (env != null)
             {
                 Vector2 opp = env.GetGoalPosition(Opponent(team));
                 Vector2 own = env.GetGoalPosition(team);
-                relOpp = (opp - Body.position) * invMax;
-                relOwn = (own - Body.position) * invMax;
+                relOpp = ToBodyFrame(opp - Body.position, rightAxis, forwardAxis) * invMax;
+                relOwn = ToBodyFrame(own - Body.position, rightAxis, forwardAxis) * invMax;
                 distToOppGoal = Mathf.Clamp01((opp - Body.position).magnitude * invMax);
             }
             sensor.AddObservation(relOpp);
             sensor.AddObservation(relOwn);
             sensor.AddObservation(distToOppGoal);
 
-            // Teammate (4, zero-padded in 1v1)
+            // Teammate (4, zero-padded in 1v1) - body frame.
             Agent_Soccer mate = env != null ? env.GetTeammate(this) : null;
             if (mate != null && mate.Body != null)
             {
-                sensor.AddObservation((mate.Body.position - Body.position) * invMax);
-                sensor.AddObservation(mate.Body.linearVelocity * 0.1f);
+                sensor.AddObservation(
+                    ToBodyFrame(mate.Body.position - Body.position, rightAxis, forwardAxis) * invMax);
+                sensor.AddObservation(
+                    ToBodyFrame(mate.Body.linearVelocity, rightAxis, forwardAxis) * 0.1f);
             }
             else
             {
@@ -482,19 +555,20 @@ namespace PoSoccer
                 sensor.AddObservation(Vector2.zero);
             }
 
-            // Opponents (4 x OpponentSlots, nearest first, zero-padded).
+            // Opponents (4 x OpponentSlots, nearest first, zero-padded) - body frame.
             // The ray sensor nominally covers opponents but only guarantees detection
-            // within ~1.9 units and cannot tell a teammate from a foe (shared "Agent"
-            // tag), while the scripted bot reads opponents exactly at any range. These
-            // slots close that gap - see Agent_EnvController.GetOpponents.
+            // within ~1.9 units, while the scripted bot reads opponents exactly at any
+            // range. These slots close that gap - see Agent_EnvController.GetOpponents.
             int found = env != null ? env.GetOpponents(this, _opponentBuffer) : 0;
             for (int slot = 0; slot < OpponentSlots; slot++)
             {
                 if (slot < found && _opponentBuffer[slot] != null && _opponentBuffer[slot].Body != null)
                 {
                     var foe = _opponentBuffer[slot].Body;
-                    sensor.AddObservation((foe.position - Body.position) * invMax);
-                    sensor.AddObservation(foe.linearVelocity * 0.1f);
+                    sensor.AddObservation(
+                        ToBodyFrame(foe.position - Body.position, rightAxis, forwardAxis) * invMax);
+                    sensor.AddObservation(
+                        ToBodyFrame(foe.linearVelocity, rightAxis, forwardAxis) * 0.1f);
                 }
                 else
                 {

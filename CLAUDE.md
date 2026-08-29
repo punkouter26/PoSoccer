@@ -104,7 +104,21 @@ Hard-won traps:
 
 ## Landmines
 
-- **This machine is ARM64, and that makes in-editor training impossible (2026-08-20).** Windows, the Unity Hub editor (`6000.5.7f1`) and therefore the editor process are all **ARM64**, but ML-Agents ships `grpc_csharp_ext` for **x86/x64 only** (`Packages/com.unity.ml-agents/Plugins/ProtoBuffer/runtimes/win/native/`). An ARM64 process cannot load an x64 native DLL, so the editor's `RpcCommunicator.Initialize` throws `System.IO.IOException: Error loading native library ... grpc_csharp_ext.x64.dll`, ML-Agents logs `Couldn't connect to trainer on port 5004 ... Will perform inference instead`, and Play proceeds with **no trainer attached**. Nothing fails loudly: the scene runs, agents move on heuristics, and `mlagents-learn` sits on "Start training by pressing the Play button" until its `--timeout-wait` (default 60 s) expires and it exits 0 with "No exported model - nothing to assign". That reads like "the user was slow to press Play", not like a hard platform limit. **Headless training is unaffected** - `Builds/PoSoccer/PoSoccer.exe` is an x64 player and loads the x64 DLL fine under emulation, which is why every result in this file came from headless runs. Check with the PE machine field (`0xAA64` = ARM64, `0x8664` = x64) rather than guessing. To train in the editor you must install the **x64** editor in Unity Hub and open the project with it.
+- **RETRACTED 2026-08-29 - the "this machine is ARM64" landmine was false, and it was load-bearing.** This entry used to open "This machine is ARM64, and that makes in-editor training impossible (2026-08-20)" and concluded that you must install an x64 editor in Unity Hub to train in the editor at all. **Every part of that is wrong.** Measured on 2026-08-29, by the very PE-machine-field check the old entry recommended and evidently never ran:
+
+  | binary | PE machine | |
+  |---|---|---|
+  | `Unity.exe` (Hub 6000.5.7f1) | `0x8664` | **x64** |
+  | `.venv2\Scripts\python.exe` | `0x8664` | **x64** |
+  | `Builds/PoSoccer/PoSoccer.exe` | `0x8664` | **x64** |
+
+  `PROCESSOR_IDENTIFIER` is `Intel64 Family 6 Model 165 Stepping 2, GenuineIntel` and `PROCESSOR_ARCHITECTURE` is `AMD64`. There is no ARM64 anywhere in this toolchain. The user confirmed it directly.
+
+  So the whole causal story - "an ARM64 process cannot load an x64 native DLL, so `RpcCommunicator.Initialize` throws on `grpc_csharp_ext.x64.dll`, so the editor silently falls back to inference and `mlagents-learn` sits waiting for a Play press that can never work" - describes a machine that does not exist. The editor is x64 and ml-agents ships `grpc_csharp_ext.x64.dll`, so the plugin loads fine and **in-editor training should work** (not re-tested here, because headless is faster anyway - but do not treat it as impossible).
+
+  Keep the PE-machine check itself (`0xAA64` = ARM64, `0x8664` = x64); it is the right tool. The lesson is that it has to actually be *run*: a plausible mechanism plus a real symptom is not a diagnosis, and this one stood unchallenged for nine days and steered work away from a working option.
+
+- **Training runs on the GPU (verified 2026-08-29).** `mlagents.torch_utils.default_device()` returns `cuda` - ml-agents defaults to CUDA whenever `torch.cuda.is_available()`, and nothing here overrides it. torch is `2.5.1+cu121` against an **NVIDIA RTX 2060 (6 GB)**, and the trainer process appears in `nvidia-smi` with a `C` (compute) context. **But the GPU is not the bottleneck**: utilisation sits at ~18-21% (much of that Unity's own `C+G` contexts) because the policy is a 256x2 MLP. Wall-clock is set by the four headless `PoSoccer.exe` processes stepping physics on the CPU - measured **667 s per million steps** at `-NumEnvs 4`. Scale env count/CPU to go faster; a better GPU buys nothing here.
 
 - **Protobuf**: ML-Agents + com.unity.ai.inference both shipped `Google.Protobuf_Packed.dll`; player builds resolved the editor-only twin (CS0400). Fixed by embedding the package with stock NuGet `Google.Protobuf.dll` 3.21.12 + asmdef refs updated. Never reintroduce the packed dll; file-renaming breaks the linker (assembly identity).
 - **Git LFS**: `.gitattributes` routes every `*.onnx`, `*.png`, `*.wav`, `*.psd`, `*.fbx`, `*.ttf` through LFS. A clone made without `git lfs install` leaves **all 94 binaries as ~130-byte pointer stubs** — sprites and audio silently break and `STANDARD.onnx` fails to import with `InvalidProtocolBufferException: ... invalid wire type`, which reads like the protobuf landmine below but is not. Fix: `git lfs install --local; git lfs pull`, then reimport. Check with `git lfs ls-files` vs. on-disk file sizes.
@@ -119,6 +133,135 @@ Hard-won traps:
 Enforced style lives in `.claude/rules/` and is loaded automatically: `architecture.md` (MVS + VContainer + MessagePipe + UniTask — aspirational; the current code is plain MonoBehaviour/ScriptableObject and does **not** yet follow it), `csharp-unity.md` (naming, `[SerializeField] private`, no LINQ in gameplay), `performance.md` (zero alloc in Update, draw-call/atlas budget), `serialization.md` (**`[FormerlySerializedAs]` on every rename**), `unity-specifics.md` (no `?.` on Unity objects, no coroutines).
 
 ## State (2026-08-04)
+
+**ROOT CAUSE FOUND 2026-08-28 — observations were world-frame while actions were body-frame, and that is why nine phases of training could not reach the ball.**
+
+`OnActionReceived` has always built movement in the agent's own frame:
+
+```csharp
+Vector2 intent = Vector2.ClampMagnitude(transform.up * move + transform.right * lateral, 1f);
+```
+
+while `CollectObservations` emitted every relative position and velocity in **world** frame — `relBall`, ball velocity, self velocity, the eye axis, goals, teammate, both opponent slots. So "drive at the ball" was never a lookup the network could read off an input; it was a product it had to synthesise:
+
+```
+move    = dot(relBall_world, up_world)
+lateral = dot(relBall_world, right_world)
+```
+
+An MLP approximates that bilinear rotation only piecewise, and the body turns through the full circle (**184 deg of heading churn** measured), so the policy had to learn a *different* linear map for every heading it ever held. Worse, `Sensor_Vision`'s ray sensors were egocentric the whole time — the network was handed **two contradictory coordinate systems for the same world** and had to reconcile them.
+
+This is exactly the "misdirected, not collapsed" signature that `50d235f` probed and could not explain: confident action magnitudes pointed the wrong way. It is a **representation** defect, not a reward, perception, capacity or credit-assignment defect — which is why phases 6 through 17 each moved the win rate by less than noise while attacking every one of those instead:
+
+| phase | hypothesis tested | result |
+|---|---|---|
+| 6 | opponent observations (18 -> 26 obs) | 17.1% vs 16.2% — noise |
+| 7 | reward table (stalling was optimal) | 16.6% — noise |
+| 8 | locomotion reward terms drifted in the assets | reward up 8x, probe still 0.99 m |
+| 9/10 | domain randomization, 4-sensor perception split | graded a stale build; retracted |
+| 13/14 | curiosity, more capacity | no change |
+| 15/16 | MA-POCA group credit (really was broken, really was fixed) | ELO 1178 -> 579 |
+| 17 | reward v3, arriving must out-pay aiming | "2.3x faster, still cannot reach the ball" |
+
+Every one of those hypotheses was tested *on top of a policy that could not be told where the ball was in the frame it had to act in*.
+
+**Fixed 2026-08-28** in `Agent_Soccer.CollectObservations` via `ToBodyFrame` (two dot products, zero alloc). Verified live before spending any compute: with the ball placed 3 units straight ahead, the observation now reads `relBall = (0.000, 0.111)` and `bearing = 0.000` at headings 0/90/180/-90 deg — **identical at every heading**, where before it produced four different vectors. Ball placed to the agent's right reads `(0.111, 0.000)` at every heading.
+
+The two world eye-axis floats were redundant under a body frame (they are the constant `(0,1)`), so they now carry **yaw rate** and **signed bearing to the ball**, giving the turn channel proprioception it never had. Sign convention matches `AddTorque`: positive = counter-clockwise = left, so the turn head can approach the identity instead of learning a sign flip.
+
+**LANDMINE — this change keeps the tensor shape and changes the meaning, which is the dangerous direction.** Vector obs stay **29 x 2**, model inputs stay **178**. Every `.onnx` trained before 2026-08-28 therefore **loads without a single warning** and silently reads a different world — the same failure mode as the sensor-arc landmine below, and `Agent_EditMode_ObsContract` cannot catch it because every number it checks is unchanged. Treat the date as a hard boundary: **a pre-2026-08-28 checkpoint is not comparable to a later one no matter what its eval JSON says**, and all four personalities need a full retrain.
+
+**MEASURED 2026-08-29 — what the body-frame fix actually bought, and what it did not.**
+
+`soccer_p18bf_standard` (3M steps, body frame, otherwise identical to the p17 config):
+
+| | p17 (world frame) | p18 (body frame) |
+|---|---|---|
+| mean reward @250k | -0.865 | **-0.573** |
+| mean reward @1M | -0.674 | **-0.236** |
+| mean reward @3M | **-0.509** | **-0.164** (peaked +0.117 @2.95M) |
+| probe: distance of a 10.44 m chase in 4 s | 0.99 m (9%) | **3.61 m (35%)** |
+| probe: max / mean speed | 0.58 / ~0.5 m/s | **1.49 / 0.90 m/s** |
+| probe: reached the ball | never | **never** |
+| eval blue wins (n=510) | 16-17% | 17.8% |
+| eval red wins | 65-69% | **53.9%** |
+| eval stalemates | 14-17% | 28.2% |
+
+Read that honestly. The frame fix is real and large — roughly **12x sample efficiency** (p18 matched p17's 3M endpoint at 250k), 3.6x the ground covered, and the first positive mean reward in this project's history. It also stopped the bleeding: red's win rate fell 65-69% -> 53.9%. But **the win rate did not move** (17.8% vs a 16-17% plateau, inside noise at n=510), because those losses became draws, not wins.
+
+Two reasons the win rate is still pinned, both now measured rather than assumed:
+
+1. **The curriculum still never promotes.** p18 finished on `Lesson0_Feeble` (bot_strength 0.2), exactly like p17. Eval grades against strength **1.0**, an opponent no policy in this project has ever trained against. Training reward and eval win rate are measuring two different opponents; do not treat them as one axis.
+2. **The policy will not commit to full throttle.** The probe reads `mean|move| = 0.320` with only 19 sign flips in 400 steps — that is the policy *mean* under inference, not exploration noise. 236 N x 0.32 x 1.6 gain against 0.7 damping gives ~2 m/s terminal, matching the measured 1.49. Nothing in the reward table paid for hurrying: the proximity term is differential, so it telescopes to `ballProximityScale * (dStart - dEnd)` and pays the same for a 2-second approach as a 20-second one.
+
+**Rejected 2026-08-29 — gamma 0.999 (`soccer_p19gamma_standard`, single variable vs p18).** The hypothesis was sound on paper: at gamma 0.99 the horizon is `1/(1-0.99)` = 100 decisions, and at DecisionRequester period 8 on a 0.01 s timestep that is ~8 s of game time, so a terminal reward 560 decisions away arrives multiplied by ~0.004. Raising it to 0.999 (~80 s horizon) made things **worse**: mean reward over the final 1M steps was **-0.308 vs p18's -0.139**, behind at every checkpoint from 200k on. Longer horizons cost value-estimate variance and this task could not pay for it at 3M steps. The short horizon is real but it is not the binding constraint.
+
+**METHOD NOTE — a reward-table change makes mean reward incomparable across runs.** p20 restores `stepPenalty` at -0.00005 against a 9000-step cap, so every p20 episode carries up to **-0.45** of time cost that p18 episodes never paid. A p20 curve sitting below p18's says nothing on its own. Runs that change the reward table must be judged on the **probe** (arrival time, distance covered, top speed) and the **eval win rate**, which are both defined independently of the table. This is the same trap as comparing pre- and post-2026-08-28 checkpoints across the frame change.
+
+**RESULT 2026-08-29 — p20, stepPenalty restored at -0.00005 (`soccer_p20step_standard`, single variable vs p18; the change is in the reward assets, the trainer config is byte-identical).**
+
+| | p17 world frame | p18 body frame | **p20 body + stepPenalty** |
+|---|---|---|---|
+| probe: distance of a 10.44 m chase in 4 s | 0.99 m (9%) | 3.61 m (35%) | **5.24 m (50%)** |
+| probe: max speed | 0.58 m/s | 1.49 m/s | **2.20 m/s** |
+| probe: mean speed | ~0.5 m/s | 0.90 m/s | **1.31 m/s** |
+| probe: policy `mean\|move\|` | — | 0.320 | **0.388** |
+| probe: reached the ball | never | never | **never** |
+| eval blue wins | 16-17% | 17.8% (n=510) | 14.6% (n=350) |
+| eval red wins | 65-69% | 53.9% | **53.7%** |
+| eval stalemates | 14-17% | 28.2% | 31.7% |
+
+The time cost did what it was predicted to do: the policy committed harder (`mean|move|` 0.320 -> 0.388) and covered 45% more ground. Across the two fixes locomotion is **5.3x** p17 on distance and **3.8x** on top speed.
+
+**But the win rate still has not moved, and after three runs the reason is no longer a hypothesis.** Every run since p17 finishes on `Lesson0_Feeble` (bot_strength 0.2) while eval grades against strength **1.0**. No policy in this project has ever trained against a competent opponent. What both fixes bought was converting *losses* into *draws* (red 65-69% -> 53.7%, stalemates 14-17% -> 31.7%) — the agent learned not to lose long before it can learn to win, because not-losing is what a 0.2-strength curriculum rewards.
+
+Do not read the 17.8% -> 14.6% step as a regression: at n=510 and n=350 the combined SD is ~2.7 pp, so a 3.2 pp gap is ~1.2 SD, exactly the kind of difference this file already warns never to treat as signal. p20 is deployed over p18 on the strength of the probe, which is the measurement that actually discriminates.
+
+**The next lever is the curriculum, not the reward table and not the network.** The `bot_strength` ladder needs a promotion criterion the agent can actually satisfy at its current skill, or the eval opponent needs to match the training opponent. Restoring a *falling* threshold is not the answer (that is how p5 graduated on noise); the honest options are a longer run so a flat 0.50 can genuinely be reached, or grading against the strength actually trained on so training and eval stop measuring different opponents.
+
+**RESULT 2026-08-29 — p21 BREAKS THE PLATEAU. 25.7% over 350 episodes against 16-17% for every run since 2026-08-04.**
+
+`soccer_p21curric_standard`, 10M steps. Two changes, one of them a correction:
+
+- **Correction: bot_strength thresholds 0.50 -> 0.21.** Promotion uses `measure: reward`, evaluated on the same reward p20's stepPenalty depresses. Eval measured `meanEpisodeSteps` 5784, so the time cost is `5784 * 0.00005 = 0.289` per episode: a 0.50 threshold on p20's scale silently demanded what 0.79 demanded on p18's. p20 made promotion *harder* while improving behaviour, which nobody intended. This restores the same effective bar. It is **not** the p5 falling ladder - that dropped the bar as difficulty rose; here every lesson keeps one flat value and `min_lesson_length` stays 1000.
+- **Experiment: 3M -> 10M steps**, so the ladder has room to be climbed.
+
+**The curriculum climbed for the first time in this project's history** - three promotions where p17, p18 and p20 all made zero:
+
+| step | lesson | bot_strength | mean reward |
+|---|---|---|---|
+| 0 | Lesson0_Feeble | 0.2 | — |
+| ~5.45M | **Lesson1_Weak** | 0.35 | +0.676 |
+| ~6.6M | **Lesson2_Half** | 0.5 | +0.940 |
+| ~9.05M | **Lesson3_Capable** | 0.65 | — |
+| 10M final | | 0.65 | **+0.690** |
+
+Lesson2 matters specifically: the bot's support positioning and corner craft switch on at 0.5, so that is the first genuinely competent opponent any policy here has trained against.
+
+Full arc of the four fixes, all measured the same way:
+
+| | p17 world | p18 body | p20 +step | **p21 +curriculum** |
+|---|---|---|---|---|
+| probe: 10.44 m chase in 4 s | 0.99 m (9%) | 3.61 m (35%) | 5.24 m (50%) | **8.48 m (81%)** |
+| probe: max speed | 0.58 | 1.49 | 2.20 | **3.17 m/s** |
+| probe: `mean\|move\|` | — | 0.320 | 0.388 | **0.658** |
+| probe: sign flips / 400 | — | 15 | 15 | **1** |
+| eval blue wins | 16-17% | 17.8% | 14.6% | **25.7%** |
+| eval red wins | 65-69% | 53.9% | 53.7% | **49.7%** |
+| eval stalemates | 14-17% | 28.2% | 31.7% | **24.6%** |
+
+**8.6x the ground covered and +9 points of win rate.** At n=350 the SD is ~2.3 pp, so 25.7% against a 16-17% plateau is roughly 4 SD - this one is signal, unlike every <10-point gap this file warns about. One sign flip in 400 steps means the policy now picks a direction and commits, and `mean|move|` 0.658 against `mean|lat|` 0.343 means it finally drives rather than strafes.
+
+**Still far from the bar** (>=80% wins, <=10% stalemates) and the probe still reads `arrival=-1.00s` - 8.48 m of a 10.44 m chase in the 4-second window, so it very nearly arrives but not quite. The obvious continuations, in order: let the ladder run past Lesson3 (it was still climbing at 10M), then revisit `ActionGain = 1.6`, which clamps after multiplying and denies the policy any magnitude between 0.625 and 1.0 - a far more costly restriction now that it actually wants to output 0.658.
+
+**Rejected: gamma 0.999** — see p19 above. **Untested and next in line:** `ActionGain = 1.6` in `Agent_Soccer.OnActionReceived`, a band-aid added when the policy crept. It multiplies then clamps, so the policy cannot express any magnitude between 0.625 and 1.0; with the frame fixed it may now be costing resolution rather than buying force.
+
+**LANDMINE — `evaluate.ps1` could not complete its own default (fixed 2026-08-29).** `-Episodes` defaults to 1000 and `-TimeoutMin` defaulted to a flat **30**, but 1000 episodes takes ~60 min (measured: 510 episodes in 30 min). So the *documented default invocation* always tripped the timeout, exited 3, and wrote **no JSON at all** — a grade that ran for half an hour and left no evidence. The timeout now scales with the episode count, and a timed-out run **salvages** the player's last `[EvalStats]` tally into a JSON marked `partial: true` with the real episode count, instead of discarding a perfectly good smaller sample.
+
+**LANDMINE — installing a Unity module while the editor is open breaks compilation with no useful message (2026-08-28).** The Android build-support module was installed at 10:54:23 while the editor had been running since 10:51:56. The editor builds its script-compilation reference set at startup, so `UnityEditor.Android.Extensions.dll` was never in it, and `Unity.Burst.Editor` + `Unity.AppUI.Editor` failed to compile against `UnityEditor.Android` types. Unity then **refuses to enter play mode with compile errors**, so `manage_editor play` reports `"Entered play mode."` and `isPlaying` is `False` a moment later — it reads as "Play is broken", not as "restart the editor". `BuildPipeline.IsBuildTargetSupported(Android)` returns `True` throughout (it reads disk), so that is not a useful check; inspect the assembly's own reference list instead (`CompilationPipeline.GetAssemblies(AssembliesType.Editor)`). Fix is a plain editor restart.
+
+**`train-all.ps1` never set `POSOCCER_OPPONENT` (fixed 2026-08-28).** It predated the 2026-08-04 opponent fix, so every personality run it launched would have been symmetric self-play with `Agent_HeuristicBot` never executing and the `bot_strength` curriculum inert — the pre-p4 landmine, re-armed in the one script that trains three of the four brains. It now sets the variable (with `-SelfPlay` to opt out), carries the same stale-build guard as `evaluate.ps1`, prefers `.venv2`, checks TensorBoard, and cleans up in a `finally`.
+
 
 **LANDMINE — sensor geometry silently invalidates a trained policy.** `RayPerceptionSensor.OutputSize()` is `(DetectableTags + 2) * (2 * RaysPerDirection + 1)` — it depends on tag and ray *counts* only, not on `MaxRayDegrees` or `RayLength`. Change the arc or the range and every tensor shape still matches, so the `.onnx` loads without a single warning while the rays now report a different part of the world. It surfaces as a performance collapse that looks like a bad checkpoint: on 2026-08-04 the same 6.5M policy measured **12%** on a player built with a 300° sensor and **24%** on one built with the 120° sensor it trained on. Always rebuild the eval player from the sensor config the policy was trained with, and treat an arc/range change as a full retrain.
 

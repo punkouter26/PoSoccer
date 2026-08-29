@@ -1,4 +1,4 @@
-# Evaluation harness (v1 spec): runs the headless player in eval mode and judges
+﻿# Evaluation harness (v1 spec): runs the headless player in eval mode and judges
 # the result against the acceptance bar (>=80% blue wins, <=10% stalemates).
 #   Baseline (harness validation, ~50% expected):  .\scripts\evaluate.ps1 -Baseline -Episodes 40
 #   Model eval:                                    .\scripts\evaluate.ps1 -RunId soccer_p1_00 -Episodes 100
@@ -16,7 +16,12 @@ param(
     [ValidateSet("STANDARD", "MATT", "KIM", "NICK")]
     [string]$Profile = "STANDARD",
     [string]$ExePath = "Builds\PoSoccer\PoSoccer.exe",
-    [int]$TimeoutMin = 30,
+    # 0 = auto: scale with -Episodes. The old fixed 30 was silently incompatible
+    # with the documented default of -Episodes 1000: a 1000-episode grade needs
+    # ~60 min (measured 510 episodes in 30 min on 2026-08-29), so the DEFAULT
+    # invocation always tripped the timeout, exited 3 and wrote no JSON at all.
+    # An explicit value still wins, so existing callers are unaffected.
+    [int]$TimeoutMin = 0,
     [switch]$Rebuild,
     # Escape hatch for the staleness gate below. Deliberately awkward to reach:
     # every wrong phase-10 number came from grading a stale player.
@@ -86,12 +91,54 @@ $env:POSOCCER_OUT = $out
 try {
     $p = Start-Process -FilePath $exe -ArgumentList "-batchmode", "-nographics", `
         "-logFile", (Join-Path $root "Logs\eval-$tag.log") -PassThru
-    $deadline = (Get-Date).AddMinutes($TimeoutMin)
+    # ~4.5 s/episode measured, x1.5 headroom, floor of 15 min for tiny runs.
+    $effectiveTimeout = if ($TimeoutMin -gt 0) { $TimeoutMin }
+                        else { [Math]::Max(15, [Math]::Ceiling($Episodes * 4.5 * 1.5 / 60)) }
+    Write-Host "eval timeout: $effectiveTimeout min for $Episodes episodes"
+    $deadline = (Get-Date).AddMinutes($effectiveTimeout)
 
     while (-not (Test-Path $out) -and -not $p.HasExited) {
         if ((Get-Date) -gt $deadline) {
-            Write-Warning "Eval timed out after $TimeoutMin min - killing player."
+            Write-Warning "Eval timed out after $effectiveTimeout min - killing player."
             Stop-Process -Id $p.Id -Force -Confirm:$false
+
+            # Salvage rather than discard. The player prints a running tally
+            # ("[EvalStats] 510/1000 blue=91 red=275 stale=144"), so a timed-out
+            # run still carries a perfectly good smaller sample. Throwing it away
+            # is how a 30-minute grade turns into no evidence whatsoever - which
+            # is precisely how this project ended up publishing win rates that
+            # nothing could falsify. Written with partial=true and the real
+            # episode count so it can never be mistaken for a completed grade.
+            $playerLog = Join-Path $root "Logs\eval-$tag.log"
+            $lastTally = $null
+            if (Test-Path $playerLog) {
+                $lastTally = Select-String -Path $playerLog -Pattern '\[EvalStats\] (\d+)/(\d+) blue=(\d+) red=(\d+) stale=(\d+)' |
+                    Select-Object -Last 1
+            }
+            if ($lastTally) {
+                $m = $lastTally.Matches[0].Groups
+                $done = [int]$m[1].Value; $blue = [int]$m[3].Value
+                $red = [int]$m[4].Value; $stale = [int]$m[5].Value
+                $partial = [ordered]@{
+                    runId       = $RunId
+                    partial     = $true
+                    reason      = "timed out after $effectiveTimeout min"
+                    episodes    = $done
+                    requested   = $Episodes
+                    blueWins    = $blue
+                    redWins     = $red
+                    stalemates  = $stale
+                    blueWinRate = [Math]::Round($blue / [double]$done, 4)
+                    stalemateRate = [Math]::Round($stale / [double]$done, 4)
+                    utc         = (Get-Date).ToUniversalTime().ToString("o")
+                }
+                $partial | ConvertTo-Json | Set-Content -Path $out -Encoding UTF8
+                Write-Warning ("SALVAGED partial grade -> $out : $done/$Episodes episodes, " +
+                    "blue $blue ({0:P1}), red $red, stale $stale. Marked partial=true." -f ($blue / [double]$done))
+            } else {
+                Write-Warning "No [EvalStats] progress line in $playerLog - nothing to salvage."
+            }
+
             & "$root\scripts\cleanup-training.ps1"
             exit 3
         }

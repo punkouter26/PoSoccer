@@ -33,7 +33,7 @@ MonoBehaviour:
   teamBaselineVictory: 0.2
   goalConceded: -1.2
   stalemateTimeout: -0.6
-  stepPenalty: 0
+  stepPenalty: -5e-05
   ballProximityScale: 0.02
   useDifferentialProximity: 1
   facingAlignmentScale: 5e-05

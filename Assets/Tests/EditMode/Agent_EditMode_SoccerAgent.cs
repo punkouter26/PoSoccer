@@ -1,4 +1,4 @@
-using NUnit.Framework;
+﻿using NUnit.Framework;
 using UnityEngine;
 
 namespace PoSoccer.Tests
@@ -163,8 +163,16 @@ namespace PoSoccer.Tests
             Assert.AreEqual(0.3f, r.assist);
             Assert.AreEqual(0.1f, r.teamBaselineVictory);
             Assert.AreEqual(-1.0f, r.goalConceded);
-            // v2: stepPenalty zeroed - it washed out the whole reward gradient.
-            Assert.AreEqual(0f, r.stepPenalty, 1e-6f);
+            // v2 zeroed stepPenalty because at -0.0001 over a 9000-step cap it cost -0.9
+            // per episode and washed out the whole gradient. v4 (2026-08-29) restores it at
+            // half that: -0.00005 * 9000 = -0.45, below stalemateTimeout (-0.6) and well
+            // under goalScorer (+1.2). It exists to make hurrying pay, because differential
+            // proximity telescopes and charges the same for a slow approach as a fast one.
+            Assert.AreEqual(-0.00005f, r.stepPenalty, 1e-9f);
+            // The guard that matters is the ratio, not the number: a full-length episode
+            // must never cost more than conceding, or stalling beats playing again.
+            Assert.Less(Mathf.Abs(r.stepPenalty * r.maxEnvironmentSteps), Mathf.Abs(r.goalConceded),
+                "a full-length episode must cost less than conceding a goal");
             // v2: differential proximity replaced absolute proximity.
             // v3 (2026-08-28): 0.002 -> 0.02 and facing 0.0002 -> 0.00005. Differential
             // proximity telescopes to scale * distanceClosed, so the old table paid 0.021
