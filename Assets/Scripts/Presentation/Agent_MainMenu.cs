@@ -45,6 +45,14 @@ namespace PoSoccer
 
         void OnEnable()
         {
+            // Android defaults to 30 fps unless something asks for more. The menu is
+            // the first scene loaded, and Agent_Bootstrap - which sets this - exists
+            // only in SCN_Exhibition and SCN_Training, so the menu ran at 30 (measured
+            // on device 2026-08-29). Set here rather than by adding Bootstrap to this
+            // scene: Bootstrap also rewrites Physics2D and attaches a camera follow,
+            // neither of which belongs on a menu with no pitch.
+            Application.targetFrameRate = 60;
+
             var doc = GetComponent<UIDocument>();
             var root = doc.rootVisualElement;
             if (doc.panelSettings == null || root == null)
@@ -413,7 +421,9 @@ namespace PoSoccer
             // Compact widened 170 -> 182 to buy room for legible type; five cards
             // plus margins is 5 * 192 = 960 px, still inside the 1080 panel.
             bool compact = squad.Count > 5;
-            float width = compact ? 182f : 210f;
+            // 210 could not hold "STANDARD" at 44 px - verified clipped on device
+            // 2026-08-29. The longest roster name sets this width, not the average.
+            float width = compact ? 182f : 250f;
 
             for (int slot = 0; slot < squad.Count; slot++)
             {

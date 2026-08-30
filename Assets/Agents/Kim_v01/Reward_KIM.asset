@@ -20,10 +20,10 @@ MonoBehaviour:
     incentive budget as everyone (2.2 / 0.0016) - spent on defense. Weakness by design:
     scores rarely.'
   playerColor: {r: 0.16, g: 0.75, b: 0.85, a: 1}
-  brainModel: {fileID: 0}
-  trainingSteps: 2516768
-  trainingRunId: soccer_v2_kim
-  trainedOn: 2026-08-02
+  brainModel: {fileID: 5022602860645237092, guid: d83ea2dfd74225341a63821e2ebabb77, type: 3}
+  trainingSteps: 1999868
+  trainingRunId: soccer_p21_kim
+  trainedOn: 2026-08-30
   evalWinRate: -1
   evalEpisodes: 0
   bodyScale: 0.9
@@ -33,10 +33,12 @@ MonoBehaviour:
   teamBaselineVictory: 0.2
   goalConceded: -1.2
   stalemateTimeout: -0.6
-  stepPenalty: -5e-05
+  goalSpeedBonus: 0.05
+  crossbarProximity: 0.0005
+  stepPenalty: -0.00005
   ballProximityScale: 0.02
   useDifferentialProximity: 1
-  facingAlignmentScale: 5e-05
+  facingAlignmentScale: 0.00005
   ballToGoalVelocityScale: 0.0006
   actionJitterScale: 0.0004
   wallProximityPenalty: 0.0002

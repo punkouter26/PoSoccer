@@ -14,6 +14,15 @@
  */
 
 :root {
+/* UNITS ARE LOAD-BEARING. These were unitless (e.g. `--font-s: 38;`) and every
+   rule that read them through var() silently failed: `font-size: var(--font-s)`
+   could not parse a bare number as a length, so it fell back to UI Toolkit's
+   ~12 px default. Colours resolved fine, which is why the UI looked styled but
+   every class-driven size - the menu title, subtitle, pitch note, SND toggle,
+   .btn, chip badges - rendered as fine print. Only inline `.style.fontSize`
+   assignments were ever the right size. Verified on device 2026-08-29.
+   Do not remove the px suffixes. */
+
     /* Palette */
     --color-bg: rgb(13, 23, 18);
     --color-panel: rgba(0, 0, 0, 0.45);
@@ -29,18 +38,18 @@
     --color-edge-dark: rgba(0, 0, 0, 0.35);
 
     /* Spacing scale - every margin and padding in the game comes from here */
-    --space-1: 4;
-    --space-2: 8;
-    --space-3: 12;
-    --space-4: 16;
-    --space-5: 24;
-    --space-6: 32;
-    --space-7: 48;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
 
     /* Radii */
-    --radius-sm: 8;
-    --radius-md: 16;
-    --radius-lg: 24;
+    --radius-sm: 8px;
+    --radius-md: 16px;
+    --radius-lg: 24px;
 
     /* Type scale */
     /* Sizes are grounded in Android's type scale, not taste. PanelSettings is
@@ -51,12 +60,12 @@
        --font-xs was 24 (~0.7 mm cap height) and --font-s was 30, both under the
        12sp floor, which is why the roster cards, chip driver tags, pitch note
        and every .btn read as fine print on a phone and fine on a monitor. */
-    --font-xs: 34;
-    --font-s: 38;
-    --font-m: 44;
-    --font-l: 64;
-    --font-xl: 120;
-    --font-display: 118;
+    --font-xs: 34px;
+    --font-s: 38px;
+    --font-m: 44px;
+    --font-l: 64px;
+    --font-xl: 120px;
+    --font-display: 118px;
 }
 
 /* ---------------------------------------------------------------- layout - */

@@ -19,7 +19,7 @@ MonoBehaviour:
     (2.2 terminal / 0.0016 dense) - just spent on attack. Weakness by design: last
     home when defending.'
   playerColor: {r: 1, g: 0.5, b: 0.12, a: 1}
-  brainModel: {fileID: 0}
+  brainModel: {fileID: 5022602860645237092, guid: d9ed0854806da8247b8bd4564815f17a, type: 3}
   trainingSteps: 10000311
   trainingRunId: soccer_p21_matt
   trainedOn: 2026-08-29
@@ -32,10 +32,12 @@ MonoBehaviour:
   teamBaselineVictory: 0.15
   goalConceded: -0.9
   stalemateTimeout: -0.6
-  stepPenalty: -5e-05
+  goalSpeedBonus: 0.05
+  crossbarProximity: 0.0005
+  stepPenalty: -0.00005
   ballProximityScale: 0.02
   useDifferentialProximity: 1
-  facingAlignmentScale: 5e-05
+  facingAlignmentScale: 0.00005
   ballToGoalVelocityScale: 0.0011
   actionJitterScale: 0.0004
   wallProximityPenalty: 0.0005
