@@ -36,7 +36,9 @@ namespace PoSoccer.EditorTools
         // internal, not private: the APK builder signs with the same upload key, so
         // an APK installed over a Play build does not hit a signature mismatch.
         internal const string KEYSTORE_PATH = "C:/Users/punko/Downloads/PoSoccer-Release/posoccer-upload.jks";
-        internal const string KEYALIAS = "posoccer-upload";
+        // The original Aug 2026 upload keystore (the one Play's upload key is pinned
+        // to, SHA1 60:35:B5:23...) uses alias "posoccer", not "posoccer-upload".
+        internal const string KEYALIAS = "posoccer";
         internal const string PASS_ENV_VAR = "POSOCCER_KEYSTORE_PASS";
 
         // Google Play requires new apps and updates to target API 36 from 2026-08-31.
