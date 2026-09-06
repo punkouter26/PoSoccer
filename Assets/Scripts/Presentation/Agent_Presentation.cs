@@ -50,6 +50,9 @@ namespace PoSoccer
             if (go.GetComponent<Agent_Crowd>() == null) go.AddComponent<Agent_Crowd>();
             if (go.GetComponent<Agent_Surfaces>() == null) go.AddComponent<Agent_Surfaces>();
             if (go.GetComponent<Agent_ParticleFX>() == null) go.AddComponent<Agent_ParticleFX>();
+            if (go.GetComponent<Agent_Shadows>() == null) go.AddComponent<Agent_Shadows>();
+            if (go.GetComponent<Agent_Limbs>() == null) go.AddComponent<Agent_Limbs>();
+            if (go.GetComponent<Agent_Hitstop>() == null) go.AddComponent<Agent_Hitstop>();
         }
     }
 }

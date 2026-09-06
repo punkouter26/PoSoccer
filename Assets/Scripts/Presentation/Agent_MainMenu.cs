@@ -43,6 +43,13 @@ namespace PoSoccer
         Label _blueCount, _redCount, _pitchNote;
         Button _play;
 
+        // Panel root, kept so the roster card can be raised over the whole menu
+        // rather than inside the scrolling squad column.
+        VisualElement _root;
+        VisualElement _cardOverlay, _cardHost;
+        Label _cardCount;
+        int _cardIndex;
+
         void OnEnable()
         {
             // Android defaults to 30 fps unless something asks for more. The menu is
@@ -71,6 +78,7 @@ namespace PoSoccer
 
             ApplyPreset(2);
 
+            _root = root;
             root.Clear();
             Agent_UIStyle.ApplyTheme(root);
 
@@ -126,6 +134,7 @@ namespace PoSoccer
             var options = new VisualElement();
             options.AddToClassList("row");
             options.style.marginTop = 18;
+            options.Add(CardsButton());
             options.Add(Agent_UIStyle.SoundToggleButton());
             footer.Add(options);
 
@@ -495,6 +504,134 @@ namespace PoSoccer
             return steps.ToString();
         }
 
+        // ── Player cards ────────────────────────────────────────────────────
+
+        Button CardsButton()
+        {
+            var b = new Button(() => OpenCards(0)) { text = "PLAYER CARDS" };
+            b.AddToClassList("btn");
+            return b;
+        }
+
+        /// <summary>
+        /// Raises the roster card over the whole menu.
+        ///
+        /// It is a modal layer rather than a fourth column on the menu because
+        /// the card is dense - three tiles, seven attribute bars, a provenance
+        /// line - and the menu is already a full portrait screen of squad
+        /// controls. It also stays open while you add players, with the squad
+        /// counts echoed in the nav row, so browsing the roster and picking
+        /// from it are the same activity instead of two round trips.
+        /// </summary>
+        void OpenCards(int index)
+        {
+            if (_root == null || _roster == null || _roster.Length == 0) return;
+            if (_cardOverlay != null) CloseCards();
+
+            _cardOverlay = new VisualElement();
+            _cardOverlay.AddToClassList("panel--scrim");
+            // A tap on the scrim itself dismisses. The target check matters:
+            // without it, every tap inside the card bubbles up here and closes
+            // the panel the moment you press an attribute row.
+            _cardOverlay.RegisterCallback<PointerDownEvent>(evt =>
+            {
+                if (ReferenceEquals(evt.target, _cardOverlay)) CloseCards();
+            });
+
+            // The card scrolls. personalityNotes is a free-text design note and
+            // KIM's and NICK's run to several lines, so card height is content
+            // driven and cannot be assumed to fit: without this the provenance
+            // line and the buttons below it walk off the bottom of the screen
+            // on exactly the two profiles that have the most to say.
+            var scroll = new ScrollView(ScrollViewMode.Vertical);
+            scroll.style.width = 1000;
+            scroll.style.maxHeight = 1250;
+            _cardOverlay.Add(scroll);
+            _cardHost = scroll.contentContainer;
+            // The card is 980 inside a 1000 viewport; without this it hugs the
+            // left edge and the 20 px of slack all lands on one side.
+            _cardHost.style.alignItems = Align.Center;
+
+            var nav = new VisualElement();
+            nav.AddToClassList("card-nav");
+            nav.Add(NavArrow("<", () => ShowCard(_cardIndex - 1)));
+            _cardCount = new Label();
+            _cardCount.AddToClassList("card-nav__count");
+            nav.Add(_cardCount);
+            nav.Add(NavArrow(">", () => ShowCard(_cardIndex + 1)));
+            _cardOverlay.Add(nav);
+
+            var add = new VisualElement();
+            add.AddToClassList("card-add");
+            add.Add(AddButton("ADD TO BLUE", Agent_UIStyle.BlueTeam, _blue));
+            add.Add(AddButton("ADD TO RED", Agent_UIStyle.RedTeam, _red));
+            _cardOverlay.Add(add);
+
+            var close = new Button(CloseCards) { text = "CLOSE" };
+            close.AddToClassList("btn");
+            close.style.marginTop = 18;
+            _cardOverlay.Add(close);
+
+            _root.Add(_cardOverlay);
+            Agent_UIStyle.PlayEntrance(_cardOverlay);
+            ShowCard(index);
+        }
+
+        Button NavArrow(string glyph, System.Action onClick)
+        {
+            var b = new Button(onClick) { text = glyph };
+            b.AddToClassList("btn");
+            b.AddToClassList("card-nav__arrow");
+            return b;
+        }
+
+        Button AddButton(string text, Color teamColor, List<Reward_Settings> squad)
+        {
+            var b = new Button(() =>
+            {
+                AddToSquad(squad, _roster[_cardIndex]);
+                UpdateCardCounts();
+            })
+            { text = text };
+            b.AddToClassList("btn");
+            b.AddToClassList("card-add__btn");
+            b.style.backgroundColor = teamColor;
+            return b;
+        }
+
+        /// <summary>Renders the profile at <paramref name="index"/>, wrapping both ways.</summary>
+        void ShowCard(int index)
+        {
+            if (_cardHost == null || _roster == null || _roster.Length == 0) return;
+
+            // Wrap rather than clamp so the arrows never dead-end, and take the
+            // positive modulus so stepping back from the first entry lands on
+            // the last instead of a negative index.
+            int count = _roster.Length;
+            _cardIndex = ((index % count) + count) % count;
+
+            _cardHost.Clear();
+            _cardHost.Add(Agent_PlayerCard.Build(_roster[_cardIndex], _roster, ruleBot));
+            UpdateCardCounts();
+        }
+
+        void UpdateCardCounts()
+        {
+            if (_cardCount == null) return;
+            _cardCount.text = $"{_cardIndex + 1}/{_roster.Length}\nBLUE {_blue.Count} · RED {_red.Count}";
+        }
+
+        void CloseCards()
+        {
+            if (_cardOverlay == null) return;
+            if (_root != null) _root.Remove(_cardOverlay);
+            _cardOverlay = null;
+            _cardHost = null;
+            _cardCount = null;
+            // The squads changed underneath while the card was up.
+            RefreshAll();
+        }
+
         Label _backHint;
         float _backArmedUntil;
 
@@ -508,6 +645,14 @@ namespace PoSoccer
         {
             var keyboard = UnityEngine.InputSystem.Keyboard.current;
             if (keyboard == null || !keyboard.escapeKey.wasPressedThisFrame) return;
+
+            // The card is a modal layer, so back dismisses it before back means
+            // anything to the menu underneath - and long before it means quit.
+            if (_cardOverlay != null)
+            {
+                CloseCards();
+                return;
+            }
 
             if (Time.unscaledTime < _backArmedUntil)
             {

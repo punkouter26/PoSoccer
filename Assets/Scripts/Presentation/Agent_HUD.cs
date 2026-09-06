@@ -102,21 +102,99 @@ namespace PoSoccer
             _root.Clear();
             Agent_UIStyle.ApplyTheme(_root);
 
-            var safe = new VisualElement();
-            safe.AddToClassList("screen");
-            // Safe area stays in code: a device measurement, not a design token.
-            // Bound rather than applied once, so a resolution change re-insets.
-            Agent_UIStyle.BindSafeArea(safe);
-            _root.Add(safe);
-
-            safe.Add(BuildTopBand());
-            safe.Add(BuildBottomBand());
-            BuildToast();
-            BuildBroadcastChrome();
+            if (!BuildFromTemplate())
+            {
+                enabled = false;
+                return;
+            }
 
             // Statics outlive a scene load in a player build, so a REMATCH taken
             // from the frozen end panel would resume into a still-frozen clock.
             Agent_TimeFreeze.ReleaseAll();
+        }
+
+        /// <summary>
+        /// Instantiate Resources/HUD.uxml and resolve every element this class
+        /// drives. Structure lives in the template; only binding lives here.
+        ///
+        /// Loaded from Resources rather than assigned to UIDocument.visualTreeAsset
+        /// in the scene, for the same reason every other asset in this layer is:
+        /// a serialized reference means a scene edit per scene, scene authoring is
+        /// MCP-only per UNITY_RULES, and a scene that missed the edit would show a
+        /// blank HUD with no error.
+        ///
+        /// Returns false and says exactly what is missing if the template cannot
+        /// be found or has been renamed underneath the code. Names are the
+        /// contract between the two files, and a silent null here surfaces later
+        /// as an NRE in Update with nothing pointing at the cause.
+        /// </summary>
+        bool BuildFromTemplate()
+        {
+            var template = Resources.Load<VisualTreeAsset>("HUD");
+            if (template == null)
+            {
+                Debug.LogError("Agent_HUD: Resources/HUD.uxml not found; HUD disabled.");
+                return false;
+            }
+            template.CloneTree(_root);
+
+            var safe = _root.Q<VisualElement>("safe");
+            _score = _root.Q<Label>("score");
+            _stepLabel = _root.Q<Label>("clock");
+            _ballControlBlue = _root.Q<VisualElement>("meter-blue");
+            _ballControlRed = _root.Q<VisualElement>("meter-red");
+            _blueChips = _root.Q<VisualElement>("chips-blue");
+            _redChips = _root.Q<VisualElement>("chips-red");
+            _toast = _root.Q<Label>("toast");
+            _commentary = _root.Q<Label>("commentary");
+            _banner = _root.Q<Label>("banner");
+            _replayTag = _root.Q<Label>("replay-tag");
+            _letterboxTop = _root.Q<VisualElement>("letterbox-top");
+            _letterboxBottom = _root.Q<VisualElement>("letterbox-bottom");
+            var controls = _root.Q<VisualElement>("controls");
+
+            if (safe == null || _score == null || _stepLabel == null ||
+                _ballControlBlue == null || _ballControlRed == null ||
+                _blueChips == null || _redChips == null || _toast == null ||
+                _commentary == null || _banner == null || _replayTag == null ||
+                _letterboxTop == null || _letterboxBottom == null || controls == null)
+            {
+                Debug.LogError(
+                    "Agent_HUD: Resources/HUD.uxml is missing a named element this " +
+                    "class binds to. The names are the contract between the two " +
+                    "files - check HUD.uxml against the queries in BuildFromTemplate.");
+                return false;
+            }
+
+            // Safe area stays in code: a device measurement, not a design token.
+            // Bound rather than applied once, so a resolution change re-insets.
+            Agent_UIStyle.BindSafeArea(safe);
+
+            // The training scene has no match, so a frozen 0-0 would only mislead.
+            _score.style.display = enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
+
+            _ballControlBlue.style.width = Length.Percent(50);
+            _ballControlRed.style.width = Length.Percent(50);
+
+            if (enableMatchFlow)
+            {
+                // MENU used to live here. It now sits in the upper-right corner,
+                // owned by Agent_Chrome, so that the corner layout is identical in
+                // the menu and in a match. Two MENU buttons on one screen is worse
+                // than either position on its own. Agent_Chrome.ReturnToMenu keeps
+                // the Agent_TimeFreeze.ReleaseAll() that used to happen here.
+                controls.Add(Agent_UIStyle.SoundToggleButton());
+
+                var pause = SmallButton("II", TogglePause);
+                pause.style.marginLeft = 12;
+                controls.Add(pause);
+            }
+            else
+            {
+                controls.style.display = DisplayStyle.None;
+            }
+
+            return true;
         }
 
         void Start()
@@ -127,87 +205,6 @@ namespace PoSoccer
         void OnDestroy()
         {
             if (env != null) env.EpisodeEnded -= OnEpisodeEnded;
-        }
-
-        // ── Bands ───────────────────────────────────────────────────────────
-
-        VisualElement BuildTopBand()
-        {
-            var band = new VisualElement();
-            band.AddToClassList("band");
-
-            _score = new Label("0  —  0");
-            _score.AddToClassList("score");
-            // The training scene has no match, so a frozen 0-0 would only mislead.
-            _score.style.display = enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
-            band.Add(_score);
-
-            _stepLabel = new Label(string.Empty);
-            _stepLabel.AddToClassList("clock");
-            band.Add(_stepLabel);
-            return band;
-        }
-
-        VisualElement BuildBottomBand()
-        {
-            var band = new VisualElement();
-            band.AddToClassList("band");
-
-            // Ball-control meter: a single bar split blue (left) / red (right).
-            // Each half's width is proportional to that team's proximity to the
-            // ball - the team that's pressing reads as the wider side. Simpler
-            // and more readable than 4 mini stamina bars the eye can't resolve
-            // during play.
-            var meterBg = new VisualElement();
-            meterBg.AddToClassList("meter");
-
-            _ballControlBlue = new VisualElement();
-            _ballControlBlue.AddToClassList("meter__fill");
-            _ballControlBlue.AddToClassList("meter__fill--blue");
-            _ballControlBlue.style.width = Length.Percent(50);
-
-            _ballControlRed = new VisualElement();
-            _ballControlRed.AddToClassList("meter__fill");
-            _ballControlRed.AddToClassList("meter__fill--red");
-            _ballControlRed.style.width = Length.Percent(50);
-
-            meterBg.Add(_ballControlBlue);
-            meterBg.Add(_ballControlRed);
-            band.Add(meterBg);
-
-            _blueChips = new VisualElement { style = { flexDirection = FlexDirection.Row } };
-            _redChips = new VisualElement { style = { flexDirection = FlexDirection.Row } };
-
-            var chipRow = new VisualElement();
-            chipRow.AddToClassList("row");
-            chipRow.style.justifyContent = Justify.SpaceBetween;
-            chipRow.style.width = 900;
-            chipRow.Add(_blueChips);
-            chipRow.Add(_redChips);
-            band.Add(chipRow);
-
-            if (enableMatchFlow)
-            {
-                var controls = new VisualElement();
-                controls.AddToClassList("row");
-                controls.style.marginTop = 12;
-
-                // MENU used to live here. It now sits in the upper-right corner,
-                // owned by Agent_Chrome, so that the corner layout is identical in
-                // the menu and in a match. Two MENU buttons on one screen is worse
-                // than either position on its own. Agent_Chrome.ReturnToMenu keeps
-                // the Agent_TimeFreeze.ReleaseAll() that used to happen here.
-                var sound = Agent_UIStyle.SoundToggleButton();
-
-                var pause = SmallButton("II", TogglePause);
-                pause.style.marginLeft = 12;
-
-                controls.Add(sound);
-                controls.Add(pause);
-                band.Add(controls);
-            }
-
-            return band;
         }
 
         float _matchSeconds;
@@ -230,52 +227,11 @@ namespace PoSoccer
             return b;
         }
 
-        void BuildToast()
-        {
-            _toast = new Label(string.Empty);
-            _toast.AddToClassList("toast");
-            // Absolutely positioned overlays span the screen; without this they
-            // would swallow taps meant for the MENU and sound buttons beneath.
-            _toast.pickingMode = PickingMode.Ignore;
-            _root.Add(_toast);
-        }
-
-        // Letterbox bars, a REPLAY tag, a persistent banner (GOLDEN GOAL) and a
-        // commentary strip. Absolute-positioned overlays so they never disturb
-        // the existing top/bottom band layout.
-        void BuildBroadcastChrome()
-        {
-            _letterboxTop = Bar();
-            _letterboxTop.style.top = 0;
-            _letterboxBottom = Bar();
-            _letterboxBottom.style.bottom = 0;
-
-            _replayTag = new Label("● REPLAY");
-            _replayTag.AddToClassList("replay-tag");
-            _replayTag.pickingMode = PickingMode.Ignore;
-
-            _banner = new Label(string.Empty);
-            _banner.AddToClassList("banner");
-            _banner.pickingMode = PickingMode.Ignore;
-
-            _commentary = new Label(string.Empty);
-            _commentary.AddToClassList("commentary");
-            _commentary.pickingMode = PickingMode.Ignore;
-
-            _root.Add(_letterboxTop);
-            _root.Add(_letterboxBottom);
-            _root.Add(_replayTag);
-            _root.Add(_banner);
-            _root.Add(_commentary);
-        }
-
-        static VisualElement Bar()
-        {
-            var bar = new VisualElement();
-            bar.AddToClassList("letterbox");
-            bar.pickingMode = PickingMode.Ignore;
-            return bar;
-        }
+        // The toast, letterbox bars, REPLAY tag, banner and commentary strip all
+        // live in Resources/HUD.uxml now. They are absolute-positioned overlay
+        // lanes, each with its own name, so a callout in one lane can never
+        // overwrite a callout in another - and their pick-ignore is declared in
+        // the template rather than reapplied in five places here.
 
         // ── Public broadcast API ────────────────────────────────────────────
 

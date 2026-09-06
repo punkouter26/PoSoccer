@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Match HUD structure.
+
+  Extracted from Agent_HUD's imperative builders on 2026-09-05. Everything here
+  is STRUCTURE and STATIC STYLING; nothing that varies at runtime lives in this
+  file. Agent_HUD queries these elements by name and binds data to them, so the
+  C# that remains is score, clock, meter widths, chips and toast timing - the
+  things that actually change - rather than 90 lines describing a layout that
+  never does.
+
+  Two rules this file follows and the code must keep following:
+
+  1. NAMES ARE THE CONTRACT. Agent_HUD resolves every element by `name`, and a
+     rename here is a silent null over there. Agent_HUD.OnEnable therefore
+     fails loudly with the missing name rather than NRE-ing later.
+
+  2. NOTHING HERE IS POSITIONED IN PIXELS THAT AREN'T IN THE THEME. Sizes and
+     spacing come from PoSoccerTheme.uss via the class names below; the one
+     exception is the chip row width, which is a layout constant rather than a
+     design token and is marked as such.
+
+  The safe-area inset is NOT here. It is a device measurement, not design, and
+  Agent_UIStyle.BindSafeArea has to re-apply it on every resolution change -
+  which a static document cannot express.
+-->
+<UXML xmlns="UnityEngine.UIElements">
+
+    <!-- Bands. `screen` justifies these to the top and bottom edges, which is
+         what keeps the middle of the display - the pitch - permanently clear. -->
+    <VisualElement name="safe" class="screen">
+
+        <VisualElement name="top-band" class="band">
+            <Label name="score" class="score" text="0  —  0" />
+            <Label name="clock" class="clock" />
+        </VisualElement>
+
+        <VisualElement name="bottom-band" class="band">
+
+            <!-- Ball-control meter: one bar split blue (left) / red (right).
+                 Each half's width is proportional to that team's proximity to
+                 the ball, so the team that is pressing reads as the wider side.
+                 More legible during play than four stamina bars the eye cannot
+                 resolve. Widths are set from C# every frame the share changes. -->
+            <VisualElement name="meter" class="meter">
+                <VisualElement name="meter-blue" class="meter__fill meter__fill--blue" />
+                <VisualElement name="meter-red" class="meter__fill meter__fill--red" />
+            </VisualElement>
+
+            <!-- 900 is a layout constant, not a token: it is the width that puts
+                 a 2v2 chip set at each end without them colliding at 1080. -->
+            <VisualElement name="chip-row" class="row hud__chip-row">
+                <VisualElement name="chips-blue" class="row" />
+                <VisualElement name="chips-red" class="row" />
+            </VisualElement>
+
+            <!-- Populated by C# only when enableMatchFlow: the training scene has
+                 no match to pause. -->
+            <VisualElement name="controls" class="row hud__controls" />
+
+        </VisualElement>
+    </VisualElement>
+
+    <!-- Overlay lanes. Each callout gets its OWN lane rather than sharing one
+         label, which is what stops a commentary line and a GOAL toast
+         overwriting each other. All are pick-ignore so they never swallow a tap
+         meant for the buttons underneath; `picking-mode` is set here rather than
+         in C# so the property cannot be forgotten when a lane is added. -->
+    <VisualElement name="letterbox-top" class="letterbox letterbox--top" picking-mode="Ignore" />
+    <VisualElement name="letterbox-bottom" class="letterbox letterbox--bottom" picking-mode="Ignore" />
+    <Label name="replay-tag" class="replay-tag" text="● REPLAY" picking-mode="Ignore" />
+    <Label name="banner" class="banner" picking-mode="Ignore" />
+    <Label name="commentary" class="commentary" picking-mode="Ignore" />
+    <Label name="toast" class="toast" picking-mode="Ignore" />
+
+</UXML>

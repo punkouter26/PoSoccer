@@ -32,9 +32,17 @@ namespace PoSoccer
         // Rhythm (reference px)
         public const int Pad = 24;
         public const int Radius = 16;
-        // MUST match --font-xs / --font-s in Resources/PoSoccerTheme.uss. Two
-        // sources of truth for one scale is how half the UI ends up a size
+        // These MUST match --font-xs .. --font-xl in Resources/PoSoccerTheme.uss.
+        // Two sources of truth for one scale is how half the UI ends up a size
         // nobody chose. See the USS for the sp arithmetic behind these numbers.
+        //
+        // 2026-09-05: that requirement used to be enforced by this comment and
+        // nothing else, which is not enforcement. UI Toolkit exposes no public
+        // API for reading a USS custom property's value from C#, so the scale
+        // cannot literally live in one place - but it CAN be made impossible to
+        // drift: Agent_EditMode_Theme parses the stylesheet and fails if any of
+        // these five constants disagrees with its var. Change one, change both,
+        // and the test tells you when you did not.
         public const int FontXS = 34;
         public const int FontS = 38;
         public const int FontM = 44;

@@ -322,6 +322,33 @@
     border-bottom-right-radius: 7;
 }
 
+/*
+ * Structural rules for Resources/HUD.uxml. These exist so the UXML carries no
+ * inline `style=` at all: the whole point of extracting the template was to end
+ * up with one place that decides how the HUD looks, and a template full of
+ * inline styles is the imperative version with angle brackets.
+ */
+.hud__chip-row {
+    justify-content: space-between;
+    /* Wide enough to seat a 2v2 chip set at each end without collision at the
+       1080 reference width, narrow enough to stay clear of the safe-area inset. */
+    width: 900;
+}
+
+.hud__controls {
+    margin-top: var(--space-3);
+}
+
+/* The two letterbox bars differ only in which edge they pin to; that is
+   structure, so it belongs here rather than in two style assignments in C#. */
+.letterbox--top {
+    top: 0;
+}
+
+.letterbox--bottom {
+    bottom: 0;
+}
+
 /* ------------------------------------------------------------ broadcast - */
 
 /*
@@ -460,4 +487,213 @@
 .enter-from {
     opacity: 0;
     translate: 0 28px;
+}
+
+/* ------------------------------------------------------------ roster card - */
+
+/*
+ * The player card (Agent_PlayerCard). Portrait, 1080 reference width, so the
+ * card is 980 with the scrim's 50 px of breathing room either side.
+ *
+ * Every size here clears the 12sp legibility floor the font scale documents
+ * above: the smallest text on this card is the tile caption at 30 px, which is
+ * the same size the roster slot cards use for their driver line and was
+ * verified readable on device.
+ */
+.card {
+    width: 980;
+    background-color: var(--color-panel-solid);
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    border-bottom-left-radius: var(--radius-lg);
+    border-bottom-right-radius: var(--radius-lg);
+    border-top-width: 1;
+    border-bottom-width: 2;
+    border-top-color: var(--color-edge-light);
+    border-bottom-color: var(--color-edge-dark);
+    padding-top: var(--space-5);
+    padding-bottom: var(--space-5);
+    padding-left: var(--space-6);
+    padding-right: var(--space-6);
+    align-items: stretch;
+}
+
+.card__band {
+    height: 12;
+    margin-bottom: var(--space-4);
+    border-top-left-radius: 6;
+    border-top-right-radius: 6;
+    border-bottom-left-radius: 6;
+    border-bottom-right-radius: 6;
+}
+
+.card__name {
+    font-size: var(--font-l);
+    -unity-font-style: bold;
+    color: var(--color-text);
+    -unity-text-align: middle-left;
+}
+
+.card__driver {
+    font-size: var(--font-xs);
+    -unity-font-style: bold;
+    margin-bottom: var(--space-4);
+}
+
+/* Three tiles across 916 px of inner width: 300 each leaves 8 px of gap. */
+.card__tiles {
+    flex-direction: row;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+}
+
+.card__tile {
+    width: 300;
+    background-color: var(--color-panel);
+    border-top-left-radius: var(--radius-sm);
+    border-top-right-radius: var(--radius-sm);
+    border-bottom-left-radius: var(--radius-sm);
+    border-bottom-right-radius: var(--radius-sm);
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+    align-items: center;
+}
+
+.card__tile-value {
+    font-size: var(--font-m);
+    -unity-font-style: bold;
+    color: var(--color-gold);
+}
+
+.card__tile-label {
+    font-size: 30;
+    color: var(--color-text-muted);
+    -unity-font-style: bold;
+    margin-top: var(--space-1);
+}
+
+/*
+ * The caption wraps to as many lines as it needs. It carries the sample size
+ * behind a win rate, so clipping it would remove exactly the qualifier that
+ * stops a percentage being over-read.
+ */
+.card__tile-caption {
+    font-size: 30;
+    color: var(--color-text-muted);
+    opacity: 0.75;
+    white-space: normal;
+    -unity-text-align: upper-center;
+    margin-top: var(--space-2);
+}
+
+.card__note {
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    white-space: normal;
+    margin-bottom: var(--space-4);
+}
+
+.card__heading {
+    font-size: 30;
+    -unity-font-style: bold;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-3);
+}
+
+.card__prov {
+    font-size: 30;
+    color: var(--color-text-muted);
+    opacity: 0.7;
+    white-space: normal;
+    margin-top: var(--space-4);
+}
+
+/* ------------------------------------------------------ attribute bars - */
+
+.attr {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: var(--space-3);
+}
+
+.attr__label {
+    width: 260;
+    font-size: var(--font-xs);
+    -unity-font-style: bold;
+    color: var(--color-text);
+}
+
+.attr__track {
+    flex-grow: 1;
+    height: 22;
+    background-color: rgba(255, 255, 255, 0.14);
+    border-top-left-radius: 11;
+    border-top-right-radius: 11;
+    border-bottom-left-radius: 11;
+    border-bottom-right-radius: 11;
+    overflow: hidden;
+}
+
+/*
+ * The fill sweeps out from zero. Agent_PlayerCard sets width 0 and then the
+ * real percentage one frame later, so this transition always has something to
+ * animate from - a card is rebuilt on every page, so its bars are new elements
+ * that would otherwise just appear at their final width.
+ */
+.attr__fill {
+    height: 22;
+    border-top-left-radius: 11;
+    border-top-right-radius: 11;
+    border-bottom-left-radius: 11;
+    border-bottom-right-radius: 11;
+    transition-property: width;
+    transition-duration: 0.28s;
+    transition-timing-function: ease-out-cubic;
+}
+
+.attr__value {
+    width: 90;
+    font-size: var(--font-xs);
+    -unity-font-style: bold;
+    color: var(--color-text);
+    -unity-text-align: middle-right;
+}
+
+/* -------------------------------------------------------- card chrome - */
+
+.card-nav {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    margin-top: var(--space-4);
+}
+
+.card-nav__arrow {
+    width: 110;
+    height: 96;
+    font-size: var(--font-m);
+}
+
+/* Two lines: the page position, then the live squad counts. Wrapping has to
+   be enabled explicitly or the newline is collapsed and the counts vanish. */
+.card-nav__count {
+    width: 320;
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    -unity-text-align: middle-center;
+    white-space: normal;
+}
+
+.card-add {
+    flex-direction: row;
+    justify-content: center;
+    margin-top: var(--space-3);
+}
+
+.card-add__btn {
+    -unity-font-style: bold;
+    margin-left: var(--space-2);
+    margin-right: var(--space-2);
 }

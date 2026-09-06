@@ -24,6 +24,21 @@ namespace PoSoccer
     /// COST WHEN HIDDEN IS ZERO: recorders are allocated on show and disposed on
     /// hide, and Update returns immediately while closed. Toggle with F3, or a
     /// three-finger tap on touch devices.
+    ///
+    /// 2026-09-05 - IT NOW ENFORCES BUDGETS AND WRITES A SESSION LOG. Reporting
+    /// numbers is not the same as holding a line: every row that has a defensible
+    /// budget carries one, breaches render in red and are counted, and a HOLD/OVER
+    /// verdict sits at the top so the answer is legible without reading the table.
+    ///
+    /// The CSV matters more than the colours. This project's whole methodology is
+    /// that a measurement nobody can re-read later becomes a claim nobody can
+    /// falsify - the phase-10 retraction happened exactly that way. An overlay you
+    /// can only read by squinting at a phone in your hand is that same trap in
+    /// visual form, so every refresh is also a row, and the file is written to
+    /// Application.persistentDataPath on hide and on quit. That is what makes an
+    /// on-DEVICE session gradeable off-device, which is the only honest way to
+    /// prove the sprite-atlas work actually paid off on the hardware that needed
+    /// it rather than on a desktop that never had the problem.
     /// </summary>
     [DefaultExecutionOrder(100)]
     public sealed class Agent_Telemetry : MonoBehaviour
@@ -35,6 +50,13 @@ namespace PoSoccer
         [Tooltip("Seconds between text refreshes. The samples are still collected every frame.")]
         [SerializeField] private float _refreshInterval = 0.25f;
 
+        [Tooltip("Frame budget in milliseconds. 16.7 = 60 fps; raise to 33.3 to grade against 30 fps.")]
+        [SerializeField] private float _frameBudgetMs = 16.7f;
+        [Tooltip("Write a CSV of every refresh to persistentDataPath when the overlay is hidden or the app quits.")]
+        [SerializeField] private bool _writeSessionCsv = true;
+        [Tooltip("Maximum rows retained for the CSV. At 4 Hz this is about 40 minutes.")]
+        [SerializeField] private int _maxCsvRows = 10000;
+
         readonly struct Stat
         {
             public readonly string Label;
@@ -42,28 +64,46 @@ namespace PoSoccer
             public readonly string Name;
             public readonly float Scale;
             public readonly string Unit;
+            /// <summary>Value above which this row is over budget. 0 = no budget.</summary>
+            public readonly double Budget;
 
-            public Stat(string label, ProfilerCategory category, string name, float scale, string unit)
+            public Stat(string label, ProfilerCategory category, string name, float scale,
+                string unit, double budget = 0d)
             {
                 Label = label;
                 Category = category;
                 Name = name;
                 Scale = scale;
                 Unit = unit;
+                Budget = budget;
             }
         }
 
+        // Budgets, and where each one comes from - a budget nobody can justify is
+        // a number that gets raised the first time it goes red.
+        //
+        //   Draw calls / SetPass / Batches - .claude/rules/performance.md asks for
+        //     the lowest count possible on a 2D mobile game. This scene draws a
+        //     pitch, a backdrop, four players, a ball, two goals, the crowd
+        //     tilemap, the ad boards and the runtime shapes. Post-atlas that is
+        //     tens, not hundreds; 120 is deliberately loose enough that tripping
+        //     it means something regressed rather than that the budget was tight.
+        //   GC alloc/frame - the rule is ZERO allocation in Update/FixedUpdate.
+        //     1 KB is the smallest threshold that does not fire on UI Toolkit's
+        //     own per-frame churn, so anything above it is ours.
+        //   System used - a 6-year-old midrange Android gives a game ~512 MB
+        //     before the low-memory killer takes an interest.
         static readonly Stat[] Wanted =
         {
-            new("Draw calls", ProfilerCategory.Render, "Draw Calls Count", 1f, ""),
-            new("SetPass", ProfilerCategory.Render, "SetPass Calls Count", 1f, ""),
-            new("Batches", ProfilerCategory.Render, "Batches Count", 1f, ""),
+            new("Draw calls", ProfilerCategory.Render, "Draw Calls Count", 1f, "", 120),
+            new("SetPass", ProfilerCategory.Render, "SetPass Calls Count", 1f, "", 60),
+            new("Batches", ProfilerCategory.Render, "Batches Count", 1f, "", 120),
             new("Triangles", ProfilerCategory.Render, "Triangles Count", 1f, ""),
             new("Verts", ProfilerCategory.Render, "Vertices Count", 1f, ""),
-            new("GC alloc/frame", ProfilerCategory.Memory, "GC Allocated In Frame", 1f / 1024f, " KB"),
+            new("GC alloc/frame", ProfilerCategory.Memory, "GC Allocated In Frame", 1f / 1024f, " KB", 1.0),
             new("GC reserved", ProfilerCategory.Memory, "GC Reserved Memory", 1f / (1024f * 1024f), " MB"),
-            new("System used", ProfilerCategory.Memory, "System Used Memory", 1f / (1024f * 1024f), " MB"),
-            new("Audio voices", ProfilerCategory.Audio, "Playing Audio Sources", 1f, ""),
+            new("System used", ProfilerCategory.Memory, "System Used Memory", 1f / (1024f * 1024f), " MB", 512),
+            new("Audio voices", ProfilerCategory.Audio, "Playing Audio Sources", 1f, "", 24),
         };
 
         readonly List<ProfilerRecorder> _recorders = new();
@@ -80,6 +120,11 @@ namespace PoSoccer
 
         Agent_EnvController _env;
         int _threeFingerLatch;
+
+        System.Text.StringBuilder _csv;
+        int _csvRows;
+        int _breachCount;
+        float _worstFrameMs;
 
         /// <summary>Shows or hides the overlay. Profiler recorders exist only while shown.</summary>
         /// <summary>Whether the overlay is currently on screen. Read by
@@ -102,6 +147,18 @@ namespace PoSoccer
         }
 
         void OnDestroy() => Hide();
+
+        /// <summary>
+        /// Android does not reliably call OnDestroy when the process is killed, so
+        /// the session log is flushed here as well. Flush() is idempotent - it
+        /// clears the buffer - so being called twice writes one file, not two.
+        /// </summary>
+        void OnApplicationQuit() => FlushCsv();
+
+        void OnApplicationPause(bool paused)
+        {
+            if (paused) FlushCsv();
+        }
 
         void Update()
         {
@@ -159,12 +216,17 @@ namespace PoSoccer
 
             _sampleCount = 0;
             _sampleHead = 0;
+            _breachCount = 0;
+            _worstFrameMs = 0f;
             _visible = true;
             _text.style.display = DisplayStyle.Flex;
+
+            BeginCsv();
         }
 
         void Hide()
         {
+            FlushCsv();
             for (int i = 0; i < _recorders.Count; i++) _recorders[i].Dispose();
             _recorders.Clear();
             _live.Clear();
@@ -237,35 +299,144 @@ namespace PoSoccer
             }
             mean = _sampleCount > 0 ? mean / _sampleCount : 0f;
             float p95 = Percentile(0.95f);
+            if (worst > _worstFrameMs) _worstFrameMs = worst;
+
+            // p95, not mean, is graded against the frame budget. A mean inside
+            // budget with a p95 outside it is a game that stutters, and the mean
+            // is exactly the statistic that hides it.
+            bool frameOver = p95 > _frameBudgetMs;
+            int breachesNow = frameOver ? 1 : 0;
 
             _builder.Clear();
             _builder.Append("── PoSoccer telemetry (F3) ──\n");
             _builder.Append("fps ").Append((mean > 0.001f ? 1000f / mean : 0f).ToString("0"))
-                    .Append("   frame ").Append(mean.ToString("0.0")).Append(" ms")
-                    .Append("   p95 ").Append(p95.ToString("0.0"))
+                    .Append("   frame ").Append(mean.ToString("0.0")).Append(" ms   p95 ");
+            AppendGraded(p95.ToString("0.0"), frameOver);
+            _builder.Append(" / ").Append(_frameBudgetMs.ToString("0.0"))
                     .Append("   max ").Append(worst.ToString("0.0")).Append('\n');
 
             for (int i = 0; i < _live.Count; i++)
             {
-                double value = _recorders[i].LastValue * _live[i].Scale;
-                _builder.Append(_live[i].Label).Append(' ')
-                        .Append(value.ToString(_live[i].Scale < 1f ? "0.00" : "0"))
-                        .Append(_live[i].Unit).Append('\n');
+                var stat = _live[i];
+                double value = _recorders[i].LastValue * stat.Scale;
+                bool over = stat.Budget > 0d && value > stat.Budget;
+                if (over) breachesNow++;
+
+                _builder.Append(stat.Label).Append(' ');
+                AppendGraded(value.ToString(stat.Scale < 1f ? "0.00" : "0") + stat.Unit, over);
+                if (stat.Budget > 0d)
+                    _builder.Append(" / ").Append(stat.Budget.ToString(stat.Scale < 1f ? "0.00" : "0"));
+                _builder.Append('\n');
             }
 
+            if (breachesNow > 0) _breachCount++;
+
+            // The verdict line, first thing a reader's eye lands on. A table of
+            // numbers requires you to already know the budgets; this does not.
+            _builder.Append(breachesNow > 0
+                ? $"<color=#ff6b6b>OVER BUDGET x{breachesNow}</color>"
+                : "<color=#6bff8f>ALL WITHIN BUDGET</color>");
+            _builder.Append("   breached refreshes ").Append(_breachCount)
+                    .Append("   worst frame ").Append(_worstFrameMs.ToString("0.0")).Append(" ms\n");
+
             // Project state - the counters that would have made earlier bugs obvious.
+            //
+            // The clock line distinguishes FROZEN (a full hold: replay, countdown,
+            // end panel) from SLOW-MO (Agent_Hitstop's dip). Both show a
+            // sub-1 timeScale and only one of them is a bug when it persists, so
+            // collapsing them into one flag is how a leaked hit-stop would get
+            // mistaken for a legitimate freeze.
             _builder.Append("timeScale ").Append(Time.timeScale.ToString("0.00"))
-                    .Append("   frozen ").Append(Agent_TimeFreeze.IsFrozen ? "YES" : "no").Append('\n');
+                    .Append("   clock ")
+                    .Append(Agent_TimeFreeze.IsFrozen ? "FROZEN"
+                          : Agent_TimeFreeze.IsNormalSpeed ? "running" : "SLOW-MO")
+                    .Append('\n');
             if (_env != null)
             {
                 _builder.Append("episode step ").Append(_env.StepCount)
                         .Append(" / ").Append(_env.MaxEnvironmentSteps)
                         .Append("   agents ").Append(_env.agents.Count).Append('\n');
                 _builder.Append("goal ").Append(_env.CurrentGoalWidth.ToString("0.0"))
-                        .Append("m   bot ").Append(_env.CurrentBotStrength.ToString("0.00"));
+                        .Append("m   bot ").Append(_env.CurrentBotStrength.ToString("0.00")).Append('\n');
             }
+            _builder.Append("atlas shapes ").Append(Agent_Art.SlotCount)
+                    .Append("   csv rows ").Append(_csvRows);
 
             _text.text = _builder.ToString();
+
+            AppendCsvRow(mean, p95, worst);
+        }
+
+        void AppendGraded(string text, bool over)
+        {
+            if (over) _builder.Append("<color=#ff6b6b>").Append(text).Append("</color>");
+            else _builder.Append(text);
+        }
+
+        // -- Session log -------------------------------------------------------
+
+        void BeginCsv()
+        {
+            if (!_writeSessionCsv) return;
+
+            _csv = new System.Text.StringBuilder(64 * 1024);
+            _csvRows = 0;
+            _csv.Append("t,frame_ms,p95_ms,max_ms");
+            for (int i = 0; i < _live.Count; i++)
+                _csv.Append(',').Append(_live[i].Label.Replace(' ', '_').Replace('/', '_'));
+            _csv.Append(",time_scale,frozen,episode_step\n");
+        }
+
+        void AppendCsvRow(float mean, float p95, float worst)
+        {
+            if (_csv == null || _csvRows >= _maxCsvRows) return;
+
+            _csv.Append(Time.unscaledTime.ToString("0.00")).Append(',')
+                .Append(mean.ToString("0.000")).Append(',')
+                .Append(p95.ToString("0.000")).Append(',')
+                .Append(worst.ToString("0.000"));
+
+            for (int i = 0; i < _live.Count; i++)
+            {
+                double value = _recorders[i].LastValue * _live[i].Scale;
+                _csv.Append(',').Append(value.ToString("0.###"));
+            }
+
+            _csv.Append(',').Append(Time.timeScale.ToString("0.00"))
+                .Append(',').Append(Agent_TimeFreeze.IsFrozen ? 1 : 0)
+                .Append(',').Append(_env != null ? _env.StepCount : 0)
+                .Append('\n');
+
+            _csvRows++;
+        }
+
+        /// <summary>
+        /// Write and clear. Clearing is what makes this safe to call from Hide,
+        /// OnDestroy, OnApplicationQuit and OnApplicationPause - all four of which
+        /// can fire for one session, and only the first should produce a file.
+        /// </summary>
+        void FlushCsv()
+        {
+            if (_csv == null || _csvRows == 0) { _csv = null; return; }
+
+            string path = System.IO.Path.Combine(
+                Application.persistentDataPath,
+                $"posoccer-telemetry-{System.DateTime.Now:yyyyMMdd-HHmmss}.csv");
+
+            try
+            {
+                System.IO.File.WriteAllText(path, _csv.ToString());
+                Debug.Log($"Agent_Telemetry: wrote {_csvRows} rows to {path}");
+            }
+            catch (System.Exception exception)
+            {
+                // A telemetry overlay must never be the thing that crashes the
+                // game it is measuring.
+                Debug.LogWarning($"Agent_Telemetry: could not write the session log: {exception.Message}");
+            }
+
+            _csv = null;
+            _csvRows = 0;
         }
 
         /// <summary>

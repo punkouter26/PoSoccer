@@ -55,4 +55,44 @@ half3 PoSoccerApplyFX(half3 albedo, float2 uv)
     return albedo;
 }
 
+// Goal net.
+//
+// Returns an ALPHA multiplier rather than a colour, which is why it is a second
+// function instead of another term inside PoSoccerApplyFX: a net is mostly hole.
+// Modulating albedo can only darken a solid quad; the cords have to be cut out
+// of the alpha or the goal reads as a painted board.
+//
+// Returns exactly 1.0 when _NetStrength is 0, so every other material in the
+// project is bit-identical to before this existed.
+half PoSoccerNetMask(float2 uv)
+{
+    if (_NetStrength <= 0.0h) return 1.0h;
+
+    float2 centred = uv - 0.5;
+    float radius = length(centred);
+
+    // The ripple is a radial UV displacement that decays with distance from the
+    // strike point (taken as the centre of the mouth) and is driven entirely by
+    // _NetRipple, which C# kicks to 1 on a goal and decays. At rest the term is
+    // zero and the grid is perfectly still - a permanently rippling net reads as
+    // wind, and this net is meant to read as impact.
+    if (_NetRipple > 0.0h)
+    {
+        float wave = sin(radius * 34.0 - _Time.y * 26.0) * 0.035 * _NetRipple;
+        centred += normalize(centred + 1e-5) * wave * exp(-radius * 2.5);
+    }
+
+    // Square grid of cords. fract-to-distance gives an evenly spaced lattice for
+    // two ALU, and smoothstep keeps the cords from aliasing into moire when the
+    // goal is small on a phone screen.
+    float2 cell = abs(frac((centred + 0.5) * _NetTiling) - 0.5);
+    float cords = 1.0 - smoothstep(0.0, 0.09, min(cell.x, cell.y));
+
+    // Fade toward the rim so the net dissolves into the frame instead of ending
+    // in a hard rectangular cut.
+    float fade = 1.0 - smoothstep(0.32, 0.5, max(abs(centred.x), abs(centred.y)));
+
+    return lerp(1.0h, (half)saturate(cords * fade), _NetStrength);
+}
+
 #endif // POSOCCER_FX_INCLUDED

@@ -14,6 +14,7 @@
 //   _SheenStrength  / _SheenSpeed  / _SheenWidth   travelling highlight
 //   _RimColor       / _RimStrength / _RimPower     team rim on player bodies
 //   _EmissionBoost                                 celebration flare
+//   _NetStrength    / _NetTiling   / _NetRipple    goal net (cuts ALPHA, not albedo)
 //
 // No shader_feature keywords on purpose: four toggles would mean sixteen
 // variants for effects that cost a few ALU each, and keyword-free branches keep
@@ -40,6 +41,10 @@ Shader "PoSoccer/SpriteLitFX"
         _RimPower("Rim Power", Float) = 4
 
         _EmissionBoost("Emission Boost", Range(0, 4)) = 0
+
+        _NetStrength("Net Strength", Range(0, 1)) = 0
+        _NetTiling("Net Cords Across", Float) = 14
+        _NetRipple("Net Ripple", Range(0, 1)) = 0
 
         // Legacy properties, kept so this can fall back to the sprite shader.
         [HideInInspector] _Color("Tint", Color) = (1,1,1,1)
@@ -100,6 +105,9 @@ Shader "PoSoccer/SpriteLitFX"
                 half  _RimStrength;
                 half  _RimPower;
                 half  _EmissionBoost;
+                half  _NetStrength;
+                half  _NetTiling;
+                half  _NetRipple;
             CBUFFER_END
 
             #include "PoSoccerFX.hlsl"
@@ -122,6 +130,9 @@ Shader "PoSoccer/SpriteLitFX"
                 // rather than pasted over the top of the lighting result.
                 half4 main = input.color * SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv);
                 main.rgb = PoSoccerApplyFX(main.rgb, input.uv);
+                // Before InitializeSurfaceData: the net has to be cut out of the
+                // alpha that feeds the lighting, or the holes stay lit.
+                main.a *= PoSoccerNetMask(input.uv);
 
                 const half4 mask = SAMPLE_TEXTURE2D(_MaskTex, sampler_MaskTex, input.uv);
                 const half3 normalTS = UnpackNormal(SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, input.uv));
@@ -176,6 +187,9 @@ Shader "PoSoccer/SpriteLitFX"
                 half  _RimStrength;
                 half  _RimPower;
                 half  _EmissionBoost;
+                half  _NetStrength;
+                half  _NetTiling;
+                half  _NetRipple;
             CBUFFER_END
 
             Varyings NormalsRenderingVertex(Attributes input)
@@ -237,6 +251,9 @@ Shader "PoSoccer/SpriteLitFX"
                 half  _RimStrength;
                 half  _RimPower;
                 half  _EmissionBoost;
+                half  _NetStrength;
+                half  _NetTiling;
+                half  _NetRipple;
             CBUFFER_END
 
             #include "PoSoccerFX.hlsl"
@@ -256,6 +273,7 @@ Shader "PoSoccer/SpriteLitFX"
             {
                 half4 result = CommonUnlitFragment(input, input.color);
                 result.rgb = PoSoccerApplyFX(result.rgb, input.uv);
+                result.a *= PoSoccerNetMask(input.uv);
                 return result;
             }
             ENDHLSL
