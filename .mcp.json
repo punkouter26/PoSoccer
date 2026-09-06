@@ -1,8 +1,63 @@
 {
+  "_comment": [
+    "Unity MCP servers for PoSoccer. Written by hand on 2026-09-05 because the",
+    "MCP for Unity window's 'Configure All Detected Clients' button cannot work",
+    "here: it shells out to a `claude` CLI, and this machine runs Claude Code as",
+    "the VSCode extension, which installs no such binary. Its 'Claude CLI Path:",
+    "Not found' is therefore permanent, not a misconfiguration to chase.",
+    "",
+    "PORTS ARE ASSIGNED, NOT DEFAULTED. Every one of these ships an in-editor",
+    "bridge and three of them default to a port another one already wants:",
+    "  coplay          6400   (its own window shows 6400)",
+    "  ivanmurzak      8090   (pre-existing)",
+    "  codergamester   8090 -> moved to 8091 via UNITY_PORT",
+    "  anklebreaker    7890   (no conflict)",
+    "  ozankasikci     6400   COLLIDES with coplay and is NOT configurable.",
+    "",
+    "That last one auto-falls back to a free port when 6400 is taken, but its",
+    "server has no way to learn the new port, so with coplay running it will",
+    "connect to nothing. Run one or the other, not both.",
+    "",
+    "The two `node` entries point into .tooling/, which is gitignored - these",
+    "paths are machine-specific and will not resolve on a fresh clone. Re-run",
+    "the clone+build steps there before expecting them to work elsewhere."
+  ],
+
   "mcpServers": {
     "ai-game-developer": {
       "type": "http",
       "url": "https://ai-game.dev/mcp/p/161c6ea1"
+    },
+
+    "unity-coplay": {
+      "command": "uvx",
+      "args": ["--from", "mcpforunityserver==10.1.2", "mcp-for-unity"]
+    },
+
+    "unity-codergamester": {
+      "command": "node",
+      "args": [
+        "C:/Users/punko/Downloads/PoSoccer/.tooling/codergamester-mcp-unity/Server~/build/index.js"
+      ],
+      "env": {
+        "UNITY_PORT": "8091"
+      }
+    },
+
+    "unity-anklebreaker": {
+      "command": "node",
+      "args": [
+        "C:/Users/punko/Downloads/PoSoccer/.tooling/anklebreaker-unity-mcp-server/src/index.js"
+      ],
+      "env": {
+        "UNITY_BRIDGE_PORT": "7890",
+        "UNITY_HUB_PATH": "C:/Program Files/Unity Hub/Unity Hub.exe"
+      }
+    },
+
+    "unity-ozankasikci": {
+      "command": "npx",
+      "args": ["--yes", "unity-editor-mcp@latest"]
     }
   }
 }

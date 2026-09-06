@@ -421,10 +421,12 @@ namespace PoSoccer.EditorTools
             settings.preloadAudioData = !loop;
             importer.defaultSampleSettings = settings;
 
-            // 3D on everything: Agent_Audio decides per cue whether to play a clip
-            // positionally or as a broadcast, and a clip imported 2D can never be
-            // panned even when it should be.
-            importer.threeD = true;
+            // AudioImporter.threeD used to be set here and is [Obsolete] in Unity 6
+            // ("no longer supported"). Nothing is lost: spatialisation is decided
+            // per SOURCE now, and Agent_Audio already sets spatialBlend explicitly
+            // on every voice it builds - 0 for the broadcast bus, _spatialBlend for
+            // the positional pool. The import flag was redundant with that even
+            // before it was deprecated.
             importer.SaveAndReimport();
         }
     }

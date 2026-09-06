@@ -92,43 +92,56 @@ namespace PoSoccer.EditorTools
                 return;
             }
 
+            // MEMBERSHIP goes on the ASSET; SETTINGS go on the IMPORTER.
+            //
+            // SpriteAtlasAsset.SetPackingSettings / SetTextureSettings /
+            // SetPlatformSettings all exist and all are [Obsolete] in Unity 6 -
+            // they compile, warn, and are documented for removal. CLAUDE.md
+            // records that this Unity line turns deprecations into hard errors,
+            // so using them would have left a build break waiting on the next
+            // upgrade. The supported path is to save the asset, import it, then
+            // configure the SpriteAtlasImporter the import produced.
             var asset = new SpriteAtlasAsset();
-
-            asset.SetPackingSettings(new SpriteAtlasPackingSettings
-            {
-                enableRotation = true,
-                enableTightPacking = true,
-                // padding 2 rather than the default 4: these sprites are small and
-                // the pitch is a single large quad, so the wasted border adds up
-                // faster than the bleed risk does.
-                padding = 2,
-            });
-
-            asset.SetTextureSettings(new SpriteAtlasTextureSettings
-            {
-                // Point-filtered atlases alias badly when the replay camera pushes
-                // in; the sprites are authored at higher resolution than they draw.
-                filterMode = FilterMode.Bilinear,
-                generateMipMaps = false,
-                sRGB = true,
-            });
-
-            asset.SetPlatformSettings(new TextureImporterPlatformSettings
-            {
-                name = "DefaultTexturePlatform",
-                // 2048 is the mobile cap performance.md sets. The whole pitch set
-                // fits inside it with room to spare.
-                maxTextureSize = 2048,
-                format = TextureImporterFormat.Automatic,
-                textureCompression = TextureImporterCompression.Compressed,
-                overridden = true,
-            });
-
             asset.Add(members.ToArray());
 
             string path = $"{ATLAS_DIR}/{name}.spriteatlasv2";
             SpriteAtlasAsset.Save(asset, path);
             AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+
+            if (AssetImporter.GetAtPath(path) is SpriteAtlasImporter importer)
+            {
+                importer.packingSettings = new SpriteAtlasPackingSettings
+                {
+                    enableRotation = true,
+                    enableTightPacking = true,
+                    // padding 2 rather than the default 4: these sprites are small
+                    // and the pitch is a single large quad, so the wasted border
+                    // adds up faster than the bleed risk does.
+                    padding = 2,
+                };
+
+                importer.textureSettings = new SpriteAtlasTextureSettings
+                {
+                    // Point filtering aliases badly when the replay camera pushes
+                    // in; the sprites are authored above the size they draw at.
+                    filterMode = FilterMode.Bilinear,
+                    generateMipMaps = false,
+                    sRGB = true,
+                };
+
+                importer.SetPlatformSettings(new TextureImporterPlatformSettings
+                {
+                    name = "DefaultTexturePlatform",
+                    // 2048 is the mobile cap performance.md sets. The whole pitch
+                    // set fits inside it with room to spare.
+                    maxTextureSize = 2048,
+                    format = TextureImporterFormat.Automatic,
+                    textureCompression = TextureImporterCompression.Compressed,
+                    overridden = true,
+                });
+
+                importer.SaveAndReimport();
+            }
 
             Debug.Log($"Editor_BuildSpriteAtlases: {name} written to {path} " +
                       $"with {members.Count} sprite(s). Verify the packed result in " +
