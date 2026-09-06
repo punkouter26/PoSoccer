@@ -85,7 +85,7 @@ namespace PoSoccer
         {
             var env = FindFirstObjectByType<Agent_EnvController>();
             var hud = FindFirstObjectByType<Agent_HUD>();
-            if (!_enableSurfaces || env == null || !Agent_Presentation.IsMatchScene(hud))
+            if (!_enableSurfaces || env == null || !Agent_Presentation.IsVisualScene(hud))
             {
                 enabled = false;
                 return;

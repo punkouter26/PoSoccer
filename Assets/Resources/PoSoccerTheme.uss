@@ -322,6 +322,90 @@
     border-bottom-right-radius: 7;
 }
 
+/* ------------------------------------------------- win probability strip - */
+
+/* Narrower and flatter than the ball-control meter directly below it, because
+   the two must never be confused: this one is a MODEL and that one is a
+   measurement. Transition duration is long on purpose - the estimate is already
+   smoothed in C#, and a bar that twitches reads as noise rather than tension. */
+.winprob {
+    flex-direction: row;
+    width: 640;
+    height: 8;
+    margin-top: var(--space-3);
+    background-color: rgba(255, 255, 255, 0.12);
+    border-top-left-radius: 4;
+    border-top-right-radius: 4;
+    border-bottom-left-radius: 4;
+    border-bottom-right-radius: 4;
+    overflow: hidden;
+}
+
+.winprob__fill {
+    height: 8;
+    transition-property: width;
+    transition-duration: 0.4s;
+    transition-timing-function: ease-out;
+}
+
+.winprob__fill--blue {
+    background-color: var(--color-team-blue);
+}
+
+.winprob__fill--red {
+    background-color: var(--color-team-red);
+}
+
+.winprob__label {
+    margin-top: var(--space-1);
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    -unity-text-align: middle-center;
+    letter-spacing: 2;
+}
+
+/* ---------------------------------------------------------- stat ticker - */
+
+/* Sits above the ball-control meter in the bottom band. Muted and small: it is
+   colour on the match, never information the viewer has to act on. */
+.ticker {
+    margin-bottom: var(--space-3);
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    -unity-text-align: middle-center;
+    -unity-font-style: bold;
+    letter-spacing: 1;
+    opacity: 0;
+    transition-property: opacity;
+    transition-duration: 0.3s;
+}
+
+.ticker.is-shown {
+    opacity: 1;
+}
+
+/* -------------------------------------------------------- broadcast bug - */
+
+/* Mirrors .replay-tag's position and rhythm, on the opposite edge, so the two
+   status marks read as one system rather than two people's ideas. */
+.broadcast-tag {
+    position: absolute;
+    right: var(--space-7);
+    top: 14%;
+    font-size: var(--font-xs);
+    -unity-font-style: bold;
+    -unity-text-align: middle-right;
+    color: var(--color-text-muted);
+    letter-spacing: 2;
+    opacity: 0;
+    transition-property: opacity;
+    transition-duration: 0.2s;
+}
+
+.broadcast-tag.is-shown {
+    opacity: 1;
+}
+
 /*
  * Structural rules for Resources/HUD.uxml. These exist so the UXML carries no
  * inline `style=` at all: the whole point of extracting the template was to end

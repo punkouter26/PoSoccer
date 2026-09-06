@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 
@@ -48,6 +49,15 @@ namespace PoSoccer
         float _commentaryUntil;
         bool _pendingEnd;
 
+        // Broadcast telemetry lanes, added with the director / win-probability /
+        // stat-ticker layer. Each is driven by exactly one component and no-ops
+        // when that component is absent, so the HUD never has to know which of
+        // them a given scene installed.
+        VisualElement _winProbBar, _winProbBlue, _winProbRed;
+        Label _winProbLabel, _ticker, _broadcastTag;
+        int _shownWinPercent = -1;
+        string _shownTicker, _shownBroadcastTag;
+
         /// <summary>
         /// Pause holds the clock through its own token, so it composes with the
         /// replay, the countdown and the end panel instead of fighting them - the
@@ -59,6 +69,14 @@ namespace PoSoccer
 
         public int BlueScore => _blueScore;
         public int RedScore => _redScore;
+
+        /// <summary>
+        /// The panel root, for overlays that must sit in the same UI Toolkit panel
+        /// as the HUD - currently the gallery's pitch captions, which project world
+        /// positions into panel space and so have to live in this panel to use its
+        /// scale factor. Null before OnEnable and when showHud is false.
+        /// </summary>
+        public VisualElement OverlayRoot => _root;
 
         /// <summary>True once the match-winning goal has landed, panel shown or not.</summary>
         public bool MatchOver => _ended || _pendingEnd;
@@ -72,15 +90,41 @@ namespace PoSoccer
         public bool DeferEndPanel { get; set; }
 
         /// <summary>
-        /// Optional extra content appended to the end panel above the buttons -
-        /// Agent_MatchFlow supplies the man-of-the-match card. Kept as a callback
-        /// rather than a direct reference so the HUD never has to know the match
-        /// flow exists.
+        /// Optional extra content appended to the end panel above the buttons, in
+        /// registration order: Agent_MatchFlow supplies the man-of-the-match card,
+        /// Agent_MatchStats the match telemetry table. Callbacks rather than
+        /// direct references so the HUD never has to know either exists.
+        ///
+        /// This was a single Func field until the stats table needed a slot too.
+        /// A second contributor assigning over the first is a silent loss of the
+        /// first one's card, and which card survived would have depended on Start
+        /// order - so it is a list, and every contributor removes its own.
         /// </summary>
-        public System.Func<VisualElement> endPanelExtra;
+        readonly List<System.Func<VisualElement>> _endPanelSections = new();
+
+        /// <summary>Register a builder for a section of the end-of-match panel.</summary>
+        public void AddEndPanelSection(System.Func<VisualElement> section)
+        {
+            if (section != null && !_endPanelSections.Contains(section))
+            {
+                _endPanelSections.Add(section);
+            }
+        }
+
+        /// <summary>Unregister a builder. Call from OnDestroy; safe if never added.</summary>
+        public void RemoveEndPanelSection(System.Func<VisualElement> section)
+        {
+            if (section != null) _endPanelSections.Remove(section);
+        }
 
         void OnEnable()
         {
+            // The gallery is not a match: no score, no clock, no first-to-5, and
+            // no pause button for a grid of six independent pitches. Read here
+            // rather than set by Agent_Bootstrap so it cannot depend on whether
+            // that Awake happens to beat this OnEnable during scene load.
+            if (Agent_MatchSetup.GalleryMode) enableMatchFlow = false;
+
             _doc = GetComponent<UIDocument>();
             _root = _doc.rootVisualElement;
             if (_doc.panelSettings == null || _root == null)
@@ -151,13 +195,21 @@ namespace PoSoccer
             _replayTag = _root.Q<Label>("replay-tag");
             _letterboxTop = _root.Q<VisualElement>("letterbox-top");
             _letterboxBottom = _root.Q<VisualElement>("letterbox-bottom");
+            _winProbBar = _root.Q<VisualElement>("winprob");
+            _winProbBlue = _root.Q<VisualElement>("winprob-blue");
+            _winProbRed = _root.Q<VisualElement>("winprob-red");
+            _winProbLabel = _root.Q<Label>("winprob-label");
+            _ticker = _root.Q<Label>("ticker");
+            _broadcastTag = _root.Q<Label>("broadcast-tag");
             var controls = _root.Q<VisualElement>("controls");
 
             if (safe == null || _score == null || _stepLabel == null ||
                 _ballControlBlue == null || _ballControlRed == null ||
                 _blueChips == null || _redChips == null || _toast == null ||
                 _commentary == null || _banner == null || _replayTag == null ||
-                _letterboxTop == null || _letterboxBottom == null || controls == null)
+                _letterboxTop == null || _letterboxBottom == null || controls == null ||
+                _winProbBar == null || _winProbBlue == null || _winProbRed == null ||
+                _winProbLabel == null || _ticker == null || _broadcastTag == null)
             {
                 Debug.LogError(
                     "Agent_HUD: Resources/HUD.uxml is missing a named element this " +
@@ -175,6 +227,20 @@ namespace PoSoccer
 
             _ballControlBlue.style.width = Length.Percent(50);
             _ballControlRed.style.width = Length.Percent(50);
+
+            // The win-probability strip is a MATCH readout: it reads the score,
+            // and a training scene has none. Hidden rather than left at 50/50,
+            // which would look like a live estimate of nothing.
+            DisplayStyle probability = enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
+            _winProbBar.style.display = probability;
+            _winProbLabel.style.display = probability;
+            SetWinProbability(0.5f);
+
+            // The gallery turns match flow off, which drops the clock into its
+            // training readout ("step N · goal 6.0m · bot 1.00"). That is honest
+            // in SCN_Training and pure noise over a grid of exhibition pitches -
+            // it reports one pitch's episode counter while six are playing.
+            if (Agent_MatchSetup.GalleryMode) _stepLabel.style.display = DisplayStyle.None;
 
             if (enableMatchFlow)
             {
@@ -234,6 +300,60 @@ namespace PoSoccer
         // the template rather than reapplied in five places here.
 
         // ── Public broadcast API ────────────────────────────────────────────
+
+        /// <summary>
+        /// Drives the win-probability strip. Takes blue's share, 0..1.
+        ///
+        /// The label always carries the word MODEL. That is not decoration: the
+        /// estimate behind it is an uncalibrated hand-tuned logistic (see
+        /// Agent_WinProbability), and a percentage on a scoreboard reads as
+        /// measured unless it says otherwise. This project has already published
+        /// one retraction over a number that looked measured and was not.
+        /// </summary>
+        public void SetWinProbability(float blueShare01)
+        {
+            if (_winProbBlue == null || _winProbRed == null || _winProbLabel == null) return;
+
+            float blue = Mathf.Clamp01(blueShare01);
+            int percent = Mathf.RoundToInt(blue * 100f);
+            if (percent == _shownWinPercent) return;
+            _shownWinPercent = percent;
+
+            _winProbBlue.style.width = Length.Percent(percent);
+            _winProbRed.style.width = Length.Percent(100 - percent);
+            _winProbLabel.text = $"BLUE {percent}%  ·  MODEL  ·  RED {100 - percent}%";
+        }
+
+        /// <summary>
+        /// One line of live match telemetry in the bottom band. Pass null or an
+        /// empty string to clear it. Cheap to call every frame - the string is
+        /// only assigned when it actually changed.
+        /// </summary>
+        public void SetTicker(string text)
+        {
+            if (_ticker == null) return;
+            if (text == _shownTicker) return;
+            _shownTicker = text;
+
+            bool show = !string.IsNullOrEmpty(text);
+            if (show) _ticker.text = text;
+            Agent_UIStyle.SetShown(_ticker, show);
+        }
+
+        /// <summary>
+        /// The corner status bug: which shot the director is holding and whether
+        /// the vision overlay is up. Null or empty hides it.
+        /// </summary>
+        public void SetBroadcastTag(string text)
+        {
+            if (_broadcastTag == null) return;
+            if (text == _shownBroadcastTag) return;
+            _shownBroadcastTag = text;
+
+            bool show = !string.IsNullOrEmpty(text);
+            if (show) _broadcastTag.text = text;
+            Agent_UIStyle.SetShown(_broadcastTag, show);
+        }
 
         /// <summary>Big centre callout: GOAL, the kickoff countdown, HALF TIME.</summary>
         public void Toast(string text, Color color, float seconds)
@@ -416,11 +536,11 @@ namespace PoSoccer
             score.style.marginBottom = 40;
             _endPanel.Add(score);
 
-            // Man-of-the-match card, when a match flow is present to compute one.
-            if (endPanelExtra != null)
+            // Man-of-the-match card, match telemetry table - whatever registered.
+            for (int i = 0; i < _endPanelSections.Count; i++)
             {
-                var extra = endPanelExtra();
-                if (extra != null) _endPanel.Add(extra);
+                var section = _endPanelSections[i]?.Invoke();
+                if (section != null) _endPanel.Add(section);
             }
 
             _endPanel.Add(EndButton("REMATCH", true,

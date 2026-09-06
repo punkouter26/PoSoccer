@@ -47,7 +47,7 @@ namespace PoSoccer
         {
             _env = GetComponent<Agent_EnvController>();
             var hud = FindFirstObjectByType<Agent_HUD>();
-            if (!_enableParticles || !Agent_Presentation.IsMatchScene(hud))
+            if (!_enableParticles || !Agent_Presentation.IsVisualScene(hud))
             {
                 enabled = false;
                 return;

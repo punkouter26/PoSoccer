@@ -135,6 +135,7 @@ namespace PoSoccer
             options.AddToClassList("row");
             options.style.marginTop = 18;
             options.Add(CardsButton());
+            options.Add(GalleryButton());
             options.Add(Agent_UIStyle.SoundToggleButton());
             footer.Add(options);
 
@@ -514,6 +515,58 @@ namespace PoSoccer
         }
 
         /// <summary>
+        /// Opens the checkpoint gallery: every trained brain on its own pitch,
+        /// against the same bot, side by side. Disabled with a reason when the
+        /// roster has nothing trained to exhibit, rather than loading a scene
+        /// that would show four empty pitches.
+        /// </summary>
+        Button GalleryButton()
+        {
+            var b = new Button(OpenGallery) { text = "GALLERY" };
+            b.AddToClassList("btn");
+
+            if (TrainedRoster().Length == 0)
+            {
+                b.SetEnabled(false);
+                b.tooltip = "No trained brains to exhibit yet - run update-model.ps1 first.";
+            }
+            return b;
+        }
+
+        void OpenGallery()
+        {
+            var roster = TrainedRoster();
+            if (roster.Length == 0) return;
+
+            Agent_MatchSetup.Clear();
+            Agent_MatchSetup.GalleryMode = true;
+            Agent_MatchSetup.GalleryProfiles = roster;
+            Agent_MatchSetup.GalleryOpponent = ruleBot;
+
+            // The gallery still needs a lineup for the pitch it starts from:
+            // Agent_MatchLoader runs before Agent_Gallery and would otherwise fall
+            // back to the scene's serialized defaults, which are not what was asked
+            // for. One brain a side; Agent_Gallery reassigns per pitch after that.
+            Agent_MatchSetup.Applied = true;
+            Agent_MatchSetup.BlueSquad = new[] { roster[0] };
+            Agent_MatchSetup.RedSquad = new[] { ruleBot != null ? ruleBot : roster[0] };
+
+            SceneManager.LoadScene(matchScene);
+        }
+
+        /// <summary>Roster entries that actually carry a trained brain, in menu order.</summary>
+        Reward_Settings[] TrainedRoster()
+        {
+            var all = Compact(standard, matt, kim, nick);
+            var trained = new List<Reward_Settings>(all.Length);
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i] != null && all[i].brainModel != null) trained.Add(all[i]);
+            }
+            return trained.ToArray();
+        }
+
+        /// <summary>
         /// Raises the roster card over the whole menu.
         ///
         /// It is a modal layer rather than a fourth column on the menu because
@@ -669,6 +722,9 @@ namespace PoSoccer
         void StartMatch()
         {
             if (_blue.Count == 0 || _red.Count == 0) return;
+            // Statics outlive a scene load in a player build, so a PLAY taken
+            // after a visit to the gallery would otherwise load the grid again.
+            Agent_MatchSetup.Clear();
             Agent_MatchSetup.Applied = true;
             Agent_MatchSetup.BlueSquad = _blue.ToArray();
             Agent_MatchSetup.RedSquad = _red.ToArray();

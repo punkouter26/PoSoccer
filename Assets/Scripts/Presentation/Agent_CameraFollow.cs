@@ -70,6 +70,63 @@ namespace PoSoccer
 
         public void ClearOverrideTarget() => _overrideTarget = null;
 
+        /// <summary>True while a replay (or anything else) owns the framing outright.</summary>
+        public bool HasOverrideTarget => _overrideTarget != null;
+
+        // ── Director shot channel ───────────────────────────────────────────
+        //
+        // A SHOT is weaker than an override: it asks for a focus point and a
+        // framing, and the pan clamp, smoothing and pitch bounds all still apply
+        // exactly as they do for the live ball shot. Agent_Director drives this.
+        //
+        // It is a separate channel from SetOverrideTarget on purpose. The replay
+        // must be able to take the camera away from the director mid-cut without
+        // the two of them fighting over one field, so the override simply wins:
+        // LateUpdate checks it first and the shot is ignored while it stands.
+        //
+        // A shot also expires. A director that stops ticking - disabled, gated
+        // out of a training scene, destroyed on scene change - must hand the
+        // camera back rather than freeze it on the last frame it managed to
+        // request, so a shot older than SHOT_TIMEOUT is dropped.
+
+        const float SHOT_TIMEOUT = 0.5f;
+
+        Vector2 _shotFocus;
+        float _shotOrtho;
+        float _shotSetAt = float.NegativeInfinity;
+        bool _shotCut;
+
+        /// <summary>
+        /// Ask for a framing this frame. Re-request every frame to hold it; stop
+        /// requesting (or call <see cref="ClearShot"/>) to hand the camera back
+        /// to the default ball-follow behaviour.
+        /// </summary>
+        /// <param name="focus">World point to centre on, before the pan clamp.</param>
+        /// <param name="orthoSize">Requested half-height; clamped to the pitch.</param>
+        /// <param name="cut">
+        /// True on the first frame of a hard cut: position and zoom snap instead
+        /// of easing, which is what makes a camera change read as an edit rather
+        /// than a swoop.
+        /// </param>
+        public void RequestShot(Vector2 focus, float orthoSize, bool cut = false)
+        {
+            _shotFocus = focus;
+            _shotOrtho = Mathf.Max(1f, orthoSize);
+            _shotSetAt = Time.unscaledTime;
+            if (cut) _shotCut = true;
+        }
+
+        public void ClearShot() => _shotSetAt = float.NegativeInfinity;
+
+        /// <summary>
+        /// True while a shot request is still fresh enough to be honoured. Public
+        /// because "did the shot expire" is otherwise unobservable from outside -
+        /// the visible effect is a framing that may coincidentally match whatever
+        /// the undirected rig would have chosen, which makes a test of the timeout
+        /// either flaky or vacuous.
+        /// </summary>
+        public bool ShotActive => Time.unscaledTime - _shotSetAt <= SHOT_TIMEOUT;
+
         /// <summary>Wide baseline for the current pitch and aspect - the caller's zoom reference.</summary>
         public float CurrentWideOrtho
         {
@@ -148,14 +205,22 @@ namespace PoSoccer
             // The replay override retargets the camera; everything downstream
             // (smoothing, pan clamp) is shared with the live shot.
             bool overriding = _overrideTarget != null;
+            // Override outranks a director shot outright, so a replay taking the
+            // camera mid-cut is never a tug of war. A stale shot is dropped.
+            bool directed = !overriding && ShotActive;
             Vector2 ballPos = overriding
                 ? (Vector2)_overrideTarget.position
+                : directed ? _shotFocus
                 : _env.Ball.position;
             float targetOrtho;
 
             if (overriding)
             {
                 targetOrtho = Mathf.Clamp(_overrideOrtho, wideOrtho * 0.18f, wideOrtho);
+            }
+            else if (directed)
+            {
+                targetOrtho = Mathf.Clamp(_shotOrtho, tightestOrtho, wideOrtho);
             }
             else if (_wide)
             {
@@ -197,9 +262,17 @@ namespace PoSoccer
 
             // Frame-rate independent smoothing; easing out of the wide shot is a shade
             // slower than easing into it so goal replays do not snap.
-            float zoomK = overriding ? 7f : (_wide ? 4f : 3f);
-            _cam.orthographicSize = Mathf.Lerp(_cam.orthographicSize, targetOrtho,
-                1f - Mathf.Exp(-zoomK * Time.unscaledDeltaTime));
+            // A cut is the whole point of a shot grammar: an edit reads as an
+            // edit because it is instantaneous. Consumed here so the snap lasts
+            // exactly one frame no matter how many times the director asked.
+            bool cutting = directed && _shotCut;
+            _shotCut = false;
+
+            float zoomK = overriding ? 7f : (directed ? 5f : (_wide ? 4f : 3f));
+            _cam.orthographicSize = cutting
+                ? targetOrtho
+                : Mathf.Lerp(_cam.orthographicSize, targetOrtho,
+                    1f - Mathf.Exp(-zoomK * Time.unscaledDeltaTime));
 
             // Clamp so the view never pans past the pitch. This previously computed
             // pitchHalf and then clamped against the CAMERA's half-extents instead,
@@ -214,8 +287,10 @@ namespace PoSoccer
             target.y = Mathf.Clamp(target.y, -panY, panY);
 
             Vector3 pos = _cam.transform.position;
-            float followSpeed = overriding ? _followSpeed * 2f : _followSpeed;
-            float t = 1f - Mathf.Exp(-followSpeed * Time.unscaledDeltaTime);
+            float followSpeed = overriding ? _followSpeed * 2f
+                : directed ? _followSpeed * 1.5f
+                : _followSpeed;
+            float t = cutting ? 1f : 1f - Mathf.Exp(-followSpeed * Time.unscaledDeltaTime);
             pos.x = Mathf.Lerp(pos.x, target.x, t);
             pos.y = Mathf.Lerp(pos.y, target.y, t);
             _cam.transform.position = pos;   // z untouched: never change camera depth

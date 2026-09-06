@@ -52,6 +52,23 @@ namespace PoSoccer
 
         public void ResetForEpisode() => _stagger = 0f;
 
+        /// <summary>
+        /// Fires on every player-on-player collision, with (contact point,
+        /// contact normal, summed normal impulse in N*s). The FX layer picks its
+        /// own threshold from the impulse - deliberately NOT gated on the stagger
+        /// threshold here, because a shoulder that does not rock anybody is still
+        /// worth a puff of turf, and the presentation layer is the right place to
+        /// decide that.
+        ///
+        /// Instance event, not static: SCN_Training clones 16 pitches and a static
+        /// one would cross-talk between them. Same reasoning as
+        /// Agent_Soccer.WallKicked.
+        ///
+        /// Fires even when stagger is switched off, so disabling a gameplay
+        /// response cannot silently disable the visuals for it.
+        /// </summary>
+        public event System.Action<Vector2, Vector2, float> PlayerContact;
+
         void FixedUpdate()
         {
             if (_stagger <= 0f) return;
@@ -60,7 +77,6 @@ namespace PoSoccer
 
         void OnCollisionEnter2D(Collision2D collision)
         {
-            if (!_enableStagger) return;
             // Players only. Walls and the ball do not knock anyone off balance.
             if (collision.collider.GetComponentInParent<Agent_Soccer>() == null) return;
 
@@ -69,7 +85,14 @@ namespace PoSoccer
             float impulse = 0f;
             for (int i = 0; i < collision.contactCount; i++)
                 impulse += collision.GetContact(i).normalImpulse;
-            if (impulse < _staggerThreshold) return;
+
+            if (PlayerContact != null && collision.contactCount > 0)
+            {
+                var contact = collision.GetContact(0);
+                PlayerContact(contact.point, contact.normal, impulse);
+            }
+
+            if (!_enableStagger || impulse < _staggerThreshold) return;
 
             float strength = Mathf.InverseLerp(_staggerThreshold, _staggerSaturation, impulse);
             _stagger = Mathf.Clamp01(Mathf.Max(_stagger, strength));

@@ -33,9 +33,26 @@
         <VisualElement name="top-band" class="band">
             <Label name="score" class="score" text="0  —  0" />
             <Label name="clock" class="clock" />
+
+            <!-- Win-probability strip. One bar, blue growing from the left.
+                 The caption says MODEL because it IS a model: a hand-tuned
+                 logistic over four live features, not a calibrated estimate.
+                 Agent_WinProbability's docstring carries the full argument, and
+                 the word stays on screen so nobody reads the number as measured. -->
+            <VisualElement name="winprob" class="winprob">
+                <VisualElement name="winprob-blue" class="winprob__fill winprob__fill--blue" />
+                <VisualElement name="winprob-red" class="winprob__fill winprob__fill--red" />
+            </VisualElement>
+            <Label name="winprob-label" class="winprob__label" text="WIN CHANCE · MODEL" />
         </VisualElement>
 
         <VisualElement name="bottom-band" class="band">
+
+            <!-- Live stat ticker. Agent_MatchStats rotates one measured line at a
+                 time - top speed, distance, possession, touches, grip - because a
+                 table of twelve numbers on a phone in portrait is a table nobody
+                 reads. Empty until the first line is due. -->
+            <Label name="ticker" class="ticker" />
 
             <!-- Ball-control meter: one bar split blue (left) / red (right).
                  Each half's width is proportional to that team's proximity to
@@ -69,6 +86,11 @@
     <VisualElement name="letterbox-top" class="letterbox letterbox--top" picking-mode="Ignore" />
     <VisualElement name="letterbox-bottom" class="letterbox letterbox--bottom" picking-mode="Ignore" />
     <Label name="replay-tag" class="replay-tag" text="● REPLAY" picking-mode="Ignore" />
+
+    <!-- Broadcast status: which shot the director is holding, and whether the
+         vision overlay is up. Deliberately the size of a channel bug and in the
+         same corner every broadcast puts one. -->
+    <Label name="broadcast-tag" class="broadcast-tag" picking-mode="Ignore" />
     <Label name="banner" class="banner" picking-mode="Ignore" />
     <Label name="commentary" class="commentary" picking-mode="Ignore" />
     <Label name="toast" class="toast" picking-mode="Ignore" />

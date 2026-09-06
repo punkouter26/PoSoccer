@@ -600,6 +600,35 @@ namespace PoSoccer
         /// </summary>
         public Vector4 LastRawActions { get; private set; }
 
+        /// <summary>
+        /// World-frame movement intent from the most recent decision, already
+        /// clamped to the unit power budget - the direction the policy is asking
+        /// its feet to push, not the direction the body is actually going.
+        ///
+        /// Exists for the spectator layer (<see cref="Agent_Intent"/> draws it).
+        /// It is the one signal that separates "wants the wrong thing" from
+        /// "wants the right thing and cannot get there", which is exactly the
+        /// distinction nine phases of aggregate counters could not make.
+        /// </summary>
+        public Vector2 IntentWorld { get; private set; }
+
+        /// <summary>
+        /// Foot force actually delivered this tick (N, world frame), AFTER the
+        /// traction clamp. It diverges from <see cref="IntentWorld"/> whenever
+        /// the friction circle is the binding constraint rather than the policy.
+        /// </summary>
+        public Vector2 AppliedFootForce { get; private set; }
+
+        /// <summary>
+        /// Fraction of the friction circle (mu * m * g) the feet are using, 0..1.
+        /// At 1 the player is at the limit of grip and any further demand costs
+        /// speed instead of buying it. Drives the scuff FX and the traction ring.
+        /// </summary>
+        public float TractionSaturation { get; private set; }
+
+        /// <summary>Gained, clamped turn command from the last decision (-1..1).</summary>
+        public float TurnCommand { get; private set; }
+
         public override void OnActionReceived(ActionBuffers actions)
         {
             LastRawActions = new Vector4(
@@ -627,6 +656,11 @@ namespace PoSoccer
             // exceed the straight-ahead power budget.
             Vector2 intent = Vector2.ClampMagnitude(
                 forwardAxis * move + rightAxis * lateral, 1f);
+
+            // Spectator/diagnostic taps. Two stores, no branch, no allocation -
+            // see .claude/rules/performance.md before adding anything heavier here.
+            IntentWorld = intent;
+            TurnCommand = turn;
 
             // v2: boost gating - require intent to be at least half-forward before
             // boost activates. A full strafe with boost would otherwise burn stamina
@@ -656,6 +690,11 @@ namespace PoSoccer
             float tractionBudget = _tractionMu * Body.mass * Gravity;
             Vector2 applied = Vector2.ClampMagnitude(_driveVec, tractionBudget);
             Body.AddForce(applied);
+
+            AppliedFootForce = applied;
+            TractionSaturation = tractionBudget > 0.01f
+                ? Mathf.Clamp01(applied.magnitude / tractionBudget)
+                : 0f;
 
             // Active braking: when the brain is genuinely idle the feet arrest
             // residual motion using whatever traction is left, rather than

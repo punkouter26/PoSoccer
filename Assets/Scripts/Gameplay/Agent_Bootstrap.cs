@@ -41,10 +41,18 @@ namespace PoSoccer
             Time.fixedDeltaTime = _fixedTimestep;
             Application.targetFrameRate = _targetFrameRate;
 
+            bool gallery = Agent_Presentation.IsGalleryScene();
+
             // CameraFollow needs the same Bootstrap lifetime as the rest of the
             // runtime, so it gets auto-attached here. It then self-positions in
             // LateUpdate, so the scene never has to carry a serialized reference.
-            if (Camera.main != null && Camera.main.GetComponent<Agent_CameraFollow>() == null)
+            //
+            // Not in the gallery: there is no ball to follow when there are six,
+            // and Agent_Gallery frames the whole grid once instead. Attaching it
+            // anyway would mean two components writing the camera transform in the
+            // same LateUpdate, which resolves to whichever ran last.
+            if (!gallery && Camera.main != null
+                && Camera.main.GetComponent<Agent_CameraFollow>() == null)
             {
                 Camera.main.gameObject.AddComponent<Agent_CameraFollow>();
             }
@@ -62,9 +70,19 @@ namespace PoSoccer
             if (GetComponent<Agent_Telemetry>() == null) gameObject.AddComponent<Agent_Telemetry>();
 
             var hud = FindFirstObjectByType<Agent_HUD>();
-            if (Agent_Presentation.IsMatchScene(hud))
+            var env = FindFirstObjectByType<Agent_EnvController>();
+
+            if (gallery)
             {
-                Agent_Presentation.Install(FindFirstObjectByType<Agent_EnvController>());
+                // Visual layer only, installed BEFORE Agent_Gallery clones the
+                // pitch so every clone inherits the same set. Nothing here owns
+                // the clock, the camera or the scoreboard - six copies of any of
+                // those would fight over one of each.
+                Agent_Presentation.InstallGallery(env);
+            }
+            else if (Agent_Presentation.IsMatchScene(hud))
+            {
+                Agent_Presentation.Install(env);
             }
         }
     }

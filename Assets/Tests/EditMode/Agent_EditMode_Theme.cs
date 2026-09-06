@@ -95,7 +95,9 @@ namespace PoSoccer.Tests
         {
             string uxml = ReadOrFail(HUD_PATH);
 
-            // Exactly the set queried in Agent_HUD.BuildFromTemplate.
+            // Exactly the set queried in Agent_HUD.BuildFromTemplate. Every one of
+            // these is in the null check that disables the HUD outright, so a name
+            // missing here is a blank screen in a match, not a missing widget.
             string[] required =
             {
                 "safe", "score", "clock",
@@ -104,6 +106,10 @@ namespace PoSoccer.Tests
                 "controls",
                 "toast", "commentary", "banner", "replay-tag",
                 "letterbox-top", "letterbox-bottom",
+                // Broadcast telemetry lanes: win-probability strip, stat ticker,
+                // and the director/vision status bug.
+                "winprob", "winprob-blue", "winprob-red", "winprob-label",
+                "ticker", "broadcast-tag",
             };
 
             foreach (string name in required)
@@ -112,6 +118,36 @@ namespace PoSoccer.Tests
                     $"{HUD_PATH} has no element named \"{name}\", which " +
                     "Agent_HUD.BuildFromTemplate resolves by name. Renaming it there " +
                     "without renaming it here disables the whole HUD at runtime.");
+            }
+        }
+
+        /// <summary>
+        /// Every class the template applies must be defined in the stylesheet.
+        ///
+        /// The reverse of the test above, and it catches the other half of the
+        /// same mistake: an element can exist, bind cleanly, drive real data and
+        /// still be invisible because its class was never written. UI Toolkit
+        /// reports nothing for an unknown class - it is simply not styled - and
+        /// for an absolutely-positioned overlay lane "not styled" means "at 0,0
+        /// with no opacity rule", which reads as the feature not working at all
+        /// rather than as a missing rule.
+        /// </summary>
+        [Test]
+        public void EveryClassTheTemplateUses_ExistsInTheStylesheet()
+        {
+            string uxml = ReadOrFail(HUD_PATH);
+            string uss = StripComments(ReadOrFail(THEME_PATH));
+
+            foreach (Match attribute in Regex.Matches(uxml, @"class=""([^""]+)"""))
+            {
+                foreach (string name in attribute.Groups[1].Value.Split(' '))
+                {
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    Assert.IsTrue(Regex.IsMatch(uss, $@"\.{Regex.Escape(name)}\b"),
+                        $"{HUD_PATH} applies class \"{name}\", which {THEME_PATH} does " +
+                        "not define. UI Toolkit reports nothing for an unknown class; " +
+                        "the element just renders unstyled.");
+                }
             }
         }
 

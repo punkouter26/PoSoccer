@@ -104,7 +104,7 @@ namespace PoSoccer
             }
 
             _hud.DeferEndPanel = true;
-            _hud.endPanelExtra = BuildManOfTheMatchCard;
+            _hud.AddEndPanelSection(BuildManOfTheMatchCard);
 
             _env.EpisodeEnded += OnEpisodeEnded;
             _env.BallTouched += OnBallTouched;
@@ -125,7 +125,7 @@ namespace PoSoccer
                 _env.EpisodeEnded -= OnEpisodeEnded;
                 _env.BallTouched -= OnBallTouched;
             }
-            if (_hud != null) _hud.endPanelExtra = null;
+            if (_hud != null) _hud.RemoveEndPanelSection(BuildManOfTheMatchCard);
             _cts?.Cancel();
             _cts?.Dispose();
             _cts = null;
