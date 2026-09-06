@@ -188,7 +188,12 @@ namespace PoSoccer
             go.transform.SetParent(_env.transform, false);
 
             var renderer = go.AddComponent<SpriteRenderer>();
-            renderer.sprite = Agent_Art.Square(1f);   // scaled to size below
+            // FullRect, NOT Square: the net mask is a uv-space effect, and an
+            // atlased sprite's uv spans its slot on the page rather than 0..1.
+            // Measured on the atlased version: uv in [0.0039, 0.0117], which
+            // collapsed the whole mask to a constant and drew a solid board.
+            // See Agent_Art.FullRect.
+            renderer.sprite = Agent_Art.FullRect(1f);   // scaled to size below
             renderer.sharedMaterial = material;
             renderer.color = tint;
             renderer.sortingOrder = _netSortingOrder;

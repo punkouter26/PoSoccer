@@ -123,6 +123,13 @@ namespace PoSoccer
 
             _fpsLabel = CornerLabel(string.Empty, Agent_UIStyle.TextMuted, Agent_UIStyle.FontM);
             _fpsLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+            // Pushed clear of the scoreboard. This row and Agent_HUD's top band
+            // are both anchored to the top of the safe area and both put content
+            // dead centre, so the FPS readout was drawing straight through the
+            // score - "1 - 5" and "2 FPS" occupying the same pixels, in every
+            // screenshot of every match. 168 clears the band: score (--font-l 64)
+            // + clock (--font-s 38) + the band's 2x24 padding, plus a gap.
+            _fpsLabel.style.marginTop = 168;
             _fpsLabel.style.display = _showFps ? DisplayStyle.Flex : DisplayStyle.None;
             top.Add(_fpsLabel);
 

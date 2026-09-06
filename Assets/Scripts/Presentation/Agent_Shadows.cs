@@ -35,14 +35,24 @@ namespace PoSoccer
     [DefaultExecutionOrder(60)]
     public sealed class Agent_Shadows : MonoBehaviour
     {
+        // 2026-09-05: these were first set by eye and produced shadows that were
+        // present, correct and invisible. Measured live: body 0.800 wide, shadow
+        // 0.920, offset only (-0.06, -0.28). The shadow therefore protruded about
+        // 0.34 past the torso - and that outer band is the softest part of the
+        // blob, where alpha is roughly 0.015. Nothing to see.
+        //
+        // The offset now clears the body by a visible margin and the blob is
+        // wider than the torso rather than barely larger, so what shows is the
+        // dark core of the falloff instead of its faintest rim.
         [Tooltip("Shadow width as a multiple of the body it sits under.")]
-        [SerializeField] private float _bodyScale = 1.15f;
+        [SerializeField] private float _bodyScale = 1.35f;
         [Tooltip("Darkness of a shadow directly under a stationary body.")]
         [Range(0f, 1f)] [SerializeField] private float _opacity = 0.42f;
         [Tooltip("How far a shadow is pushed away from the centre of the pitch, in metres at the touchline.")]
         [SerializeField] private float _spread = 0.34f;
-        [Tooltip("Constant offset so a body on the centre spot still casts something.")]
-        [SerializeField] private Vector2 _bias = new(0.06f, -0.16f);
+        [Tooltip("Constant offset so a body on the centre spot still casts something. " +
+                 "Must exceed the body's half-extent or the shadow hides behind it.")]
+        [SerializeField] private Vector2 _bias = new(0.10f, -0.42f);
         [Tooltip("Fraction of opacity still present at full sprint - a moving body lifts off the turf.")]
         [Range(0f, 1f)] [SerializeField] private float _motionFade = 0.65f;
         [Tooltip("Speed (m/s) treated as full sprint for the motion fade.")]
@@ -140,11 +150,19 @@ namespace PoSoccer
         /// World-space width of whatever sprite the caster draws, so a heavier
         /// physique (Reward_Settings.bodyScale) gets a bigger shadow without this
         /// component knowing anything about physiques.
+        ///
+        /// NOT renderer.bounds.size.x, which is what this used to be. Renderer
+        /// bounds are a world-axis-aligned box, so for a body that ROTATES - and
+        /// these turn through the full circle - it reports the diagonal, not the
+        /// width. Measured on a 0.800-wide agent mid-turn: 1.118, i.e. 40% too
+        /// big, and it would have breathed in and out as the player turned.
+        /// The sprite's own bounds times lossyScale is rotation-independent.
         /// </summary>
         static float BodyWidth(Transform source)
         {
             var renderer = source.GetComponentInChildren<SpriteRenderer>();
-            return renderer != null ? renderer.bounds.size.x : 1f;
+            if (renderer == null || renderer.sprite == null) return 1f;
+            return renderer.sprite.bounds.size.x * Mathf.Abs(renderer.transform.lossyScale.x);
         }
 
         /// <summary>

@@ -91,6 +91,59 @@ namespace PoSoccer
             return GetSprite($"blob:{softness:0.##}", worldDiameter, 64, WriteBlob, softness);
         }
 
+        /// <summary>
+        /// A white square on its OWN texture, deliberately NOT on the shared atlas
+        /// page - the single documented exception to everything this class exists
+        /// to do.
+        ///
+        /// WHY, and it cost a rendered frame to find out. An atlased sprite's UVs
+        /// span its slot on the page, not 0..1: measured live, the 4x4 square slot
+        /// gives u,v in [0.0039, 0.0117]. That is fine for sampling a texture and
+        /// fatal for any shader that treats uv as a position across the quad.
+        /// PoSoccer/SpriteLitFX does exactly that - stripes, sheen, rim and the
+        /// goal-net mask are all uv-space procedural effects - so the goal net
+        /// drawn on an atlased quad collapsed to a constant and rendered as a
+        /// solid board.
+        ///
+        /// So: anything that only needs PIXELS goes on the atlas; anything whose
+        /// SHADER reads uv as a coordinate needs its own texture and must come
+        /// from here. One 4x4 texture shared by every such quad is a single extra
+        /// draw call, which is the correct price for the effect working at all.
+        /// </summary>
+        public static Sprite FullRect(float worldSize)
+        {
+            string key = $"fullrect@{worldSize:0.###}";
+            if (Sprites.TryGetValue(key, out var cached) && cached != null) return cached;
+
+            if (_fullRectTexture == null)
+            {
+                const int RES = 4;
+                _fullRectTexture = new Texture2D(RES, RES, TextureFormat.RGBA32, false)
+                {
+                    name = "PoSoccer_FullRectWhite",
+                    filterMode = FilterMode.Bilinear,
+                    wrapMode = TextureWrapMode.Clamp,
+                    hideFlags = HideFlags.HideAndDontSave,
+                };
+                var pixels = new Color32[RES * RES];
+                for (int i = 0; i < pixels.Length; i++) pixels[i] = new Color32(255, 255, 255, 255);
+                _fullRectTexture.SetPixels32(pixels);
+                _fullRectTexture.Apply(false);
+            }
+
+            var sprite = Sprite.Create(
+                _fullRectTexture,
+                new Rect(0, 0, _fullRectTexture.width, _fullRectTexture.height),
+                new Vector2(0.5f, 0.5f),
+                _fullRectTexture.width / Mathf.Max(0.0001f, worldSize), 0, SpriteMeshType.FullRect);
+            sprite.name = key;
+            sprite.hideFlags = HideFlags.HideAndDontSave;
+            Sprites[key] = sprite;
+            return sprite;
+        }
+
+        static Texture2D _fullRectTexture;
+
         // -- Cache -----------------------------------------------------------
 
         static Sprite GetSprite(string shapeKey, float worldSize, int resolution,

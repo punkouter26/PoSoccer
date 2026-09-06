@@ -31,12 +31,24 @@ namespace PoSoccer
     [DefaultExecutionOrder(55)]
     public sealed class Agent_Limbs : MonoBehaviour
     {
+        // 2026-09-05: the first version of these numbers produced legs that
+        // animated correctly and were INVISIBLE, every frame, in every match.
+        // Measured live: body world half-width 0.400, leg centre at world x 0.120
+        // with half-width 0.080, so the leg's outer edge reached 0.200 - entirely
+        // inside the torso silhouette - while sorting BEHIND it. The tell is in
+        // Agent_Limbs' own diagnostic: visibleOutsideBody = False.
+        //
+        // Two changes fix it and both are needed. The hips are wide enough that
+        // the legs straddle the body edge, and they now draw IN FRONT of the
+        // torso rather than behind it - which is also just correct for a top-down
+        // camera, where you look down ON the limbs.
         [Tooltip("Leg length as a fraction of body width.")]
-        [Range(0.1f, 1f)] [SerializeField] private float _legLength = 0.46f;
+        [Range(0.1f, 1.5f)] [SerializeField] private float _legLength = 0.62f;
         [Tooltip("Leg thickness as a fraction of body width.")]
-        [Range(0.05f, 0.5f)] [SerializeField] private float _legWidth = 0.2f;
-        [Tooltip("Sideways separation of the two legs, as a fraction of body width.")]
-        [Range(0f, 1f)] [SerializeField] private float _hipWidth = 0.3f;
+        [Range(0.05f, 0.5f)] [SerializeField] private float _legWidth = 0.22f;
+        [Tooltip("Sideways separation of the two legs, as a fraction of body width. " +
+                 "Must be large enough that the legs clear the torso silhouette.")]
+        [Range(0f, 1.5f)] [SerializeField] private float _hipWidth = 0.95f;
         [Tooltip("How far a leg swings fore and aft at full stride, as a fraction of body width.")]
         [Range(0f, 1f)] [SerializeField] private float _stride = 0.3f;
         [Tooltip("Forward speed (m/s) at which the stride reaches full amplitude.")]
@@ -134,8 +146,11 @@ namespace PoSoccer
             renderer.sharedMaterial = _material;
             renderer.color = tint;
             renderer.sortingLayerName = body.sortingLayerName;
-            // Above the team frame (body - 2), below the torso.
-            renderer.sortingOrder = body.sortingOrder - 1;
+            // IN FRONT of the torso. Behind it (body - 1) is where these started
+            // and it made them permanently invisible - see the note on _hipWidth.
+            // Drawing limbs over the body is also the physically right answer for
+            // a top-down view: you are looking down at them, not through the torso.
+            renderer.sortingOrder = body.sortingOrder + 1;
             return go.transform;
         }
 
