@@ -22,14 +22,15 @@ namespace PoSoccer
     /// WHAT IT SHEDS, IN ORDER, AND WHY THAT ORDER. Cheapest thing to lose
     /// first, measured by cost-per-pixel rather than by taste:
     ///
-    ///   1. IMPACT OVERLAYS. A full-view transparent quad and an expanding ring
-    ///      on every goal. Brief, but pure overdraw over the whole screen, and
-    ///      the least load-bearing thing drawn.
-    ///   2. PITCH WEAR. One full-pitch transparent quad of pure overdraw, plus a
-    ///      texture upload a few times a second.
-    ///   3. BLOOM. A multi-pass post effect. Kept for last of the three because
-    ///      losing it changes the LOOK of the game rather than a layer on top of
-    ///      it, and a dim game reads as broken where a sharp one does not.
+    ///   1. PITCH WEAR. One full-pitch transparent quad of CONTINUOUS overdraw,
+    ///      plus a texture upload a few times a second. Paid every frame for
+    ///      something nobody watches directly.
+    ///   2. BLOOM. A multi-pass post effect, also paid every frame.
+    ///   3. IMPACT OVERLAYS. The goal flash and shockwave - LAST, because they
+    ///      cost half a second at the one moment the whole match builds towards.
+    ///      They were first until a probe caught a real goal being celebrated
+    ///      with nothing at all on a machine that had quietly walked to the
+    ///      bottom tier. Continuous cost is spent before momentary meaning.
     ///
     /// It is deliberately asymmetric and slow: three consecutive bad windows to
     /// step down, twelve consecutive good ones to step back up. A controller that
@@ -39,8 +40,12 @@ namespace PoSoccer
     [DefaultExecutionOrder(80)]
     public sealed class Agent_Quality : MonoBehaviour
     {
-        [Tooltip("Frame time (ms) the p95 must stay under. 16.7 = 60 fps.")]
+        [Tooltip("Fallback frame budget (ms) when the app sets no target frame rate. " +
+                 "16.7 = 60 fps.")]
         [SerializeField] private float _budgetMs = 16.7f;
+        [Tooltip("How far past the budget a window must sit before it counts as a breach. " +
+                 "1.25 = 20.9 ms against a 60 fps target.")]
+        [Range(1f, 2f)] [SerializeField] private float _breachMargin = 1.25f;
         [Tooltip("Frames per judged window. At 60 fps, 90 frames is ~1.5 s.")]
         [SerializeField] private int _window = 90;
         [Tooltip("Consecutive over-budget windows before dropping a tier.")]
@@ -54,6 +59,7 @@ namespace PoSoccer
         [SerializeField] private bool _adaptive = true;
 
         float[] _samples;
+        float _effectiveBudgetMs = 16.7f;
         int _count;
         int _badWindows, _goodWindows;
 
@@ -84,6 +90,15 @@ namespace PoSoccer
             }
 
             _samples = new float[Mathf.Max(30, _window)];
+
+            // The budget is whatever the app ASKED FOR, not a constant. Both the
+            // menu and Agent_Bootstrap set Application.targetFrameRate, and a
+            // controller grading a 30 fps target against a 60 fps budget would
+            // shed every effect on a device that is performing exactly as
+            // intended.
+            _effectiveBudgetMs = Application.targetFrameRate > 0
+                ? 1000f / Application.targetFrameRate
+                : _budgetMs;
             _screenFX = FindFirstObjectByType<Agent_ScreenFX>();
             _wear = FindFirstObjectByType<Agent_Wear>();
             _stadium = Agent_Stadium.Instance;
@@ -114,13 +129,17 @@ namespace PoSoccer
             float p95 = Percentile95();
             LastP95 = p95;
 
-            if (p95 > _budgetMs)
+            // A breach has to CLEAR the margin. Ordinary jitter around the budget
+            // is not trouble, and treating it as trouble is how the editor - which
+            // never holds 16.7 ms - reached the bottom tier inside a minute and
+            // celebrated a real goal with nothing at all. Measured, then fixed.
+            if (p95 > _effectiveBudgetMs * _breachMargin)
             {
                 Drops++;
                 _goodWindows = 0;
                 _badWindows++;
             }
-            else if (p95 < _budgetMs * _recoverMargin)
+            else if (p95 < _effectiveBudgetMs * _recoverMargin)
             {
                 _badWindows = 0;
                 _goodWindows++;
@@ -180,9 +199,20 @@ namespace PoSoccer
 
         void Apply()
         {
-            if (_screenFX != null) _screenFX.AllowContinuous = Tier < 1;
-            if (_wear != null) _wear.Visible = Tier < 2;
-            if (_stadium != null) _stadium.SetBloomEnabled(Tier < 3);
+            // ORDER CORRECTED 2026-09-06 AFTER WATCHING IT RUN, and the correction
+            // is the whole reason to have watched. The goal flash and shockwave
+            // used to be shed FIRST. A probe logged during a live match read
+            // `winner=Red allow=False tier=3` - a real goal, celebrated with
+            // nothing, because the editor never holds 16.7 ms and the controller
+            // had walked to the bottom tier inside a minute.
+            //
+            // Continuous cost is spent before momentary meaning: the wear quad is
+            // paid every frame, bloom is paid every frame, and the goal overlays
+            // are paid for half a second at the one moment the whole match is
+            // building towards. So they go last.
+            if (_wear != null) _wear.Visible = Tier < 1;
+            if (_stadium != null) _stadium.SetBloomEnabled(Tier < 2);
+            if (_screenFX != null) _screenFX.AllowContinuous = Tier < 3;
         }
 
         /// <summary>

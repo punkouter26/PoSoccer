@@ -71,10 +71,9 @@ CSV. Nothing responded. `Agent_Quality` closes the loop, measuring its own p95
 (the overlay's recorders only exist while it is open, and it is closed by
 default) and shedding in a cost-per-pixel order:
 
-1. **impact overlays** — a full-view quad and a ring, pure overdraw, and the
-   least load-bearing thing on screen;
-2. **pitch wear** — one full-pitch transparent quad of pure overdraw;
-3. **bloom** — multi-pass post; last, because losing it changes the *look*.
+1. **pitch wear** — one full-pitch transparent quad of continuous overdraw;
+2. **bloom** — multi-pass post, also paid every frame;
+3. **impact overlays** — the goal flash and ring, LAST (see below).
 
 Three consecutive bad windows to drop a tier, twelve good ones to recover. The
 asymmetry is deliberate: a controller that recovers as eagerly as it degrades
@@ -134,6 +133,30 @@ in the scoring team's colour and an expanding shockwave ring, both created on
 demand and disabled between goals. **Lost: refraction, the speed smear, and the
 tilt-shift.**
 
+
+### The order came from watching it, not from reasoning about it
+
+The first version shed the goal effects **first**. A probe logged during a live
+match read:
+
+```
+[ScreenFXProbe] episodeEnded winner=Red allow=False tier=3
+```
+
+A real goal, celebrated with nothing — because the editor never holds 16.7 ms,
+so the controller had walked to the bottom tier inside a minute and switched off
+the single moment the whole match builds towards. Two fixes came out of it:
+
+- **the ladder is now continuous-cost-first**: wear, then bloom, then the goal
+  overlays last;
+- **a breach must clear a margin** (`p95 > budget * 1.25`) and the budget is
+  derived from `Application.targetFrameRate` rather than hardcoded, so a device
+  deliberately running at 30 fps is not graded against 60.
+
+This is the entire argument for playing the thing rather than trusting a passing
+test suite: every test passed before this was found, because every test forced
+the tier by hand and never asked what tier a real machine would actually reach.
+
 ## What is NOT switched on
 
 **Kit patterns ship as `KitPattern.None` on every profile.** UNITY_RULES reserves
@@ -148,9 +171,9 @@ session dresses the roster without recording an exemption.
 
 | Thing | Cost | Gated by |
 |---|---|---|
-| Impact overlays | two transparent quads, only while a goal plays | disabled between goals; `Agent_Quality` tier 1 |
-| Pitch wear | one transparent quad + a 128² upload at 8 Hz | `Agent_Quality` tier 2 |
-| Bloom | multi-pass post | `Agent_Quality` tier 3 |
+| Pitch wear | one transparent quad + a 128² upload at 8 Hz | `Agent_Quality` tier 1 |
+| Bloom | multi-pass post | `Agent_Quality` tier 2 |
+| Impact overlays | two transparent quads, only while a goal plays | disabled between goals; `Agent_Quality` tier 3 |
 | Music stems | two extra AudioSources | silent at zero volume |
 | Kits | a few ALU, no new draw call | one material per distinct (team, kit) |
 | Fonts | ~1 MB of TTF | — |

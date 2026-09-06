@@ -190,11 +190,19 @@ namespace PoSoccer.Tests
             Assert.IsTrue(wear.Visible, "Tier 0 must keep everything on.");
 
             quality.SetTier(1);
-            Assert.IsFalse(screenFX.AllowContinuous, "Tier 1 must shed the impact overlays first.");
-            Assert.IsTrue(wear.Visible, "Tier 1 must NOT shed the pitch wear yet.");
+            Assert.IsFalse(wear.Visible, "Tier 1 must shed the continuous pitch wear first.");
+            Assert.IsTrue(screenFX.AllowContinuous,
+                "Tier 1 must NOT shed the goal effects.");
 
             quality.SetTier(2);
-            Assert.IsFalse(wear.Visible, "Tier 2 must shed the pitch wear.");
+            Assert.IsTrue(screenFX.AllowContinuous,
+                "Tier 2 must still keep the goal effects - they are brief, they carry the " +
+                "most important moment in the match, and a machine that cannot hold the " +
+                "budget walks down these tiers within a minute. Measured: a probe caught " +
+                "a real goal celebrated with nothing when these were shed first.");
+
+            quality.SetTier(3);
+            Assert.IsFalse(screenFX.AllowContinuous, "Tier 3 must shed the impact overlays.");
 
             quality.SetTier(0);
             Assert.IsTrue(screenFX.AllowContinuous, "Recovery must restore what it shed.");
