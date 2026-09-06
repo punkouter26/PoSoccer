@@ -16,14 +16,15 @@ namespace PoSoccer
     /// </summary>
     public static class Agent_SoccerView
     {
-        private static readonly Color BlueTeamColor = new Color(0.2f, 0.5f, 1f);
-        private static readonly Color RedTeamColor = new Color(1f, 0.25f, 0.2f);
-
-        /// <summary>Team tint used by the eye and the frame outline.</summary>
-        public static Color TeamColor(Agent_Soccer.Team team)
-        {
-            return team == Agent_Soccer.Team.Blue ? BlueTeamColor : RedTeamColor;
-        }
+        /// <summary>
+        /// Team tint used by the eye and the frame outline.
+        ///
+        /// The two colours used to live here as static readonly fields. They now
+        /// come from Agent_Palette, which is also what the HUD and the stylesheet
+        /// read, so the colour-vision modes change the pitch and the UI together
+        /// instead of only the half that happened to be wired.
+        /// </summary>
+        public static Color TeamColor(Agent_Soccer.Team team) => Agent_Palette.Team(team);
 
         /// <summary>
         /// Applies every cosmetic element to <paramref name="root"/>. Returns the

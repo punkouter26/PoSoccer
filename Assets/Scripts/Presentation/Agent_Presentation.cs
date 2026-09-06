@@ -86,6 +86,18 @@ namespace PoSoccer
             if (go.GetComponent<Agent_WinProbability>() == null) go.AddComponent<Agent_WinProbability>();
             if (go.GetComponent<Agent_Director>() == null) go.AddComponent<Agent_Director>();
             if (go.GetComponent<Agent_MatchStats>() == null) go.AddComponent<Agent_MatchStats>();
+
+            // Screen-space and device-wide owners. All three are singular by
+            // nature - one framebuffer, one vibrator, one frame budget - so they
+            // belong here rather than in InstallVisuals, whatever the gallery
+            // might otherwise want.
+            //
+            // Agent_Quality is added LAST and carries execution order 80 so its
+            // Start runs after the two components it steers have decided whether
+            // they are alive at all.
+            if (go.GetComponent<Agent_ScreenFX>() == null) go.AddComponent<Agent_ScreenFX>();
+            if (go.GetComponent<Agent_Haptics>() == null) go.AddComponent<Agent_Haptics>();
+            if (go.GetComponent<Agent_Quality>() == null) go.AddComponent<Agent_Quality>();
         }
 
         /// <summary>
@@ -110,6 +122,9 @@ namespace PoSoccer
             if (go.GetComponent<Agent_ParticleFX>() == null) go.AddComponent<Agent_ParticleFX>();
             if (go.GetComponent<Agent_ImpactFX>() == null) go.AddComponent<Agent_ImpactFX>();
             if (go.GetComponent<Agent_Shadows>() == null) go.AddComponent<Agent_Shadows>();
+            // Per-pitch: the wear texture records THIS pitch's match, so the
+            // gallery's clones each keep their own.
+            if (go.GetComponent<Agent_Wear>() == null) go.AddComponent<Agent_Wear>();
             if (go.GetComponent<Agent_Limbs>() == null) go.AddComponent<Agent_Limbs>();
             if (go.GetComponent<Agent_Intent>() == null) go.AddComponent<Agent_Intent>();
             if (go.GetComponent<Agent_VisionView>() == null) go.AddComponent<Agent_VisionView>();

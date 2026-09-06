@@ -86,6 +86,32 @@ namespace PoSoccer
         [Tooltip("Metallic ring for a contact near the goal centre.")]
         public AudioClip post;
 
+        [Header("Adaptive music stems (auto-loaded from Resources/Audio when empty)")]
+        // THREE STEMS, ONE PIECE. `music` above is a single loop played at a
+        // fixed level, which means the soundtrack says exactly the same thing
+        // during a goalless midfield stalemate as it does with the ball rolling
+        // toward an open net. These layers are generated together by
+        // Editor_MakeAudioStems - same tempo, same key, same length, same fade
+        // points - so any one of them can be faded in at any instant and land in
+        // time. When they are missing the old single loop plays exactly as
+        // before, which is what makes this safe to ship without re-recording.
+        [Tooltip("Always-on pad. Replaces `music` when present.")]
+        public AudioClip musicBed;
+        [Tooltip("Arpeggio layer, faded in by ball pressure.")]
+        public AudioClip musicTension;
+        [Tooltip("Drums and bass, faded in by a real scoring threat.")]
+        public AudioClip musicDrive;
+
+        [Header("Music dynamics")]
+        [Tooltip("Pressure (0..1) at which the tension layer is fully up.")]
+        [Range(0.1f, 1f)] [SerializeField] private float _tensionFullAt = 0.7f;
+        [Tooltip("Threat (0..1, from Agent_WinProbability) at which the drive layer is fully up.")]
+        [Range(0.1f, 1f)] [SerializeField] private float _driveFullAt = 0.75f;
+        [Tooltip("Loudest the tension layer gets, relative to the music bus.")]
+        [Range(0f, 1f)] [SerializeField] private float _tensionMax = 0.8f;
+        [Tooltip("Loudest the drive layer gets, relative to the music bus.")]
+        [Range(0f, 1f)] [SerializeField] private float _driveMax = 0.9f;
+
         [Header("Crowd dynamics")]
         [Range(0f, 1f)] public float crowdBase = 0.16f;
         [Range(0f, 1f)] public float crowdSwellMax = 0.45f;
@@ -137,6 +163,12 @@ namespace PoSoccer
         Agent_EnvController _env;
         AudioSource _crowd, _music, _swell;
         AudioLowPassFilter _crowdFilter, _musicFilter, _swellFilter;
+        // The two upper music layers. They share the music bus's filter path by
+        // sitting on their own objects with their own filters, for the same
+        // reason the crowd swell does - see BuildMixingDesk.
+        AudioSource _tension, _drive;
+        AudioLowPassFilter _tensionFilter, _driveFilter;
+        Agent_WinProbability _winProbability;
         AudioSource[] _pool;
         AudioSource[] _broadcast;
         int _nextVoice;
@@ -202,7 +234,27 @@ namespace PoSoccer
             BuildMixingDesk();
 
             if (crowdLoop != null) { _crowd.clip = crowdLoop; _crowd.volume = 0f; _crowd.Play(); }
-            if (music != null) { _music.clip = music; _music.volume = 0f; _music.Play(); }
+            // The bed wins over the legacy single loop when it exists, so a
+            // project that has run Editor_MakeAudioStems gets the adaptive score
+            // and one that has not keeps the old one. Both play through the same
+            // source, so ducking, the frozen-clock low-pass and the mute all
+            // apply either way.
+            AudioClip bedClip = musicBed != null ? musicBed : music;
+            if (bedClip != null) { _music.clip = bedClip; _music.volume = 0f; _music.Play(); }
+
+            // AudioSettings.dspTime scheduling would be the textbook way to start
+            // three stems in lockstep. It is not needed here and would be worse:
+            // Play() on the same frame starts all three on the same DSP buffer,
+            // and a scheduled start that misses its deadline (a domain reload, a
+            // first-frame hitch) silently drops the layer instead of starting it
+            // late. Identical length plus identical tempo keeps them aligned for
+            // as long as they run.
+            if (musicTension != null && _tension != null)
+            { _tension.clip = musicTension; _tension.volume = 0f; _tension.Play(); }
+            if (musicDrive != null && _drive != null)
+            { _drive.clip = musicDrive; _drive.volume = 0f; _drive.Play(); }
+
+            _winProbability = GetComponent<Agent_WinProbability>();
             if (crowdSwell != null) { _swell.clip = crowdSwell; _swell.volume = 0f; _swell.Play(); }
             if (ballRoll != null && _roll != null) { _roll.clip = ballRoll; _roll.volume = 0f; _roll.Play(); }
             if (breath != null && _breath != null) { _breath.clip = breath; _breath.volume = 0f; _breath.Play(); }
@@ -219,6 +271,9 @@ namespace PoSoccer
         void LoadMissingClips()
         {
             if (music == null) music = Resources.Load<AudioClip>("Audio/music");
+            if (musicBed == null) musicBed = Resources.Load<AudioClip>("Audio/music_bed");
+            if (musicTension == null) musicTension = Resources.Load<AudioClip>("Audio/music_tension");
+            if (musicDrive == null) musicDrive = Resources.Load<AudioClip>("Audio/music_drive");
             if (crowdSwell == null) crowdSwell = Resources.Load<AudioClip>("Audio/crowd_swell");
             if (crowdRoar == null) crowdRoar = Resources.Load<AudioClip>("Audio/crowd_roar");
             if (crowdBoo == null) crowdBoo = Resources.Load<AudioClip>("Audio/crowd_boo");
@@ -243,6 +298,8 @@ namespace PoSoccer
             _crowd = NewBus("Audio_Crowd", out _crowdFilter);
             _music = NewBus("Audio_Music", out _musicFilter);
             _swell = NewBus("Audio_CrowdSwell", out _swellFilter);
+            _tension = NewBus("Audio_MusicTension", out _tensionFilter);
+            _drive = NewBus("Audio_MusicDrive", out _driveFilter);
 
             var poolRoot = new GameObject("Audio_Voices");
             poolRoot.transform.SetParent(transform, false);
@@ -508,7 +565,7 @@ namespace PoSoccer
 
             float pressure = Pressure();
             UpdateCrowd(dt, pressure);
-            UpdateMusic(dt);
+            UpdateMusic(dt, pressure);
             UpdateFilters(dt);
             UpdateRoll(dt);
             UpdateBreath(dt);
@@ -619,11 +676,55 @@ namespace PoSoccer
             _breath.volume = Mathf.MoveTowards(_breath.volume, target, dt * 1.2f);
         }
 
-        void UpdateMusic(float dt)
+        /// <summary>
+        /// The score follows the match instead of running underneath it.
+        ///
+        /// Two independent signals, deliberately not one:
+        ///  - PRESSURE (where the ball is) drives the tension arpeggio. It is
+        ///    physics, it moves constantly, and it is right for a layer that
+        ///    should breathe with play working into a final third.
+        ///  - THREAT (Agent_WinProbability) drives the drums. It already folds in
+        ///    the lead, the field position, the press and the momentum, and it is
+        ///    smoothed - which is what a layer with a groove needs, because drums
+        ///    switching on and off with the ball crossing an arbitrary line is
+        ///    the single most obvious way for adaptive music to sound automated.
+        ///
+        /// Rise fast, fall slow, on both layers. Music that arrives late has
+        /// missed the moment; music that leaves the instant a chance breaks down
+        /// makes every attack feel like a false alarm.
+        /// </summary>
+        void UpdateMusic(float dt, float pressure)
         {
             if (_music == null || _music.clip == null) return;
-            float target = Muted ? 0f : _musicVolume * _masterVolume * (1f - _duck * _duckAmount);
-            _music.volume = Mathf.MoveTowards(_music.volume, target, dt * 0.8f);
+
+            float bus = _musicVolume * _masterVolume * (1f - _duck * _duckAmount);
+            float bedTarget = Muted ? 0f : bus;
+            _music.volume = Mathf.MoveTowards(_music.volume, bedTarget, dt * 0.8f);
+
+            // Agent_WinProbability is installed by Agent_Presentation, whose
+            // Install runs from the env controller's Start - so it may not exist
+            // yet when this component's Start runs. Resolved lazily rather than
+            // ordered, because an execution-order dependency between two
+            // components on one GameObject is exactly the kind of coupling
+            // Agent_Surfaces' docstring records getting wrong once already.
+            if (_winProbability == null) _winProbability = GetComponent<Agent_WinProbability>();
+
+            if (_tension != null && _tension.clip != null)
+            {
+                float blend = Mathf.Clamp01(pressure / Mathf.Max(0.01f, _tensionFullAt));
+                float target = Muted ? 0f : blend * blend * _tensionMax * bus;
+                _tension.volume = Mathf.MoveTowards(_tension.volume, target,
+                    dt * (target > _tension.volume ? 1.6f : 0.5f));
+            }
+
+            if (_drive != null && _drive.clip != null)
+            {
+                float threat = _winProbability != null ? _winProbability.Threat : pressure * 0.6f;
+                float blend = Mathf.Clamp01(threat / Mathf.Max(0.01f, _driveFullAt));
+                float target = Muted ? 0f : blend * blend * _driveMax * bus;
+                _drive.volume = Mathf.MoveTowards(_drive.volume, target,
+                    dt * (target > _drive.volume ? 1.4f : 0.35f));
+            }
         }
 
         /// <summary>
@@ -643,6 +744,15 @@ namespace PoSoccer
             if (_swellFilter != null)
                 _swellFilter.cutoffFrequency =
                     Mathf.MoveTowards(_swellFilter.cutoffFrequency, target, speed);
+            // The upper music stems muffle with everything else. Leaving them out
+            // would mean the drums stayed bright and forward through a goal
+            // replay while the pad they sit on went dark underneath them.
+            if (_tensionFilter != null)
+                _tensionFilter.cutoffFrequency =
+                    Mathf.MoveTowards(_tensionFilter.cutoffFrequency, target, speed);
+            if (_driveFilter != null)
+                _driveFilter.cutoffFrequency =
+                    Mathf.MoveTowards(_driveFilter.cutoffFrequency, target, speed);
         }
     }
 }

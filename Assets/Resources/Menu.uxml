@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PoSoccer main menu.
+
+  WHAT IS IN HERE AND WHAT IS NOT. Everything with a fixed identity - the two
+  team sections, the stepper, the preset row, PLAY, the settings shelf - is
+  declared here and resolved by name in Agent_MainMenu. Everything whose SHAPE
+  depends on data - the roster picker (one button per profile) and the squad
+  strips (one card per player, restyled as the squad grows) - is still built in
+  C#, into the named containers below.
+
+  That split is the point. The previous version built all of it imperatively,
+  including 40-odd style assignments that duplicated rules already in
+  PoSoccerTheme.uss, which is exactly how the menu and the HUD drifted apart
+  before the stylesheet existed. A template full of inline `style=` would be the
+  same mistake with angle brackets, so there is none here: every appearance
+  decision lives in the stylesheet, and Agent_EditMode_Theme fails the build if
+  a class used here is not defined there.
+
+  Names are an API. Agent_MainMenu resolves each one and disables the menu with
+  a log line if any is missing, so renaming an element here without renaming it
+  there ships a blank screen.
+-->
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:VisualElement name="safe" class="screen screen--menu">
+
+        <ui:VisualElement name="header" class="stack-center enter">
+            <ui:Label name="title" text="PoSoccer" class="title" />
+            <ui:Label name="subtitle" text="tap a name to add · tap a card to remove" class="text-muted" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="presets" class="menu__presets">
+            <ui:Button name="preset-1v1" text="1v1" class="btn menu__preset" />
+            <ui:Button name="preset-2v2" text="2v2" class="btn menu__preset" />
+            <ui:Button name="preset-5v5" text="5v5" class="btn menu__preset" />
+            <ui:Button name="preset-clear" text="CLEAR ALL" class="btn menu__preset" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="section-blue" class="menu__section">
+            <ui:VisualElement name="band-blue" class="menu__band menu__band--blue" />
+            <ui:VisualElement class="menu__team-header">
+                <ui:Label name="name-blue" text="BLUE" class="menu__team-name menu__team-name--blue" />
+                <ui:Button name="minus-blue" text="−" class="btn menu__stepper" />
+                <ui:Label name="count-blue" text="0" class="menu__count" />
+                <ui:Button name="plus-blue" text="+" class="btn menu__stepper" />
+                <ui:Button name="clear-blue" text="CLEAR" class="btn menu__preset" />
+            </ui:VisualElement>
+            <ui:VisualElement name="roster-blue" class="menu__roster" />
+            <ui:VisualElement name="strip-blue" class="menu__strip" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="section-red" class="menu__section">
+            <ui:VisualElement name="band-red" class="menu__band menu__band--red" />
+            <ui:VisualElement class="menu__team-header">
+                <ui:Label name="name-red" text="RED" class="menu__team-name menu__team-name--red" />
+                <ui:Button name="minus-red" text="−" class="btn menu__stepper" />
+                <ui:Label name="count-red" text="0" class="menu__count" />
+                <ui:Button name="plus-red" text="+" class="btn menu__stepper" />
+                <ui:Button name="clear-red" text="CLEAR" class="btn menu__preset" />
+            </ui:VisualElement>
+            <ui:VisualElement name="roster-red" class="menu__roster" />
+            <ui:VisualElement name="strip-red" class="menu__strip" />
+        </ui:VisualElement>
+
+        <ui:VisualElement name="footer" class="stack-center enter">
+            <ui:Label name="pitch-note" class="text-muted menu__note" />
+            <ui:Button name="play" text="PLAY" class="btn btn--play" />
+            <ui:VisualElement name="options" class="row menu__options" />
+            <!--
+              The accessibility shelf. Deliberately on the FIRST screen and not
+              behind a settings modal: a player who cannot tell the two teams
+              apart cannot reach a control that is three taps into a game they
+              cannot read.
+            -->
+            <ui:VisualElement name="settings" class="row menu__settings" />
+            <ui:Label name="back-hint" text="press back again to exit" class="text-muted menu__hint" />
+        </ui:VisualElement>
+
+    </ui:VisualElement>
+</ui:UXML>

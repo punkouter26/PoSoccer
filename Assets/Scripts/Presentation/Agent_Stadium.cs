@@ -168,6 +168,21 @@ namespace PoSoccer
             _celebrate = _celebrationSeconds;
         }
 
+        /// <summary>
+        /// Switches bloom off, and on again, without rebuilding the volume.
+        ///
+        /// Called by Agent_Quality as its last resort when the frame budget is
+        /// breached. It toggles the OVERRIDE's active flag rather than the whole
+        /// volume: the goal pulse also drives chromatic aberration and exposure
+        /// through this same profile, and those are cheap - shedding them with
+        /// bloom would remove the goal's punch to buy nothing.
+        /// </summary>
+        public void SetBloomEnabled(bool enabled)
+        {
+            if (_bloom == null) return;
+            _bloom.active = enabled;
+        }
+
         void Update()
         {
             if (_celebrate > 0f) TickCelebration();

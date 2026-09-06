@@ -17,7 +17,15 @@ namespace PoSoccer
     /// benchmark is still two taps. Presets cover the common matchups outright.
     ///
     /// A side may be empty while editing; PLAY stays disabled until both sides
-    /// have at least one player. The whole tree is built in code, no UXML wiring.
+    /// have at least one player.
+    ///
+    /// 2026-09-06 - THE TREE IS NOW A TEMPLATE. Structure lives in
+    /// Resources/Menu.uxml and appearance in Resources/PoSoccerTheme.uss; this
+    /// class binds them and builds only what is data-shaped (a roster button per
+    /// profile, a card per squad slot). It also owns the accessibility shelf,
+    /// which is on this screen rather than behind a settings modal because a
+    /// player who cannot separate the two team colours cannot navigate three
+    /// taps into a game they cannot read.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class Agent_MainMenu : MonoBehaviour
@@ -34,6 +42,8 @@ namespace PoSoccer
 
         [Header("Flow")]
         public string matchScene = "SCN_Exhibition";
+
+        const string TEMPLATE_RESOURCE = "Menu";
 
         Reward_Settings[] _roster;
         readonly List<Reward_Settings> _blue = new();
@@ -79,73 +89,92 @@ namespace PoSoccer
             ApplyPreset(2);
 
             _root = root;
-            root.Clear();
-            Agent_UIStyle.ApplyTheme(root);
+            Build();
+        }
 
-            var safe = new VisualElement();
-            // .screen--menu carries the background, centring and padding. The
-            // SpaceEvenly choice is deliberate and documented in the stylesheet:
-            // the squads change height as players are added, so a centred block
-            // leaves a dead band above and below at small squad sizes.
-            safe.AddToClassList("screen");
-            safe.AddToClassList("screen--menu");
+        /// <summary>
+        /// Instantiates Resources/Menu.uxml into the panel and binds it.
+        ///
+        /// THE TREE USED TO BE BUILT ENTIRELY IN CODE, and this was the last
+        /// screen where that was still true - roughly forty style assignments
+        /// restating rules the stylesheet already carried, which is precisely how
+        /// the menu and the HUD had drifted apart before the design system
+        /// existed. Structure now lives in the template; only the parts whose
+        /// SHAPE is data (a roster button per profile, a card per squad slot) are
+        /// still built here, into named containers.
+        ///
+        /// Separate from OnEnable because a settings change rebuilds the screen:
+        /// the palette and type scale are USS variables on the root, and the
+        /// squad strips carry team colours baked in at build time, so re-running
+        /// this is both the simplest and the most honest way to apply them.
+        /// </summary>
+        void Build()
+        {
+            _root.Clear();
+            Agent_UIStyle.ApplyTheme(_root);
+
+            var template = Resources.Load<VisualTreeAsset>(TEMPLATE_RESOURCE);
+            if (template == null)
+            {
+                // Unlike the HUD, the menu IS the screen - failing quietly here
+                // means an unusable game, so this is an error, not a warning.
+                Debug.LogError($"Agent_MainMenu: '{TEMPLATE_RESOURCE}' not found in Resources; " +
+                               "the menu cannot be built.");
+                return;
+            }
+
+            template.CloneTree(_root);
+
+            var safe = _root.Q<VisualElement>("safe");
+            var header = _root.Q<VisualElement>("header");
+            var footer = _root.Q<VisualElement>("footer");
+            _blueStrip = _root.Q<VisualElement>("strip-blue");
+            _redStrip = _root.Q<VisualElement>("strip-red");
+            _blueCount = _root.Q<Label>("count-blue");
+            _redCount = _root.Q<Label>("count-red");
+            _pitchNote = _root.Q<Label>("pitch-note");
+            _play = _root.Q<Button>("play");
+            _backHint = _root.Q<Label>("back-hint");
+            var blueRoster = _root.Q<VisualElement>("roster-blue");
+            var redRoster = _root.Q<VisualElement>("roster-red");
+            var options = _root.Q<VisualElement>("options");
+            var settings = _root.Q<VisualElement>("settings");
+
+            if (safe == null || _blueStrip == null || _redStrip == null || _play == null ||
+                blueRoster == null || redRoster == null || options == null || settings == null)
+            {
+                Debug.LogError($"Agent_MainMenu: '{TEMPLATE_RESOURCE}' is missing a bound element. " +
+                               "Agent_EditMode_Theme pins the full name list.");
+                return;
+            }
+
             // Safe area stays in code: a device measurement, not a design token.
             Agent_UIStyle.BindSafeArea(safe);
-            root.Add(safe);
 
-            var header = new VisualElement();
-            header.AddToClassList("stack-center");
-            header.AddToClassList("enter");
+            Click("preset-1v1", () => ApplyPreset(1));
+            Click("preset-2v2", () => ApplyPreset(2));
+            Click("preset-5v5", () => ApplyPreset(5));
+            Click("preset-clear", ClearAll);
 
-            var title = new Label("PoSoccer");
-            title.AddToClassList("title");
-            header.Add(title);
+            Click("minus-blue", () => Resize(_blue, _blue.Count - 1));
+            Click("plus-blue", () => Resize(_blue, _blue.Count + 1));
+            Click("clear-blue", () => ClearSide(_blue));
+            Click("minus-red", () => Resize(_red, _red.Count - 1));
+            Click("plus-red", () => Resize(_red, _red.Count + 1));
+            Click("clear-red", () => ClearSide(_red));
 
-            var subtitle = new Label("tap a name to add · tap a card to remove");
-            subtitle.AddToClassList("text-muted");
-            header.Add(subtitle);
-            safe.Add(header);
+            _play.clicked += StartMatch;
 
-            safe.Add(BuildPresetRow());
-
-            _blueStrip = new VisualElement();
-            _redStrip = new VisualElement();
-            safe.Add(BuildTeamSection("BLUE", Agent_UIStyle.BlueTeam, _blue, _blueStrip, out _blueCount));
-            safe.Add(BuildTeamSection("RED", Agent_UIStyle.RedTeam, _red, _redStrip, out _redCount));
-
-            // Pitch note rides just above PLAY so the size readout reads as a
-            // caption on the button rather than a floating third element.
-            var footer = new VisualElement();
-            footer.AddToClassList("stack-center");
-            footer.AddToClassList("enter");
-
-            _pitchNote = new Label(string.Empty);
-            _pitchNote.AddToClassList("text-muted");
-            _pitchNote.style.marginBottom = 16;
-            footer.Add(_pitchNote);
-
-            _play = new Button(StartMatch) { text = "PLAY" };
-            _play.AddToClassList("btn");
-            _play.AddToClassList("btn--play");
-            footer.Add(_play);
+            FillRoster(blueRoster, _blue, "menu__pick--blue");
+            FillRoster(redRoster, _red, "menu__pick--red");
 
             // Sound could previously only be muted from inside a match, which is
             // the one place you cannot reach without starting one first.
-            var options = new VisualElement();
-            options.AddToClassList("row");
-            options.style.marginTop = 18;
             options.Add(CardsButton());
             options.Add(GalleryButton());
             options.Add(Agent_UIStyle.SoundToggleButton());
-            footer.Add(options);
 
-            _backHint = new Label("press back again to exit");
-            _backHint.AddToClassList("text-muted");
-            _backHint.style.marginTop = 12;
-            _backHint.style.opacity = 0f;
-            footer.Add(_backHint);
-
-            safe.Add(footer);
+            BuildSettings(settings);
 
             RefreshAll();
 
@@ -154,6 +183,65 @@ namespace PoSoccer
             // later, so the menu assembles itself instead of snapping into place.
             StageEntrance(header, 0);
             StageEntrance(footer, 90);
+        }
+
+        /// <summary>Binds a click handler to a named button, tolerating absence.</summary>
+        void Click(string name, System.Action onClick)
+        {
+            var button = _root.Q<Button>(name);
+            if (button != null) button.clicked += onClick;
+        }
+
+        /// <summary>
+        /// The accessibility shelf: colour-vision palette, type scale, haptics.
+        ///
+        /// Each button says what it is currently SET TO, not what it would switch
+        /// to. A control labelled with its next state reads as an instruction and
+        /// leaves the player with no way to know where they are - which matters
+        /// most for exactly the people this row exists for.
+        /// </summary>
+        void BuildSettings(VisualElement host)
+        {
+            var palette = new Button { text = $"COLOURS: {Agent_Palette.Label(Agent_Palette.Current)}" };
+            palette.AddToClassList("btn");
+            palette.clicked += () =>
+            {
+                Agent_Palette.CycleMode();
+                // A full rebuild, not a restyle: the squad cards and roster
+                // buttons carry team colour in their classes, and the USS
+                // variables only re-cascade from the root.
+                Build();
+            };
+            host.Add(palette);
+
+            var type = new Button { text = $"TEXT: {TypeLabel(Agent_Palette.TypeScale)}" };
+            type.AddToClassList("btn");
+            type.clicked += () =>
+            {
+                Agent_Palette.CycleTypeScale();
+                Build();
+            };
+            host.Add(type);
+
+            var haptics = new Button();
+            haptics.AddToClassList("btn");
+            haptics.text = Agent_Haptics.Enabled ? "BUZZ ON" : "BUZZ OFF";
+            haptics.clicked += () =>
+            {
+                Agent_Haptics.Enabled = !Agent_Haptics.Enabled;
+                haptics.text = Agent_Haptics.Enabled ? "BUZZ ON" : "BUZZ OFF";
+            };
+            host.Add(haptics);
+        }
+
+        static string TypeLabel(int step)
+        {
+            switch (step)
+            {
+                case 1: return "LARGE";
+                case 2: return "LARGER";
+                default: return "NORMAL";
+            }
         }
 
         static Reward_Settings[] Compact(params Reward_Settings[] entries)
@@ -173,20 +261,6 @@ namespace PoSoccer
         Reward_Settings Or(Reward_Settings profile) => profile != null ? profile : _roster[0];
 
         // ── Presets ─────────────────────────────────────────────────────────
-
-        VisualElement BuildPresetRow()
-        {
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.justifyContent = Justify.Center;
-            row.style.marginBottom = 20;
-
-            row.Add(SmallButton("1v1", Agent_UIStyle.PanelBg, () => ApplyPreset(1)));
-            row.Add(SmallButton("2v2", Agent_UIStyle.PanelBg, () => ApplyPreset(2)));
-            row.Add(SmallButton("5v5", Agent_UIStyle.PanelBg, () => ApplyPreset(5)));
-            row.Add(SmallButton("CLEAR ALL", Agent_UIStyle.PanelBg, ClearAll));
-            return row;
-        }
 
         /// <summary>
         /// Blue fields personalities (cycling the roster order, skipping the bot),
@@ -228,121 +302,29 @@ namespace PoSoccer
             RefreshAll();
         }
 
-        // ── Team section ────────────────────────────────────────────────────
+        // ── Roster picker ───────────────────────────────────────────────────
 
-        VisualElement BuildTeamSection(string teamLabel, Color teamColor,
-            List<Reward_Settings> squad, VisualElement strip, out Label countLabel)
+        /// <summary>
+        /// One button per roster entry, filled into the template's container.
+        ///
+        /// The background is the PROFILE's colour - that is identity data, not
+        /// design - while the border is the TEAM's, and comes from a class so the
+        /// colour-vision palettes reach it. That division is the rule for every
+        /// dynamic element in this file: data inline, design in USS.
+        /// </summary>
+        void FillRoster(VisualElement host, List<Reward_Settings> squad, string teamClass)
         {
-            var section = new VisualElement();
-            section.style.alignItems = Align.Center;
-            section.style.width = 1000;
-
-            var band = new VisualElement();
-            band.style.height = 8; band.style.width = 340;
-            band.style.backgroundColor = teamColor;
-            band.style.marginBottom = 12;
-            Agent_UIStyle.Round(band, 4);
-            section.Add(band);
-
-            // Header row: team name, [- N +] stepper, per-side CLEAR.
-            var header = new VisualElement();
-            header.style.flexDirection = FlexDirection.Row;
-            header.style.alignItems = Align.Center;
-            header.style.justifyContent = Justify.Center;
-            header.style.marginBottom = 8;
-
-            var name = new Label(teamLabel);
-            name.style.fontSize = 52;
-            name.style.color = teamColor;
-            name.style.unityFontStyleAndWeight = FontStyle.Bold;
-            name.style.marginRight = 26;
-            header.Add(name);
-
-            header.Add(StepperButton("−", () => Resize(squad, squad.Count - 1)));
-
-            countLabel = new Label();
-            countLabel.style.fontSize = 48;
-            countLabel.style.color = Agent_UIStyle.TextPrimary;
-            countLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            countLabel.style.width = 120;
-            countLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-            header.Add(countLabel);
-
-            header.Add(StepperButton("+", () => Resize(squad, squad.Count + 1)));
-
-            var clear = SmallButton("CLEAR", Agent_UIStyle.PanelBg, () => ClearSide(squad));
-            clear.style.marginLeft = 22;
-            header.Add(clear);
-            section.Add(header);
-
-            // Roster picker: one tap appends that player to this side.
-            section.Add(BuildRosterPicker(squad, teamColor));
-
-            // Slot strip: wraps to a second line once a squad passes five.
-            strip.style.flexDirection = FlexDirection.Row;
-            strip.style.flexWrap = Wrap.Wrap;
-            strip.style.justifyContent = Justify.Center;
-            strip.style.width = 1000;
-            strip.style.minHeight = 190;
-            section.Add(strip);
-
-            return section;
-        }
-
-        VisualElement BuildRosterPicker(List<Reward_Settings> squad, Color teamColor)
-        {
-            var row = new VisualElement();
-            row.style.flexDirection = FlexDirection.Row;
-            row.style.flexWrap = Wrap.Wrap;
-            row.style.justifyContent = Justify.Center;
-            row.style.width = 1000;
-            row.style.marginBottom = 8;
-
+            host.Clear();
             for (int i = 0; i < _roster.Length; i++)
             {
                 var profile = _roster[i];
-                var b = new Button(() => AddToSquad(squad, profile)) { text = profile.playerName };
-                b.AddToClassList("btn");
-                b.AddToClassList("btn--roster");
-                b.style.unityFontStyleAndWeight = FontStyle.Bold;
-                b.style.paddingLeft = 26; b.style.paddingRight = 26;
-                b.style.marginLeft = 4; b.style.marginRight = 4;
-                b.style.backgroundColor = profile.playerColor;
-                b.style.color = Color.black;
-                b.style.borderTopWidth = 2; b.style.borderBottomWidth = 2;
-                b.style.borderLeftWidth = 2; b.style.borderRightWidth = 2;
-                b.style.borderTopColor = teamColor; b.style.borderBottomColor = teamColor;
-                b.style.borderLeftColor = teamColor; b.style.borderRightColor = teamColor;
-                Agent_UIStyle.Round(b, 12);
-                row.Add(b);
+                var button = new Button(() => AddToSquad(squad, profile)) { text = profile.playerName };
+                button.AddToClassList("btn");
+                button.AddToClassList("menu__pick");
+                button.AddToClassList(teamClass);
+                button.style.backgroundColor = profile.playerColor;
+                host.Add(button);
             }
-            return row;
-        }
-
-        static Button StepperButton(string glyph, System.Action onClick)
-        {
-            var b = new Button(onClick) { text = glyph };
-            b.style.width = 86; b.style.height = 86;
-            b.style.fontSize = 54;
-            b.style.unityFontStyleAndWeight = FontStyle.Bold;
-            b.style.color = Agent_UIStyle.TextPrimary;
-            b.style.backgroundColor = Agent_UIStyle.PanelBg;
-            Agent_UIStyle.Round(b, 14);
-            return b;
-        }
-
-        static Button SmallButton(string text, Color background, System.Action onClick)
-        {
-            var b = new Button(onClick) { text = text };
-            b.style.height = 74;
-            b.style.fontSize = Agent_UIStyle.FontS;
-            b.style.unityFontStyleAndWeight = FontStyle.Bold;
-            b.style.paddingLeft = 30; b.style.paddingRight = 30;
-            b.style.marginLeft = 5; b.style.marginRight = 5;
-            b.style.color = Agent_UIStyle.TextPrimary;
-            b.style.backgroundColor = background;
-            Agent_UIStyle.Round(b, 12);
-            return b;
         }
 
         // ── Squad edits ─────────────────────────────────────────────────────
@@ -383,8 +365,8 @@ namespace PoSoccer
 
         void RefreshAll()
         {
-            RenderStrip(_blueStrip, _blue, Agent_UIStyle.BlueTeam);
-            RenderStrip(_redStrip, _red, Agent_UIStyle.RedTeam);
+            RenderStrip(_blueStrip, _blue, "slot--blue");
+            RenderStrip(_redStrip, _red, "slot--red");
             if (_blueCount != null) _blueCount.text = $"{_blue.Count}";
             if (_redCount != null) _redCount.text = $"{_red.Count}";
 
@@ -404,14 +386,13 @@ namespace PoSoccer
                 }
             }
 
-            if (_play != null)
-            {
-                _play.SetEnabled(playable);
-                _play.style.opacity = playable ? 1f : 0.4f;
-            }
+            // .btn:disabled already carries the 0.4 opacity, so setting it inline
+            // here as well would be the stylesheet and the code disagreeing about
+            // one rule - the exact drift the design system exists to end.
+            if (_play != null) _play.SetEnabled(playable);
         }
 
-        void RenderStrip(VisualElement strip, List<Reward_Settings> squad, Color teamColor)
+        void RenderStrip(VisualElement strip, List<Reward_Settings> squad, string teamClass)
         {
             if (strip == null) return;
             strip.Clear();
@@ -419,66 +400,43 @@ namespace PoSoccer
             if (squad.Count == 0)
             {
                 var empty = new Label("empty — tap a name above");
-                empty.style.fontSize = Agent_UIStyle.FontXS;
-                empty.style.color = Agent_UIStyle.TextMuted;
-                empty.style.unityTextAlign = TextAnchor.MiddleCenter;
-                empty.style.marginTop = 34;
+                empty.AddToClassList("menu__empty");
                 strip.Add(empty);
                 return;
             }
 
             // Cards shrink as the squad grows so ten still fit two ranks of five.
-            // Compact widened 170 -> 182 to buy room for legible type; five cards
-            // plus margins is 5 * 192 = 960 px, still inside the 1080 panel.
+            // The two sizes, and the decision to DROP the step-count line rather
+            // than shrink every line below the 12sp legibility floor, now live in
+            // .slot / .slot--compact. Only the branch survives here, because how
+            // many players a squad has is data.
             bool compact = squad.Count > 5;
-            // 210 could not hold "STANDARD" at 44 px - verified clipped on device
-            // 2026-08-29. The longest roster name sets this width, not the average.
-            float width = compact ? 182f : 250f;
 
             for (int slot = 0; slot < squad.Count; slot++)
             {
                 int captured = slot;
                 var profile = squad[slot];
                 var card = new Button(() => RemoveSlot(squad, captured));
-                card.style.width = width;
-                card.style.height = compact ? 150f : 174f;
-                card.style.marginLeft = 5; card.style.marginRight = 5;
-                card.style.marginBottom = 8;
-                card.style.paddingTop = 4; card.style.paddingBottom = 4;
-                card.style.paddingLeft = 2; card.style.paddingRight = 2;
+                card.AddToClassList("slot");
+                card.AddToClassList(teamClass);
+                if (compact) card.AddToClassList("slot--compact");
+                // The profile's own colour: identity, not design.
                 card.style.backgroundColor = profile.playerColor;
-                card.style.alignItems = Align.Center;
-                card.style.justifyContent = Justify.Center;
-                card.style.borderTopWidth = 3; card.style.borderBottomWidth = 3;
-                card.style.borderLeftWidth = 3; card.style.borderRightWidth = 3;
-                card.style.borderTopColor = teamColor; card.style.borderBottomColor = teamColor;
-                card.style.borderLeftColor = teamColor; card.style.borderRightColor = teamColor;
 
-                // 16 px and 21 px were roughly 0.7 mm and 0.9 mm of cap height on a
-                // phone - present, but not readable. At 5v5 the card cannot hold
-                // three lines at a legible size, so the step count (the least
-                // useful of the three while picking a squad) is dropped instead of
-                // shrinking everything below the floor.
-                card.Add(CardLine(profile.playerName, compact ? 34 : 44, FontStyle.Bold, 1f));
-                card.Add(CardLine(DriverLine(profile), compact ? 30 : 34, FontStyle.Normal, 0.8f));
-                if (!compact)
-                {
-                    card.Add(CardLine(StepsLine(profile), 34, FontStyle.Bold, 0.85f));
-                }
+                card.Add(SlotLine(profile.playerName, "slot__name"));
+                card.Add(SlotLine(DriverLine(profile), "slot__driver"));
+                if (!compact) card.Add(SlotLine(StepsLine(profile), "slot__steps"));
+
                 strip.Add(card);
             }
         }
 
         // ── Roster card text ────────────────────────────────────────────────
 
-        static Label CardLine(string text, int fontSize, FontStyle weight, float opacity)
+        static Label SlotLine(string text, string className)
         {
             var label = new Label(text);
-            label.style.fontSize = fontSize;
-            label.style.unityFontStyleAndWeight = weight;
-            label.style.color = Color.black;
-            label.style.opacity = opacity;
-            label.style.unityTextAlign = TextAnchor.MiddleCenter;
+            label.AddToClassList(className);
             return label;
         }
 
@@ -715,8 +673,8 @@ namespace PoSoccer
 
             _backArmedUntil = Time.unscaledTime + 2f;
             if (_backHint == null) return;
-            _backHint.style.opacity = 1f;
-            _backHint.schedule.Execute(() => _backHint.style.opacity = 0f).ExecuteLater(2000);
+            Agent_UIStyle.SetShown(_backHint, true);
+            _backHint.schedule.Execute(() => Agent_UIStyle.SetShown(_backHint, false)).ExecuteLater(2000);
         }
 
         void StartMatch()

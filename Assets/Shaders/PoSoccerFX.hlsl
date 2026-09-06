@@ -10,8 +10,89 @@
 //
 // Assumes the CBUFFER declaring these properties is already in scope.
 
+// -- Sprite-local UV ------------------------------------------------------
+//
+// 2026-09-06 - EVERY TERM BELOW WAS READING THE WRONG UV ON AN ATLASED SPRITE,
+// and the ones that mattered most were the ones that looked like they worked.
+//
+// input.uv on a packed sprite spans that sprite's SLOT on the atlas page, not
+// 0..1. Assets/Art/Atlases/PitchAtlas packs pitch.png, ball.png, tile.png and
+// backdrop.png - which is the pitch, the ball and every player body. So:
+//
+//   - the rim (`length(uv - 0.5)`) measured distance from the centre of the
+//     PAGE, not of the body. For a slot sitting off to one side that expression
+//     is nearly constant across the sprite, so the "rim light" on every player
+//     was a flat tint. It looked deliberate, which is why it survived.
+//   - the mown stripes ran at whatever fraction of _StripeCount the pitch's slot
+//     width happened to subtend, so the lane count on screen was never the lane
+//     count anybody set.
+//
+// Agent_Surfaces now measures the slot from Sprite.uv and writes it into
+// _SpriteRect (offset.xy, size.zw), and every term maps through here first.
+// The default is (0, 0, 1, 1) - an identity - so an unatlased sprite, the
+// procedural FullRect quads and any material nobody configured all behave
+// exactly as before.
+float2 PoSoccerLocalUV(float2 uv)
+{
+    return (uv - _SpriteRect.xy) / max(_SpriteRect.zw, float2(1e-5, 1e-5));
+}
+
+// -- Kit patterns ---------------------------------------------------------
+//
+// A jersey is a SECOND COLOUR, not a brightness ripple, which is why this is
+// separate from the stripe term above: _StripeStrength modulates the albedo it
+// is given (right for mown grass, where the grass is the same grass either way)
+// while a kit replaces it (right for a shirt, where the stripe is a different
+// cloth).
+//
+// Modes, matching Reward_Settings.KitPattern:
+//   0 none   1 stripes (vertical)   2 hoops (horizontal)   3 sash   4 halves
+//
+// All four are hard-edged with a one-texel smoothstep rather than antialiased
+// by derivative, because a body is ~64 px on a portrait phone and ddx-based
+// widths collapse to noise at that size.
+half3 PoSoccerApplyKit(half3 albedo, float2 luv)
+{
+    if (_KitMode < 0.5h) return albedo;
+
+    float mask;
+    if (_KitMode < 1.5h)
+    {
+        // Stripes: vertical bands down the shirt.
+        float wave = frac(luv.x * _KitScale);
+        mask = step(0.5, wave);
+    }
+    else if (_KitMode < 2.5h)
+    {
+        // Hoops: horizontal bands.
+        float wave = frac(luv.y * _KitScale);
+        mask = step(0.5, wave);
+    }
+    else if (_KitMode < 3.5h)
+    {
+        // Sash: one diagonal band across the chest. Width is fixed rather than
+        // scaled, so a sash reads as a sash at every _KitScale.
+        float diagonal = frac((luv.x + luv.y) * 0.5);
+        mask = 1.0 - smoothstep(0.20, 0.24, abs(diagonal - 0.5));
+    }
+    else
+    {
+        // Halves: left/right split.
+        mask = step(0.5, luv.x);
+    }
+
+    return lerp(albedo, _KitColor.rgb, (half)mask * _KitColor.a);
+}
+
 half3 PoSoccerApplyFX(half3 albedo, float2 uv)
 {
+    float2 luv = PoSoccerLocalUV(uv);
+
+    // -- Kit ---------------------------------------------------------------
+    // First, so everything below shades the finished cloth rather than being
+    // overwritten by it.
+    albedo = PoSoccerApplyKit(albedo, luv);
+
     // -- Mown stripes ------------------------------------------------------
     // Alternating light and dark bands along an arbitrary axis, the way a roller
     // lays grass over. A soft square wave rather than sin() so the bands read as
@@ -19,7 +100,7 @@ half3 PoSoccerApplyFX(half3 albedo, float2 uv)
     if (_StripeStrength > 0.0h)
     {
         float2 axis = float2(cos(_StripeAngle), sin(_StripeAngle));
-        float projection = dot(uv - 0.5, axis);
+        float projection = dot(luv - 0.5, axis);
         float wave = frac(projection * _StripeCount);
         // smoothstep pair = a band with soft shoulders, cheap and alias-free.
         float band = smoothstep(0.0, 0.08, wave) - smoothstep(0.5, 0.58, wave);
@@ -32,7 +113,7 @@ half3 PoSoccerApplyFX(half3 albedo, float2 uv)
     if (_SheenStrength > 0.0h)
     {
         float travel = frac(_Time.y * _SheenSpeed);
-        float along = frac(uv.x * 0.5 + uv.y * 0.5);
+        float along = frac(luv.x * 0.5 + luv.y * 0.5);
         float distance = abs(along - travel);
         distance = min(distance, 1.0 - distance);          // wrap, so it loops seamlessly
         float band = exp(-distance * distance * _SheenWidth * _SheenWidth);
@@ -44,7 +125,7 @@ half3 PoSoccerApplyFX(half3 albedo, float2 uv)
     // light and replaces the four LineRenderers previously drawn per player.
     if (_RimStrength > 0.0h)
     {
-        float radial = saturate(length(uv - 0.5) * 2.0);
+        float radial = saturate(length(luv - 0.5) * 2.0);
         float rim = pow(radial, _RimPower);
         albedo += _RimColor.rgb * rim * _RimStrength;
     }
@@ -68,7 +149,7 @@ half PoSoccerNetMask(float2 uv)
 {
     if (_NetStrength <= 0.0h) return 1.0h;
 
-    float2 centred = uv - 0.5;
+    float2 centred = PoSoccerLocalUV(uv) - 0.5;
     float radius = length(centred);
 
     // The ripple is a radial UV displacement that decays with distance from the

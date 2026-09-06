@@ -339,6 +339,14 @@ namespace PoSoccer
             _builder.Append("   breached refreshes ").Append(_breachCount)
                     .Append("   worst frame ").Append(_worstFrameMs.ToString("0.0")).Append(" ms\n");
 
+            // What was DONE about the breach. Agent_Quality sheds effects when the
+            // frame budget goes over, and a table that reports the breach without
+            // reporting the response would make a degraded frame look like a
+            // healthy one - the reader cannot tell "we are inside budget" from
+            // "we are inside budget because the tilt-shift and the pitch wear are
+            // switched off".
+            _builder.Append(Agent_Quality.StatusLine()).Append('\n');
+
             // Project state - the counters that would have made earlier bugs obvious.
             //
             // The clock line distinguishes FROZEN (a full hold: replay, countdown,

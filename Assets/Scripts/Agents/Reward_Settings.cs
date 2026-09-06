@@ -17,6 +17,37 @@ namespace PoSoccer
         public string personalityNotes;
         [Tooltip("Body tint applied at runtime. Team is shown by the eye color instead.")]
         public Color playerColor = Color.white;
+
+        /// <summary>
+        /// Jersey patterns the body shader can draw. Procedural, so a kit costs
+        /// no texture memory and no extra draw call - the pattern is a few ALU
+        /// inside the material this player already shares with its team.
+        /// </summary>
+        public enum KitPattern
+        {
+            None = 0,
+            Stripes = 1,
+            Hoops = 2,
+            Sash = 3,
+            Halves = 4,
+        }
+
+        [Header("Kit")]
+        // DEFAULT IS None ON EVERY SHIPPED PROFILE, DELIBERATELY. UNITY_RULES
+        // reserves the look of a brain to its author: the heuristic bot is red,
+        // the reference brain is "green, untextured", and custom brains get
+        // USER-SUPPLIED textures - "never auto-assign one". A procedural kit is
+        // still a texture by that standard, so this ships as an opt-in switch
+        // rather than as four personalities that quietly grew shirts.
+        [Tooltip("Procedural jersey pattern drawn on the body. None = flat playerColor, " +
+                 "which is what every shipped profile uses (see UNITY_RULES on brain colour).")]
+        public KitPattern kitPattern = KitPattern.None;
+        [Tooltip("Secondary kit colour. Alpha is the blend strength, so alpha 0 = no kit " +
+                 "however kitPattern is set.")]
+        public Color kitColor = new Color(1f, 1f, 1f, 0f);
+        [Tooltip("Bands across the body for Stripes and Hoops. Ignored by Sash and Halves.")]
+        [Range(2f, 16f)]
+        public float kitBands = 6f;
         [Tooltip("This player's trained brain. Null = plays with the rule-based bot until trained.")]
         public Unity.InferenceEngine.ModelAsset brainModel;
 

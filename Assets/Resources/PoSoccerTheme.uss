@@ -781,3 +781,349 @@
     margin-left: var(--space-2);
     margin-right: var(--space-2);
 }
+
+/* ============================================================== typeface = */
+
+/*
+ * The project shipped with NO font asset at all: every label in the menu, the
+ * HUD, the player card and the telemetry overlay rendered in UI Toolkit's
+ * built-in default. That default is a UI font, not a display one, and at the
+ * --font-xl scoreline size its proportions are the single most "unfinished"
+ * thing on the screen.
+ *
+ * Two families, both SIL Open Font Licence (the licence text ships beside them
+ * in Resources/Fonts/, which is what the OFL requires of a redistribution):
+ *
+ *   Inter  - the body face. Designed for screens at small sizes, which is
+ *            exactly the 34-44 px band this UI lives in on a 1080-wide phone.
+ *   Oswald - the display face. Condensed, so a long roster name and a two-digit
+ *            scoreline both fit a fixed-width slot, and it carries the
+ *            broadcast-scoreboard association this game's whole presentation
+ *            layer is aiming at.
+ *
+ * -unity-font-definition INHERITS, so declaring the body face on :root reaches
+ * every element in every panel; only the display lanes below have to opt out.
+ * Both files are variable fonts. Unity renders them at their default instance
+ * and synthesises `-unity-font-style: bold`, which is what the previous default
+ * font did too - so bold looks the same kind of bold it always did.
+ */
+
+:root {
+    -unity-font-definition: resource("Fonts/Inter");
+}
+
+/* Display lanes. Everything that is a NUMBER, a NAME or a SHOUT - the things a
+   viewer reads at a glance from across a room - and nothing that is prose. */
+.title,
+.score,
+.toast,
+.banner,
+.btn--play,
+.chip__badge,
+.card__name,
+.card__tile-value,
+.ticker,
+.winprob__label,
+.replay-tag,
+.broadcast-tag,
+.menu__team-name,
+.menu__count,
+.slot__name {
+    -unity-font-definition: resource("Fonts/Oswald");
+}
+
+/* ========================================================= accessibility = */
+
+/*
+ * Two axes, both stored in PlayerPrefs by Agent_Palette and both applied as ONE
+ * class on the panel root by Agent_UIStyle.ApplyAccessibility.
+ *
+ * They work by redefining the stylesheet's own variables rather than by
+ * restyling elements. USS custom properties inherit, so a class on the root
+ * reaches every `var(--color-team-blue)` and `var(--font-s)` already written
+ * below - no rule here has to know which elements exist, and a lane added later
+ * is covered for free. The C# side reads the same enum for the things USS
+ * cannot reach: sprite tints, Light2D colours, the player rim materials.
+ */
+
+/* Okabe-Ito blue/orange. Red against blue is the most common confusion axis
+   there is, and this game asks the viewer to separate two teams at phone size,
+   in motion, on a green pitch. These two hold their hue difference under
+   protanopia, deuteranopia and tritanopia alike. */
+.palette--safe {
+    --color-team-blue: rgb(0, 114, 178);
+    --color-team-red: rgb(230, 159, 0);
+}
+
+/* Separated in LUMINANCE as well as hue, so the pair survives greyscale, glare
+   and a cheap panel - and so does a screenshot of it. */
+.palette--contrast {
+    --color-team-blue: rgb(41, 107, 255);
+    --color-team-red: rgb(255, 194, 15);
+    --color-panel: rgba(0, 0, 0, 0.82);
+    --color-panel-solid: rgb(6, 10, 8);
+    --color-text-muted: rgb(226, 233, 229);
+    --color-edge-light: rgba(255, 255, 255, 0.4);
+}
+
+/* Type steps. ~1.18x and ~1.4x on the body sizes; the display sizes grow more
+   slowly because --font-xl is already 120 px and a 1.4x scoreline would not fit
+   the band it sits in. Every value keeps the px unit for the reason the header
+   of this file records at length. */
+.type--lg {
+    --font-xs: 40px;
+    --font-s: 45px;
+    --font-m: 52px;
+    --font-l: 72px;
+    --font-xl: 132px;
+}
+
+.type--xl {
+    --font-xs: 48px;
+    --font-s: 53px;
+    --font-m: 60px;
+    --font-l: 80px;
+    --font-xl: 142px;
+}
+
+/* ============================================================ main menu = */
+
+/*
+ * Structural rules for Resources/Menu.uxml, in the same spirit as the .hud__*
+ * block above: the template carries no inline `style=` at all, so this is the
+ * only place that decides how the menu looks.
+ *
+ * Sizes come from the previous imperative version verbatim where they were
+ * already deliberate (the 1000 px section width, the 78 px roster button, the
+ * 86 px stepper) - the point of the extraction was to stop the drift, not to
+ * redesign the screen underneath the player.
+ */
+
+.menu__presets {
+    flex-direction: row;
+    justify-content: center;
+    margin-bottom: var(--space-5);
+}
+
+.menu__preset {
+    height: 74;
+    -unity-font-style: bold;
+    padding-left: 30;
+    padding-right: 30;
+    margin-left: 5;
+    margin-right: 5;
+    border-top-left-radius: var(--radius-sm);
+    border-top-right-radius: var(--radius-sm);
+    border-bottom-left-radius: var(--radius-sm);
+    border-bottom-right-radius: var(--radius-sm);
+}
+
+.menu__section {
+    align-items: center;
+    width: 1000;
+}
+
+.menu__band {
+    height: 8;
+    width: 340;
+    margin-bottom: var(--space-3);
+    border-top-left-radius: 4;
+    border-top-right-radius: 4;
+    border-bottom-left-radius: 4;
+    border-bottom-right-radius: 4;
+}
+
+/* The team colours come from the palette variables, so the colour-vision modes
+   reach the menu bands and team names without a line of C#. */
+.menu__band--blue { background-color: var(--color-team-blue); }
+.menu__band--red { background-color: var(--color-team-red); }
+
+.menu__team-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: var(--space-2);
+}
+
+.menu__team-name {
+    font-size: 52px;
+    -unity-font-style: bold;
+    margin-right: 26;
+}
+
+.menu__team-name--blue { color: var(--color-team-blue); }
+.menu__team-name--red { color: var(--color-team-red); }
+
+.menu__stepper {
+    width: 86;
+    height: 86;
+    font-size: 54px;
+    -unity-font-style: bold;
+    padding-left: 0;
+    padding-right: 0;
+    border-top-left-radius: 14;
+    border-top-right-radius: 14;
+    border-bottom-left-radius: 14;
+    border-bottom-right-radius: 14;
+}
+
+.menu__count {
+    font-size: 48px;
+    -unity-font-style: bold;
+    color: var(--color-text);
+    width: 120;
+    -unity-text-align: middle-center;
+}
+
+.menu__roster {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 1000;
+    margin-bottom: var(--space-2);
+}
+
+.menu__strip {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 1000;
+    min-height: 190;
+}
+
+.menu__note {
+    margin-bottom: var(--space-4);
+}
+
+.menu__options {
+    margin-top: 18;
+}
+
+.menu__settings {
+    margin-top: var(--space-3);
+}
+
+.menu__hint {
+    margin-top: var(--space-3);
+    opacity: 0;
+    transition-property: opacity;
+    transition-duration: 0.15s;
+}
+
+.menu__hint.is-shown {
+    opacity: 1;
+}
+
+.menu__empty {
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    -unity-text-align: middle-center;
+    margin-top: 34;
+}
+
+/* ------------------------------------------------------------ squad slot - */
+
+/*
+ * One filled squad position. Built in C# because the count is data, styled here
+ * because the look is not. `.slot--compact` is the >5-a-side variant: the card
+ * narrows and the step count is dropped rather than every line shrinking below
+ * the 12sp legibility floor the type scale documents.
+ */
+.slot {
+    width: 250;
+    height: 174;
+    margin-left: 5;
+    margin-right: 5;
+    margin-bottom: var(--space-2);
+    padding-top: 4;
+    padding-bottom: 4;
+    padding-left: 2;
+    padding-right: 2;
+    align-items: center;
+    justify-content: center;
+    border-top-width: 3;
+    border-bottom-width: 3;
+    border-left-width: 3;
+    border-right-width: 3;
+}
+
+.slot--compact {
+    width: 182;
+    height: 150;
+}
+
+.slot--blue {
+    border-top-color: var(--color-team-blue);
+    border-bottom-color: var(--color-team-blue);
+    border-left-color: var(--color-team-blue);
+    border-right-color: var(--color-team-blue);
+}
+
+.slot--red {
+    border-top-color: var(--color-team-red);
+    border-bottom-color: var(--color-team-red);
+    border-left-color: var(--color-team-red);
+    border-right-color: var(--color-team-red);
+}
+
+/* Black on the profile colour, which is always a light tint - the roster is
+   authored that way and Agent_EditMode_Palette pins it. */
+.slot__name {
+    font-size: var(--font-m);
+    -unity-font-style: bold;
+    color: rgb(0, 0, 0);
+    -unity-text-align: middle-center;
+}
+
+.slot__driver {
+    font-size: var(--font-xs);
+    color: rgb(0, 0, 0);
+    opacity: 0.8;
+    -unity-text-align: middle-center;
+}
+
+.slot__steps {
+    font-size: var(--font-xs);
+    -unity-font-style: bold;
+    color: rgb(0, 0, 0);
+    opacity: 0.85;
+    -unity-text-align: middle-center;
+}
+
+.slot--compact .slot__name { font-size: var(--font-xs); }
+.slot--compact .slot__driver { font-size: 30px; }
+
+/* --------------------------------------------------------- roster button - */
+
+.menu__pick {
+    height: 78;
+    font-size: var(--font-s);
+    color: rgb(0, 0, 0);
+    -unity-font-style: bold;
+    padding-left: 26;
+    padding-right: 26;
+    margin-left: var(--space-1);
+    margin-right: var(--space-1);
+    border-top-width: 2;
+    border-bottom-width: 2;
+    border-left-width: 2;
+    border-right-width: 2;
+    border-top-left-radius: 12;
+    border-top-right-radius: 12;
+    border-bottom-left-radius: 12;
+    border-bottom-right-radius: 12;
+}
+
+.menu__pick--blue {
+    border-top-color: var(--color-team-blue);
+    border-bottom-color: var(--color-team-blue);
+    border-left-color: var(--color-team-blue);
+    border-right-color: var(--color-team-blue);
+}
+
+.menu__pick--red {
+    border-top-color: var(--color-team-red);
+    border-bottom-color: var(--color-team-red);
+    border-left-color: var(--color-team-red);
+    border-right-color: var(--color-team-red);
+}

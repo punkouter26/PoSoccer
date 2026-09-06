@@ -41,6 +41,10 @@ namespace PoSoccer
         static readonly int NetStrength = Shader.PropertyToID("_NetStrength");
         static readonly int NetTiling = Shader.PropertyToID("_NetTiling");
         static readonly int NetRipple = Shader.PropertyToID("_NetRipple");
+        static readonly int SpriteRect = Shader.PropertyToID("_SpriteRect");
+        static readonly int KitMode = Shader.PropertyToID("_KitMode");
+        static readonly int KitColor = Shader.PropertyToID("_KitColor");
+        static readonly int KitScale = Shader.PropertyToID("_KitScale");
 
         [Tooltip("Depth of the mown-grass banding on the pitch.")]
         [Range(0f, 0.5f)] [SerializeField] private float _pitchStripes = 0.075f;
@@ -67,12 +71,56 @@ namespace PoSoccer
         [Tooltip("Net quads sit above the walls (0) and below the goal mouth bar (6).")]
         [SerializeField] private int _netSortingOrder = 5;
 
-        Material _pitchMaterial, _ballMaterial, _blueMaterial, _redMaterial;
+        Material _pitchMaterial, _ballMaterial;
         Material _blueNetMaterial, _redNetMaterial;
         Transform _blueNet, _redNet;
         Agent_EnvController _env;
         float _blueRipple, _redRipple;
         float _shownGoalWidth = -1f;
+
+        // Body materials, one per (team, kit) pair rather than one per team.
+        //
+        // A kit is per PLAYER while a material is shared, so the two only meet in
+        // one of three ways: a material per renderer (kills batching and clones
+        // on every access - the trap performance.md names), a
+        // MaterialPropertyBlock per renderer (also breaks the SRP Batcher), or a
+        // material per DISTINCT LOOK. The third is the only one that costs
+        // nothing when nobody uses the feature: with every shipped profile at
+        // KitPattern.None this dictionary holds exactly the same two materials
+        // the previous version created by hand.
+        readonly System.Collections.Generic.Dictionary<BodyLook, Material> _bodyMaterials = new();
+        Shader _shader;
+        Texture2D _sphereNormal;
+
+        /// <summary>
+        /// Everything that makes two player bodies look different. Two agents
+        /// with equal looks share one material and therefore one draw call.
+        /// </summary>
+        readonly struct BodyLook : System.IEquatable<BodyLook>
+        {
+            public readonly Agent_Soccer.Team Team;
+            public readonly Reward_Settings.KitPattern Pattern;
+            public readonly Color Kit;
+            public readonly float Bands;
+
+            public BodyLook(Agent_Soccer.Team team, Reward_Settings.KitPattern pattern,
+                Color kit, float bands)
+            {
+                Team = team;
+                Pattern = pattern;
+                Kit = kit;
+                Bands = bands;
+            }
+
+            public bool Equals(BodyLook other)
+                => Team == other.Team && Pattern == other.Pattern
+                   && Kit == other.Kit && Mathf.Approximately(Bands, other.Bands);
+
+            public override bool Equals(object obj) => obj is BodyLook other && Equals(other);
+
+            public override int GetHashCode()
+                => ((int)Team * 397 ^ (int)Pattern) * 397 ^ Kit.GetHashCode();
+        }
 
         /// <summary>
         /// Material for the advertising hoardings, with a travelling gloss.
@@ -135,10 +183,57 @@ namespace PoSoccer
             BoardMaterial.SetFloat(SheenSpeed, 0.22f);
             BoardMaterial.SetFloat(SheenWidth, 7f);
 
-            _blueMaterial = TeamMaterial(shader, sphereNormal,
-                Agent_SoccerView.TeamColor(Agent_Soccer.Team.Blue), "PoSoccer_TeamBlue");
-            _redMaterial = TeamMaterial(shader, sphereNormal,
-                Agent_SoccerView.TeamColor(Agent_Soccer.Team.Red), "PoSoccer_TeamRed");
+            // Body materials are built on demand in Apply, once the profile
+            // behind each player is known. Keep what they need.
+            _shader = shader;
+            _sphereNormal = sphereNormal;
+        }
+
+        /// <summary>
+        /// The slot a sprite occupies on its atlas page, as (offset.xy, size.zw)
+        /// in UV space, or the identity when the sprite is not packed.
+        ///
+        /// EVERY UV-SPACE EFFECT IN THIS SHADER NEEDS THIS. A packed sprite's
+        /// mesh UVs address the PAGE, so `uv - 0.5` is not the centre of the
+        /// sprite and `frac(uv * n)` is not n bands across it. The project
+        /// already learned this once, on the goal net (see BuildNetQuad), and
+        /// fixed it there by dodging the atlas entirely with a private texture.
+        /// The pitch, ball and player bodies cannot dodge it - they ARE the
+        /// atlas - so the shader is told where they sit instead.
+        ///
+        /// Read from Sprite.uv rather than textureRect/texture.width: the uv
+        /// array is what the mesh actually carries, so it stays correct under
+        /// rotation-in-atlas and tight packing, both of which PitchAtlas enables.
+        /// </summary>
+        static Vector4 SpriteSlot(Sprite sprite)
+        {
+            if (sprite == null) return new Vector4(0f, 0f, 1f, 1f);
+
+            Vector2[] uvs = sprite.uv;
+            if (uvs == null || uvs.Length == 0) return new Vector4(0f, 0f, 1f, 1f);
+
+            float minX = uvs[0].x, maxX = uvs[0].x;
+            float minY = uvs[0].y, maxY = uvs[0].y;
+            for (int i = 1; i < uvs.Length; i++)
+            {
+                if (uvs[i].x < minX) minX = uvs[i].x;
+                if (uvs[i].x > maxX) maxX = uvs[i].x;
+                if (uvs[i].y < minY) minY = uvs[i].y;
+                if (uvs[i].y > maxY) maxY = uvs[i].y;
+            }
+
+            float width = maxX - minX;
+            float height = maxY - minY;
+            // A degenerate span would divide the shader by ~zero; the identity is
+            // the honest fallback because it is what an unpacked sprite means.
+            if (width <= 1e-5f || height <= 1e-5f) return new Vector4(0f, 0f, 1f, 1f);
+            return new Vector4(minX, minY, width, height);
+        }
+
+        static void ApplySlot(Material material, SpriteRenderer renderer)
+        {
+            if (material == null || renderer == null) return;
+            material.SetVector(SpriteRect, SpriteSlot(renderer.sprite));
         }
 
         // -- Goal nets --------------------------------------------------------
@@ -270,13 +365,34 @@ namespace PoSoccer
             material.SetFloat(NetRipple, ripple);
         }
 
-        Material TeamMaterial(Shader shader, Texture2D sphereNormal, Color team, string label)
+        /// <summary>
+        /// The shared material for one body look, created on first sight of it.
+        /// </summary>
+        Material BodyMaterial(BodyLook look, SpriteRenderer body)
         {
-            var material = new Material(shader) { name = label };
-            material.SetColor(RimColor, team);
+            if (_bodyMaterials.TryGetValue(look, out var cached) && cached != null) return cached;
+
+            var material = new Material(_shader)
+            {
+                name = look.Pattern == Reward_Settings.KitPattern.None
+                    ? $"PoSoccer_Team{look.Team}"
+                    : $"PoSoccer_Team{look.Team}_{look.Pattern}",
+            };
+            material.SetColor(RimColor, Agent_SoccerView.TeamColor(look.Team));
             material.SetFloat(RimStrength, _playerRim);
             material.SetFloat(RimPower, 5f);
-            if (sphereNormal != null) material.SetTexture(NormalMap, sphereNormal);
+            if (_sphereNormal != null) material.SetTexture(NormalMap, _sphereNormal);
+
+            // Alpha 0 means "no kit" whatever the pattern says, so a profile can
+            // keep a pattern configured while switching the kit off.
+            bool kitted = look.Pattern != Reward_Settings.KitPattern.None && look.Kit.a > 0f;
+            material.SetFloat(KitMode, kitted ? (float)(int)look.Pattern : 0f);
+            material.SetColor(KitColor, look.Kit);
+            material.SetFloat(KitScale, Mathf.Max(1f, look.Bands));
+
+            ApplySlot(material, body);
+
+            _bodyMaterials[look] = material;
             return material;
         }
 
@@ -285,12 +401,19 @@ namespace PoSoccer
             // PitchBG is a direct child of the pitch root in both scenes.
             var pitch = env.transform.Find("PitchBG");
             if (pitch != null && pitch.TryGetComponent(out SpriteRenderer pitchRenderer))
+            {
+                ApplySlot(_pitchMaterial, pitchRenderer);
                 pitchRenderer.sharedMaterial = _pitchMaterial;
+            }
 
             if (env.Ball != null)
             {
                 var ballRenderer = env.Ball.GetComponentInChildren<SpriteRenderer>();
-                if (ballRenderer != null) ballRenderer.sharedMaterial = _ballMaterial;
+                if (ballRenderer != null)
+                {
+                    ApplySlot(_ballMaterial, ballRenderer);
+                    ballRenderer.sharedMaterial = _ballMaterial;
+                }
                 if (_ballLight) AddBallLight(env.Ball.transform);
             }
 
@@ -306,8 +429,12 @@ namespace PoSoccer
                 var agent = agents[i];
                 if (agent == null) continue;
                 if (!agent.TryGetComponent(out SpriteRenderer body)) continue;
-                body.sharedMaterial = agent.team == Agent_Soccer.Team.Blue
-                    ? _blueMaterial : _redMaterial;
+
+                var profile = agent.rewards;
+                var look = profile != null
+                    ? new BodyLook(agent.team, profile.kitPattern, profile.kitColor, profile.kitBands)
+                    : new BodyLook(agent.team, Reward_Settings.KitPattern.None, Color.clear, 6f);
+                body.sharedMaterial = BodyMaterial(look, body);
             }
         }
 
@@ -337,8 +464,8 @@ namespace PoSoccer
             // nothing else will collect them when the scene unloads.
             DestroyMaterial(_pitchMaterial);
             DestroyMaterial(_ballMaterial);
-            DestroyMaterial(_blueMaterial);
-            DestroyMaterial(_redMaterial);
+            foreach (var pair in _bodyMaterials) DestroyMaterial(pair.Value);
+            _bodyMaterials.Clear();
             DestroyMaterial(BoardMaterial);
             DestroyMaterial(_blueNetMaterial);
             DestroyMaterial(_redNetMaterial);

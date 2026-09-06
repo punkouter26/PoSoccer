@@ -23,8 +23,12 @@ namespace PoSoccer
         public static readonly Color PanelBg = new(0f, 0f, 0f, 0.45f);
         public static readonly Color TextPrimary = Color.white;
         public static readonly Color TextMuted = new(0.7f, 0.75f, 0.72f);
-        public static readonly Color BlueTeam = new(0.2f, 0.5f, 1f);
-        public static readonly Color RedTeam = new(1f, 0.25f, 0.2f);
+        // Team colour is NOT a constant here any more: Agent_Palette owns it, so
+        // the accessibility modes reach the HUD chips and menu bands through the
+        // same switch that reaches the pitch. Kept as properties with the old
+        // names so every existing call site is unchanged.
+        public static Color BlueTeam => Agent_Palette.Blue;
+        public static Color RedTeam => Agent_Palette.Red;
         public static readonly Color Accent = new(0.16f, 0.55f, 0.28f);
         public static readonly Color StaminaLow = new(0.9f, 0.3f, 0.2f);
         public static readonly Color StaminaHigh = new(0.3f, 0.9f, 0.4f);
@@ -79,6 +83,37 @@ namespace PoSoccer
                 return;
             }
             if (!root.styleSheets.Contains(_theme)) root.styleSheets.Add(_theme);
+            ApplyAccessibility(root);
+        }
+
+        /// <summary>
+        /// Stamps the accessibility choices onto a panel root as USS classes.
+        ///
+        /// Both the palette and the type scale are expressed as OVERRIDES OF THE
+        /// STYLESHEET'S OWN VARIABLES (.palette--safe redefines --color-team-*,
+        /// .type--lg redefines --font-*), which is why this is one class on the
+        /// root rather than a sweep over every element: USS custom properties
+        /// inherit, so every rule already reading var(--font-s) picks the new
+        /// value up with no C# involvement at all.
+        ///
+        /// Idempotent - every class it can add, it first removes - so it is safe
+        /// to call again on a root that is already themed, which is what happens
+        /// when the menu rebuilds after a settings change.
+        /// </summary>
+        public static void ApplyAccessibility(VisualElement root)
+        {
+            if (root == null) return;
+
+            root.RemoveFromClassList("palette--safe");
+            root.RemoveFromClassList("palette--contrast");
+            root.RemoveFromClassList("type--lg");
+            root.RemoveFromClassList("type--xl");
+
+            string palette = Agent_Palette.RootClass(Agent_Palette.Current);
+            if (palette != null) root.AddToClassList(palette);
+
+            string type = Agent_Palette.TypeClass(Agent_Palette.TypeScale);
+            if (type != null) root.AddToClassList(type);
         }
 
         /// <summary>Toggles the shared visibility class used by every transient lane.</summary>

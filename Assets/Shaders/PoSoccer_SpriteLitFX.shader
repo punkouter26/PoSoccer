@@ -46,6 +46,14 @@ Shader "PoSoccer/SpriteLitFX"
         _NetTiling("Net Cords Across", Float) = 14
         _NetRipple("Net Ripple", Range(0, 1)) = 0
 
+        // Slot of this material's sprite on its atlas page (offset.xy, size.zw).
+        // Identity by default, which is what an unatlased sprite needs.
+        _SpriteRect("Sprite Rect (atlas slot)", Vector) = (0, 0, 1, 1)
+
+        _KitMode("Kit Pattern (0 none 1 stripes 2 hoops 3 sash 4 halves)", Float) = 0
+        _KitColor("Kit Secondary Colour", Color) = (1, 1, 1, 0)
+        _KitScale("Kit Bands Across", Float) = 6
+
         // Legacy properties, kept so this can fall back to the sprite shader.
         [HideInInspector] _Color("Tint", Color) = (1,1,1,1)
         [HideInInspector] _RendererColor("RendererColor", Color) = (1,1,1,1)
@@ -108,6 +116,10 @@ Shader "PoSoccer/SpriteLitFX"
                 half  _NetStrength;
                 half  _NetTiling;
                 half  _NetRipple;
+                float4 _SpriteRect;
+                half4 _KitColor;
+                half  _KitMode;
+                half  _KitScale;
             CBUFFER_END
 
             #include "PoSoccerFX.hlsl"
@@ -190,6 +202,10 @@ Shader "PoSoccer/SpriteLitFX"
                 half  _NetStrength;
                 half  _NetTiling;
                 half  _NetRipple;
+                float4 _SpriteRect;
+                half4 _KitColor;
+                half  _KitMode;
+                half  _KitScale;
             CBUFFER_END
 
             Varyings NormalsRenderingVertex(Attributes input)
@@ -254,6 +270,10 @@ Shader "PoSoccer/SpriteLitFX"
                 half  _NetStrength;
                 half  _NetTiling;
                 half  _NetRipple;
+                float4 _SpriteRect;
+                half4 _KitColor;
+                half  _KitMode;
+                half  _KitScale;
             CBUFFER_END
 
             #include "PoSoccerFX.hlsl"
