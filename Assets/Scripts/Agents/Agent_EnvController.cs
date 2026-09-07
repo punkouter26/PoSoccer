@@ -444,6 +444,19 @@ namespace PoSoccer
                 {
                     stats.Add("PoSoccer/blue_mean_speed", _speedSum[i] / _speedSamples[i]);
                 }
+
+                // What each dense reward term ACTUALLY paid this episode, blue side only
+                // (mixing the bot's numbers in would mask the very thing this measures).
+                //
+                // The 2026-09-07 budget audit computed each term's CEILING - scale x 9000
+                // steps - and found four that could individually outrank a goal. That is
+                // correct arithmetic about a worst case, but a ceiling needs the term's
+                // condition to hold EVERY step and nobody measured how often it does. If
+                // an agent is near a wall on 5% of steps, wallProximityPenalty pays -0.22,
+                // not the -4.5 the ceiling implies. These curves turn that inference into
+                // a measurement, so the next person tuning the table reads numbers instead
+                // of re-deriving a bound.
+                agent.ReportRewardAccounting();
             }
         }
 

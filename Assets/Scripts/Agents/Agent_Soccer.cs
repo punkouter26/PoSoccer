@@ -852,12 +852,56 @@ namespace PoSoccer
             ApplyDenseRewards(move, lateral, turn, boost);
         }
 
+        /// <summary>
+        /// REALIZED per-episode total of each dense reward term, in the order below.
+        /// Reported to TensorBoard at episode end (see <see cref="ReportRewardAccounting"/>).
+        ///
+        /// WHY THIS EXISTS (2026-09-07). The reward-budget audit computed each term's
+        /// CEILING - scale x 9000 steps - and found four terms that could individually
+        /// outrank a goal. That arithmetic is right, but a ceiling requires the term's
+        /// condition to hold on EVERY step, and nothing measured how often it actually
+        /// does. If an agent hugs a wall on 5% of steps, `wallProximityPenalty` is
+        /// contributing -0.22, not the -4.5 the ceiling implies - a theoretical risk that
+        /// never binds, and capping it then removes real gradient for no realized gain.
+        ///
+        /// A ceiling is an argument. This is a measurement. Anyone tuning this table
+        /// should read these numbers first rather than repeat the inference.
+        /// </summary>
+        readonly float[] _rewardAccounting = new float[TermCount];
+
+        internal const int TermCount = 8;
+        internal static readonly string[] TermNames =
+        {
+            "step", "proximity", "facing", "ball_to_goal", "crossbar",
+            "jitter", "wall", "corner",
+        };
+
+        void Account(int term, float value)
+        {
+            _rewardAccounting[term] += value;
+            AddReward(value);
+        }
+
+        /// <summary>
+        /// Streams the realized dense-reward totals for the episode just ended, so the
+        /// TensorBoard run carries what each term ACTUALLY paid next to the reward curve.
+        /// </summary>
+        internal void ReportRewardAccounting()
+        {
+            var stats = Academy.Instance.StatsRecorder;
+            for (int i = 0; i < TermCount; i++)
+            {
+                stats.Add("Reward/" + TermNames[i], _rewardAccounting[i]);
+                _rewardAccounting[i] = 0f;
+            }
+        }
+
         void ApplyDenseRewards(float move, float lateral, float turn, float boost)
         {
             if (rewards == null || env == null || env.Ball == null) return;
 
             // v2: stepPenalty default is 0 (was -0.0001) - terminal reward provides temporal credit.
-            AddReward(rewards.stepPenalty);
+            Account(0, rewards.stepPenalty);
 
             Vector2 toBall = env.Ball.position - Body.position;
             float d = toBall.magnitude;
@@ -871,17 +915,17 @@ namespace PoSoccer
                 if (!float.IsPositiveInfinity(_prevBallDist))
                 {
                     float delta = _prevBallDist - d;   // positive = closer this step
-                    AddReward(rewards.ballProximityScale * delta);
+                    Account(1, rewards.ballProximityScale * delta);
                 }
                 _prevBallDist = d;
             }
             else
             {
-                AddReward(rewards.ballProximityScale * (1f / (1f + d)));
+                Account(1, rewards.ballProximityScale * (1f / (1f + d)));
             }
 
             float align = Vector2.Dot(transform.up, toBall.normalized);
-            AddReward(rewards.facingAlignmentScale * align);
+            Account(2, rewards.facingAlignmentScale * align);
 
             // The "shoot goalward" gradient.
             //
@@ -911,8 +955,8 @@ namespace PoSoccer
                     if (!float.IsPositiveInfinity(_prevBallGoalDist))
                     {
                         // Positive = the ball got closer to the opponent net this step.
-                        AddReward(rewards.ballToGoalProgressScale
-                                  * (_prevBallGoalDist - ballGoalDist));
+                        Account(3, rewards.ballToGoalProgressScale
+                                     * (_prevBallGoalDist - ballGoalDist));
                     }
                     _prevBallGoalDist = ballGoalDist;
                 }
@@ -920,8 +964,8 @@ namespace PoSoccer
                 {
                     Vector2 dir = (oppGoal - env.Ball.position).normalized;
                     float rate = Vector2.Dot(env.Ball.linearVelocity, dir);
-                    AddReward(rewards.ballToGoalVelocityScale
-                              * Mathf.Clamp(rate * 0.1f, -1f, 1f));
+                    Account(3, rewards.ballToGoalVelocityScale
+                                 * Mathf.Clamp(rate * 0.1f, -1f, 1f));
                 }
             }
 
@@ -943,7 +987,7 @@ namespace PoSoccer
                 {
                     // Closer + faster = more reward; clamped to keep one step bounded.
                     float shotShape = Mathf.Clamp01((1.5f - dist) / 1.5f) * Mathf.Clamp01(progress * 2f);
-                    AddReward(rewards.crossbarProximity * shotShape);
+                    Account(4, rewards.crossbarProximity * shotShape);
                 }
             }
 
@@ -953,7 +997,7 @@ namespace PoSoccer
                           + Mathf.Abs(lateral - _prevActions[1])
                           + Mathf.Abs(turn - _prevActions[2])
                           + Mathf.Abs(boost - _prevActions[3])) / 4f;
-            AddReward(-rewards.actionJitterScale * jitter);
+            Account(5, -rewards.actionJitterScale * jitter);
             _prevActions[0] = move; _prevActions[1] = lateral;
             _prevActions[2] = turn; _prevActions[3] = boost;
 
@@ -963,7 +1007,7 @@ namespace PoSoccer
                 env.PitchHalfExtents.x - Mathf.Abs(local.x),
                 env.PitchHalfExtents.y - Mathf.Abs(local.y));
             if (wallDist < 0.8f)
-                AddReward(-rewards.wallProximityPenalty * (0.8f - wallDist) / 0.8f);
+                Account(6, -rewards.wallProximityPenalty * (0.8f - wallDist) / 0.8f);
 
             // Corner aversion: v2 team-aware - only the team that last touched the
             // ball into a corner zone bleeds reward. The defending team is not
@@ -976,7 +1020,7 @@ namespace PoSoccer
                     env.PitchHalfExtents.x - Mathf.Abs(ballLocal.x),
                     env.PitchHalfExtents.y - Mathf.Abs(ballLocal.y));
                 if (cornerDist < 2f)
-                    AddReward(-rewards.cornerBallPenalty * (1f - cornerDist / 2f));
+                    Account(7, -rewards.cornerBallPenalty * (1f - cornerDist / 2f));
             }
 
             // Personality traits (zero-cost when the profile leaves them at 0):
