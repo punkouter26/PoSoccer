@@ -248,10 +248,27 @@ namespace PoSoccer
         {
             StepCount++;
             SampleLocomotion();
-            // Single source of truth - this used to re-derive the cap inline and so
-            // could not see the trainer's episode_steps parameter.
-            if (StepCount >= MaxEnvironmentSteps)
-                OnStalemate();
+
+            // RESET POLICY, SPLIT BY WHO IS WATCHING (2026-09-07, user request).
+            //
+            // Training and evaluation NEED a hard step cap: an RL episode has to be
+            // bounded or the trainer never gets a terminal, the curriculum never
+            // promotes, and the discounting arithmetic behind episode_steps stops
+            // meaning anything. That path is unchanged.
+            //
+            // GAMEPLAY does not. SCN_Exhibition sets stepCapOverride 2500, which at a
+            // 0.01 s timestep is a reset every 25 SECONDS no matter what is happening -
+            // mid-attack, mid-dribble, ball in flight. That is what made the match feel
+            // like it kept restarting. A spectator only wants the pitch reset when play
+            // has genuinely died, so here the trigger is a stuck BALL, not a clock.
+            if (IsBoundedEpisode)
+            {
+                if (StepCount >= MaxEnvironmentSteps) OnStalemate();
+            }
+            else
+            {
+                TickStuckBallWatchdog();
+            }
             // OOB watchdog intentionally removed (bouncier walls in Agent_PitchGuard
             // now keep play contained, so a match should never need to be reset for
             // an escape - gameplay never stops).
@@ -348,6 +365,65 @@ namespace PoSoccer
             }
 
             ResetPitch();
+        }
+
+        /// <summary>
+        /// True when a trainer or an evaluation run is driving this pitch, i.e. when the
+        /// episode MUST be bounded by a step cap. False during ordinary play.
+        /// </summary>
+        bool IsBoundedEpisode =>
+            Academy.Instance.IsCommunicatorOn || Agent_EvalStats.EvalMode;
+
+        [Header("Stuck-ball watchdog (gameplay only)")]
+        [Tooltip("Seconds the ball may stay inside stuckRadius before the pitch resets. " +
+                 "Only used when no trainer/eval is attached - training keeps its step cap.")]
+        public float stuckSeconds = 20f;
+        [Tooltip("How far the ball must travel to count as 'play is alive'. Measured from " +
+                 "the anchor the watchdog drops each time the ball escapes this radius.")]
+        public float stuckRadius = 2.5f;
+
+        Vector2 _stuckAnchor;
+        float _stuckTimer;
+        bool _stuckArmed;
+
+        /// <summary>
+        /// Resets the pitch only when the ball has genuinely stopped going anywhere:
+        /// it must stay within <see cref="stuckRadius"/> of an anchor for
+        /// <see cref="stuckSeconds"/> continuous seconds. Any real movement re-anchors
+        /// and restarts the clock, so a rally, a dribble or a long ball never trips it.
+        ///
+        /// This deliberately measures the BALL, not the players. Two agents shoving each
+        /// other in a corner while the ball sits still is exactly the state worth
+        /// clearing; two agents circling a ball that keeps moving is a game.
+        /// </summary>
+        void TickStuckBallWatchdog()
+        {
+            if (ball == null) { _stuckArmed = false; return; }
+
+            Vector2 p = ball.position;
+            if (!_stuckArmed)
+            {
+                _stuckAnchor = p;
+                _stuckTimer = 0f;
+                _stuckArmed = true;
+                return;
+            }
+
+            if ((p - _stuckAnchor).sqrMagnitude > stuckRadius * stuckRadius)
+            {
+                // Play is alive - re-anchor and start counting again from here.
+                _stuckAnchor = p;
+                _stuckTimer = 0f;
+                return;
+            }
+
+            _stuckTimer += Time.fixedDeltaTime;
+            if (_stuckTimer >= stuckSeconds)
+            {
+                _stuckTimer = 0f;
+                _stuckArmed = false;
+                OnStalemate();
+            }
         }
 
         void OnStalemate()
@@ -487,6 +563,11 @@ namespace PoSoccer
             StepCount = 0;
             _lastToucher = null;
             _previousToucher = null;
+            // Disarm the stuck-ball watchdog: it re-anchors on the next tick from
+            // wherever the ball actually spawned. Without this a reset would carry the
+            // old anchor and could re-trip almost immediately.
+            _stuckArmed = false;
+            _stuckTimer = 0f;
             ResetLocomotionTracking();
 
             CurrentGoalWidth = Academy.Instance.EnvironmentParameters

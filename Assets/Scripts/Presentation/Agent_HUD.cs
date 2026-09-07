@@ -70,6 +70,28 @@ namespace PoSoccer
         /// </summary>
         readonly object _pauseToken = new Agent_TimeFreeze.Hold("HUD.Pause");
 
+        /// <summary>
+        /// Shows or hides the broadcast strip (win-probability bar + label, stat ticker,
+        /// broadcast tag) at runtime. Hidden by default - see the note in
+        /// BuildFromTemplate for why it is off and why the components behind it keep
+        /// running.
+        ///
+        /// Public because the floor logic in <see cref="SetWinProbability"/> still has to
+        /// be testable: Agent_PlayMode_Broadcast asserts the bar never collapses to zero
+        /// width, which is a statement about the FLOOR, not about whether the strip is
+        /// currently on screen. Without this the test would only be able to observe the
+        /// hidden state and would fail for the wrong reason.
+        /// </summary>
+        public void SetBroadcastStripVisible(bool visible)
+        {
+            _showBroadcastStrip = visible;
+            var display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            if (_winProbBar != null) _winProbBar.style.display = display;
+            if (_winProbLabel != null) _winProbLabel.style.display = display;
+            if (_ticker != null) _ticker.style.display = display;
+            if (_broadcastTag != null) _broadcastTag.style.display = display;
+        }
+
         public bool IsPaused => _pausePanel != null;
 
         public int BlueScore => _blueScore;

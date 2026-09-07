@@ -352,6 +352,14 @@ namespace PoSoccer.Tests
             var driver = Object.FindAnyObjectByType<Agent_WinProbability>();
             if (driver != null) driver.enabled = false;
 
+            // The broadcast strip ships HIDDEN (it covered the pitch). This test is about
+            // the FLOOR in SetWinProbability - that neither half ever resolves to zero
+            // width - which is only observable while the bar is actually laid out. Show
+            // it explicitly rather than asserting against a display:none element, which
+            // would fail for a reason that has nothing to do with the floor.
+            hud.SetBroadcastStripVisible(true);
+            yield return null;
+
             var root = hud.GetComponent<UIDocument>().rootVisualElement;
             var blue = root.Q<VisualElement>("winprob-blue");
             var red = root.Q<VisualElement>("winprob-red");
