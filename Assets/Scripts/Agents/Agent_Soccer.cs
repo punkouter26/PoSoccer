@@ -213,6 +213,19 @@ namespace PoSoccer
         /// </summary>
         public const int ContinuousActionCount = 4;
 
+        /// <summary>
+        /// Multiplier applied to the three steering channels before clamping, in
+        /// <see cref="OnActionReceived"/>. See the long note at its use site for why
+        /// this is 1.0 and what the 1.6 it replaced cost.
+        ///
+        /// Public because it is load-bearing provenance: changing it changes the
+        /// action-to-force mapping without changing a single tensor shape, so every
+        /// .onnx trained under the old value loads clean and then under-drives.
+        /// <see cref="Reward_Settings.trainedActionGain"/> records what each deployed
+        /// brain was trained against and Agent_EditMode_ActionGain compares the two.
+        /// </summary>
+        public const float ActionGain = 1.0f;
+
         // Team frame (the colored border drawn around each player) - server-side
         // tunable so the designer can thicken or thin it without recompiling.
         [Header("Team Frame")]
@@ -654,7 +667,11 @@ namespace PoSoccer
             // so every .onnx trained under 1.6 is out of distribution - a full retrain,
             // exactly like the 2026-08-28 frame boundary. Treat pre-2026-09-07
             // checkpoints as incomparable to later ones.
-            const float ActionGain = 1.0f;
+            // Public so a profile's recorded provenance can be compared against it
+            // WITHOUT entering play mode - see Reward_Settings.trainedActionGain and
+            // Agent_EditMode_ActionGain. Kept as a const local before; a private
+            // constant meant the one number that silently invalidates a checkpoint
+            // was unreadable by the guard that should have been watching it.
             float move = Mathf.Clamp(actions.ContinuousActions[0] * ActionGain, -1f, 1f);
             float lateral = Mathf.Clamp(actions.ContinuousActions[1] * ActionGain, -1f, 1f);
             float turn = Mathf.Clamp(actions.ContinuousActions[2] * ActionGain, -1f, 1f);

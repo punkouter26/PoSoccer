@@ -104,7 +104,16 @@ namespace PoSoccer
                 stalemates = _stalemates,
                 meanEpisodeSteps = _episodes > 0 ? _stepSum / _episodes : 0f,
                 meanBlueReward = _episodes > 0 ? _blueRewardSum / _episodes : 0f,
-                modelFile = "SoccerAgent_v01.onnx",
+                // Resolved from the brain the agents are ACTUALLY running, not a literal.
+                // This field used to be the hardcoded string "SoccerAgent_v01.onnx" and was
+                // written into every eval JSON regardless of what was graded - a filename
+                // that has not existed since the legacy behavior name was retired. An eval
+                // report that states the wrong model with total confidence is precisely the
+                // artefact behind the phase-10 retraction (three published win rates that
+                // all described a model nobody meant to grade). evaluate.ps1 also stamps
+                // modelPath/modelWrittenUtc/playerBuiltUtc afterwards; this makes the
+                // player's own half of the record honest too.
+                modelFile = ResolveModelName(),
                 baseline = BaselineMode,
                 invalid = _invalid,
                 timestampUtc = DateTime.UtcNow.ToString("o"),
@@ -119,6 +128,26 @@ namespace PoSoccer
             Debug.Log($"[EvalStats] Report written to {path}");
 
             if (!Application.isEditor) Application.Quit();
+        }
+
+        /// <summary>
+        /// Name of the model the blue side is actually running this eval, or an explicit
+        /// marker when there is none. Never a literal - see the call site.
+        /// </summary>
+        static string ResolveModelName()
+        {
+            if (BaselineMode) return "(baseline: heuristic bot, no model)";
+
+            var agents = UnityEngine.Object.FindObjectsByType<Agent_Soccer>(
+                FindObjectsSortMode.None);
+            for (int i = 0; i < agents.Length; i++)
+            {
+                var a = agents[i];
+                if (a == null || a.team != Agent_Soccer.Team.Blue) continue;
+                var bp = a.GetComponent<Unity.MLAgents.Policies.BehaviorParameters>();
+                if (bp != null && bp.Model != null) return bp.Model.name + ".onnx";
+            }
+            return "(no model assigned - blue ran as heuristic bot)";
         }
 
         [Serializable]

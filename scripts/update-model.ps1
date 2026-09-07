@@ -83,4 +83,26 @@ Set-ProfileField $profileAsset 'trainingRunId' $RunId
 Set-ProfileField $profileAsset 'trainedOn' (Get-Date -Format 'yyyy-MM-dd')
 Set-ProfileField $profileAsset 'evalWinRate' '-1'
 Set-ProfileField $profileAsset 'evalEpisodes' '0'
-Write-Host "  provenance: $steps steps from $RunId (eval rating cleared)"
+
+# ActionGain provenance. Read from the SOURCE rather than hardcoded here, because a
+# constant duplicated into a deploy script is exactly how the value silently diverges
+# from the runtime it is supposed to describe.
+#
+# This exists because on 2026-09-07 the gain went 1.6 -> 1.0 (p22) while MATT, NICK and
+# KIM stayed on p21 checkpoints trained at 1.6. Tensor shapes are unchanged, so those
+# .onnx load without a warning and then under-drive. Agent_EditMode_ActionGain compares
+# what this stamps against Agent_Soccer.ActionGain and fails on a mismatch.
+$agentSource = Join-Path $root "Assets\Scripts\Agents\Agent_Soccer.cs"
+$gain = $null
+if (Test-Path $agentSource) {
+    $m = Select-String -Path $agentSource -Pattern 'public\s+const\s+float\s+ActionGain\s*=\s*([0-9.]+)f' |
+         Select-Object -First 1
+    if ($m) { $gain = $m.Matches[0].Groups[1].Value }
+}
+if ($gain) {
+    Set-ProfileField $profileAsset 'trainedActionGain' $gain
+} else {
+    Write-Warning "Could not read Agent_Soccer.ActionGain from source - trainedActionGain NOT stamped. Agent_EditMode_ActionGain will flag this profile as unknown provenance."
+}
+
+Write-Host "  provenance: $steps steps from $RunId, ActionGain $gain (eval rating cleared)"

@@ -102,7 +102,13 @@ environment_parameters:
         value: 1.0
 
 env_settings:
-  num_envs: 1
+  # 4 is what every run in this project has ACTUALLY used: scripts/train-phase1.ps1
+  # passes --num-envs=4 on the command line, which overrides this key. The file used to
+  # say 1, so the configuration.yaml archived with each run disagreed with the run that
+  # produced it (p22's record reads num_envs: 4 against a config file reading 1).
+  # Corrected so a run launched WITHOUT the script cannot silently drop to a quarter
+  # of the throughput while looking identical in the archive.
+  num_envs: 4
 
 engine_settings:
   time_scale: 20

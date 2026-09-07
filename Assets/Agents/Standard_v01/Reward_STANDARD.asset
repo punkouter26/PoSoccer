@@ -1,4 +1,4 @@
-﻿%YAML 1.1
+%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!114 &11400000
 MonoBehaviour:
@@ -20,8 +20,9 @@ MonoBehaviour:
   trainingSteps: 10000986
   trainingRunId: soccer_p22gain_standard
   trainedOn: 2026-09-07
-  evalWinRate: -1
-  evalEpisodes: 0
+  evalWinRate: 0.2657
+  evalEpisodes: 350
+  trainedActionGain: 1
   bodyScale: 1
   bodyMass: 75
   goalScorer: 1.2
@@ -30,15 +31,15 @@ MonoBehaviour:
   goalConceded: -1
   stalemateTimeout: -0.6
   goalSpeedBonus: 0.05
-  crossbarProximity: 0.0005
+  crossbarProximity: 0
   stepPenalty: -5e-05
   ballProximityScale: 0.02
   useDifferentialProximity: 1
-  facingAlignmentScale: 5e-05
-  ballToGoalVelocityScale: 0.001
+  facingAlignmentScale: 0
+  ballToGoalVelocityScale: 0.0001
   actionJitterScale: 0.0004
-  wallProximityPenalty: 0.0005
-  cornerBallPenalty: 0.0006
+  wallProximityPenalty: 5e-05
+  cornerBallPenalty: 6e-05
   defensivePositionScale: 0
   possessionScale: 0
   ballContact: 0.005

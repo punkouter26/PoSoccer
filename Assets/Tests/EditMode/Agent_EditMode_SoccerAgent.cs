@@ -181,7 +181,14 @@ namespace PoSoccer.Tests
             // policy learned to circle-strafe: measured lateral 0.314 vs forward 0.285,
             // boost never once positive, 13% of the distance covered.
             Assert.AreEqual(0.02f, r.ballProximityScale, 1e-6f);
-            Assert.AreEqual(0.00005f, r.facingAlignmentScale, 1e-6f);
+            // v6 (2026-09-07): 0.00005 -> 0. Retired rather than shrunk again. The signed
+            // bearing to the ball became an OBSERVATION on 2026-08-28, when the body-frame
+            // fix made the world eye axis a constant and freed two floats; paying a reward
+            // for facing is now paying for something the policy is handed as an input.
+            // Its per-episode ceiling (0.45) never breached a goal, so the reward-budget
+            // guard would not have caught it - this one is redundancy, not dominance.
+            Assert.AreEqual(0f, r.facingAlignmentScale, 1e-9f,
+                "facingAlignmentScale is retired - bearing to the ball is an observation now");
             // v3: 0.05 -> 0.005. At 0.05, 14 touches outscored a goal (0.7).
             Assert.AreEqual(0.005f, r.ballContact);
             Assert.AreEqual(-0.6f, r.stalemateTimeout, 1e-6f);
@@ -191,7 +198,12 @@ namespace PoSoccer.Tests
             // opt in. The test pins the defaults so accidental drift is caught
             // before a 3M-step run wastes compute.
             Assert.AreEqual(0.05f, r.goalSpeedBonus, 1e-6f);
-            Assert.AreEqual(0.0005f, r.crossbarProximity, 1e-6f);
+            // v6 (2026-09-07): 0.0005 -> 0. Retired. Charged every physics step against a
+            // 9000-step cap it ceilinged at +4.5 per episode - 3.75x a goal - for an event
+            // already paid twice over by ballToGoalVelocityScale and then by goalScorer.
+            // See Agent_EditMode_RewardBudget for the general property this violated.
+            Assert.AreEqual(0f, r.crossbarProximity, 1e-9f,
+                "crossbarProximity is retired - it triple-paid an event goalScorer already covers");
             Object.DestroyImmediate(r);
         }
 

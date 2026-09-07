@@ -66,6 +66,27 @@ namespace PoSoccer
         [Tooltip("Episode count behind evalWinRate (sample size for the number above).")]
         public int evalEpisodes;
 
+        /// <summary>
+        /// The <see cref="Agent_Soccer.ActionGain"/> in force when this brainModel was
+        /// TRAINED. -1 means unknown provenance, which for a populated brainModel is
+        /// itself the defect this field exists to surface.
+        ///
+        /// WHY THIS EXISTS. On 2026-09-07 the gain went 1.6 -> 1.0 (p22) while MATT,
+        /// NICK and KIM stayed on p21 checkpoints trained at 1.6. The tensor shapes are
+        /// identical, so those .onnx load without a single warning and then under-drive:
+        /// a policy that learned "0.625 buys full force" now gets 0.625 of it. That is
+        /// milder than the 2026-08-28 frame change - a monotonic magnitude scaling
+        /// preserves direction where a frame change scrambles meaning - but it is still
+        /// a silent train/deploy mismatch, and Agent_EditMode_ObsContract cannot see it
+        /// because every number that contract checks is unchanged.
+        ///
+        /// Stamped by scripts/update-model.ps1; pinned by Agent_EditMode_ActionGain.
+        /// </summary>
+        [Tooltip("Agent_Soccer.ActionGain in force when this brainModel was trained. " +
+                 "-1 = unknown provenance. A value differing from the current constant " +
+                 "means the brain under- or over-drives relative to what it learned.")]
+        public float trainedActionGain = -1f;
+
         [Header("Physique")]
         [Tooltip("Body size multiplier on the scene's base scale. Big bodies block and shield more of the pitch.")]
         public float bodyScale = 1f;
@@ -109,7 +130,12 @@ namespace PoSoccer
         // a single goal so it shapes without dominating.
         [Tooltip("Per-step reward when the ball is in the opponent's goal mouth AND " +
                  "moving toward the net (close-range shot gradient). 0 = off.")]
-        public float crossbarProximity = 0.0005f;
+        // v5 (2026-09-07): 0.0005 -> 0. Retired. Ceiling was +4.5 per episode, 3.75x a
+        // goal, for a term that is nearly pure redundancy: a ball in the opponent's goal
+        // mouth moving toward the net is already paid by ballToGoalVelocityScale, and
+        // moments later by goalScorer itself. Two shaping terms and a terminal all paying
+        // for the same event is how a shaping term becomes the objective.
+        public float crossbarProximity = 0f;
 
         [Header("Dense rewards (per decision step)")]
         [Tooltip("Per-step time cost. v2 zeroed the old -0.0001 because it washed out the " +
@@ -153,19 +179,40 @@ namespace PoSoccer
                  "the vector obs already supply direction. Paid every step, so it " +
                  "outgrows the telescoping proximity term easily - at 0.0002 it was " +
                  "the dominant dense term and taught strafing over running.")]
-        public float facingAlignmentScale = 0.00005f;
+        // v5 (2026-09-07): 0.00005 -> 0. Retired, not merely shrunk. The signed bearing
+        // to the ball became an OBSERVATION on 2026-08-28 (it replaced the world eye
+        // axis, which the body frame had made constant), so facing is now something the
+        // policy can read directly and steer on. Paying for it as well is paying for an
+        // input. Its ceiling was 0.45 per episode - under a goal, so it never tripped the
+        // budget test, but it is the term that historically taught strafe-over-run.
+        public float facingAlignmentScale = 0f;
         [Tooltip("Reward per step for ball velocity toward the opponent goal (the 'shoot goalward' gradient).")]
-        public float ballToGoalVelocityScale = 0.001f;
+        // v5 (2026-09-07): 0.001 -> 0.0001. BUDGET FIX, and the largest one in the table.
+        // This is charged every physics step against a 9000-step cap, so 0.001 ceilings at
+        // +9.0 per episode - SEVEN AND A HALF TIMES what scoring pays (+1.2). A policy
+        // maximising return under that table should farm ball-goal velocity and never
+        // bother finishing, which is a more direct account of this project's signature
+        // "learns not to lose, never learns to win" plateau than the curriculum story it
+        // was attributed to. At 0.0001 the ceiling is 0.9, comfortably under a goal.
+        // See Agent_EditMode_RewardBudget, which now fails if any term regains a ceiling
+        // above the largest terminal reward.
+        public float ballToGoalVelocityScale = 0.0001f;
         [Tooltip("Penalty scale on per-step action change (anti-twitch; smooth, deliberate movement). " +
                  "v2 halved from 0.001: hard cuts are *correct* for soccer (cutting inside the box) " +
                  "and the old penalty was teaching the brain to be smooth and idle.")]
         public float actionJitterScale = 0.0004f;
         [Tooltip("Penalty scale for lingering within 0.8m of a wall (cures wall-hugging).")]
-        public float wallProximityPenalty = 0.0005f;
+        // v5 (2026-09-07): 0.0005 -> 0.00005. Budget fix: at 0.0005 the ceiling is -4.5
+        // per episode, 4.5x the cost of CONCEDING A GOAL (-1.0). Wall-hugging is a real
+        // pathology worth a nudge, but at the old scale a policy should rationally let
+        // the opponent score rather than spend an episode near a boundary.
+        public float wallProximityPenalty = 0.00005f;
         [Tooltip("Penalty per step (only for the team that last touched the ball) while the ball sits " +
                  "inside a corner zone. v2: team-aware - used to bleed both teams regardless of fault, " +
                  "which let a corner-creator escape penalty while the defender suffered.")]
-        public float cornerBallPenalty = 0.0006f;
+        // v5 (2026-09-07): 0.0006 -> 0.00006. Budget fix: ceiling was -5.4 per episode,
+        // 5.4x conceding. Same reasoning as wallProximityPenalty above.
+        public float cornerBallPenalty = 0.00006f;
         [Tooltip("Defender trait: reward for positioning between the ball and own goal (0 = off).")]
         public float defensivePositionScale = 0f;
         [Tooltip("Midfielder trait: reward per step while keeping the ball within 1.2m (0 = off).")]

@@ -26,6 +26,7 @@ MonoBehaviour:
   trainedOn: 2026-08-30
   evalWinRate: -1
   evalEpisodes: 0
+  trainedActionGain: 1.6
   bodyScale: 0.9
   bodyMass: 61
   goalScorer: 1.3
@@ -34,16 +35,16 @@ MonoBehaviour:
   goalConceded: -1.2
   stalemateTimeout: -0.6
   goalSpeedBonus: 0.05
-  crossbarProximity: 0.0005
+  crossbarProximity: 0
   stepPenalty: -0.00005
   ballProximityScale: 0.02
   useDifferentialProximity: 1
-  facingAlignmentScale: 0.00005
-  ballToGoalVelocityScale: 0.0006
+  facingAlignmentScale: 0
+  ballToGoalVelocityScale: 6e-05
   actionJitterScale: 0.0004
-  wallProximityPenalty: 0.0002
-  cornerBallPenalty: 0.0006
-  defensivePositionScale: 0.0006
+  wallProximityPenalty: 2e-05
+  cornerBallPenalty: 6e-05
+  defensivePositionScale: 6e-05
   possessionScale: 0
   ballContact: 0.005
   maxEnvironmentSteps: 9000
