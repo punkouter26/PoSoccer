@@ -10,7 +10,17 @@ PoSoccer: a top-down 2D physics soccer game + **ML-Agents training benchmark**. 
 
 **Corrected 2026-09-06 — the editor is 6000.6.0f1, not 6000.5.6f1.** This file carried `6000.5.6f1` while `ProjectSettings/ProjectVersion.txt` and the live bridge both report **6000.6.0f1** (`f7f8ed4d1e24`). A minor-version claim is not cosmetic here: the "Unity 6.5 turns deprecations into errors" note below, and every third-party package version choice reasoned against it, start from the editor version. Read `ProjectVersion.txt`, not this line.
 
-## Hard rules (UNITY_RULES)
+## Hard rules (UNITY_AGENT / UNITY_RULES)
+
+**Re-confirmed 2026-09-07.** The user restated twelve standing rules (master-only
+branching; read the root `DOCS` folder; TensorBoard always started with training; prune
+obsolete TensorBoard runs; heuristic bot RED; reference RL brain GREEN and untextured;
+roster = heuristic bot + reference brain + 0..n custom brains; `TLDR:` on answers over
+~100 words; `mujoco-bin` for Android builds; never push without an explicit ask or
+`git sync`; show the MuJoCo/Isaac UI during and after training; creatures move with
+Earth gravity, real joint ranges and size-scaled mass). **All twelve were already
+present in this section verbatim** — the list is reproduced here only so the
+`UNITY_AGENT` name resolves to it. Nothing below changed as a result.
 
 - Scene setup goes through **Unity MCP tools only** — never editor scripts for scene construction. (Building things *at runtime* in gameplay code — lights, UI, particles — is fine and used heavily.)
 - Script prefixes `Agent_` / `Sensor_` / `Reward_` (`Agent_` is the blanket project prefix, covering non-agents like `Agent_UIStyle`); scenes `SCN_`; folder depth ≤2 under `Assets/`; agent assets in `<Name>_v<NN>` folders.

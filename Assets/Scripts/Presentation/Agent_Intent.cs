@@ -57,9 +57,18 @@ namespace PoSoccer
                  "below the confetti burst layer (20).")]
         [SerializeField] private int _sortingOrder = 15;
 
-        [Tooltip("Start with the overlay visible. It is the clearest single answer to " +
-                 "\"what is the AI doing\", so it is on by default in a match.")]
-        [SerializeField] private bool _visibleOnStart = true;
+        // HIDDEN ON START (2026-09-07, user request). The intent + velocity arrows, the
+        // traction arc and the turn tick are drawn ON TOP of the pitch, and at 1v1 on the
+        // 12x24 exhibition pitch they crowd the two players they annotate.
+        //
+        // The component stays INSTALLED rather than disabled, deliberately: it is still
+        // the clearest single answer to "what is the AI doing" - two arrows disagreeing
+        // separates "wants the wrong thing" from "wants the right thing and cannot get
+        // there" - and Agent_PlayMode_Broadcast drives it by setting Visible. Killing the
+        // component would make those tests assert on a no-op. Press I in a match.
+        [Tooltip("Start with the overlay visible. Off by default so the arrows do not " +
+                 "cover the pitch; press I in a match to bring them up.")]
+        [SerializeField] private bool _visibleOnStart = false;
         [SerializeField] private bool _enableIntent = true;
 
         /// <summary>

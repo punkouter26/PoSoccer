@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
@@ -34,6 +34,11 @@ namespace PoSoccer
 
         UIDocument _doc;
         Label _score, _stepLabel, _toast;
+        [Tooltip("Show the broadcast strip over the pitch: the win-probability bar and " +
+                 "the rotating stat ticker. Off by default - they sit on the play area " +
+                 "and obscure the match. The components behind them keep running.")]
+        [SerializeField] private bool _showBroadcastStrip = false;
+
         VisualElement _root, _endPanel, _blueChips, _redChips;
         VisualElement _ballControlBlue, _ballControlRed;   // halves of the meter
         int _blueScore, _redScore;
@@ -235,6 +240,29 @@ namespace PoSoccer
             _winProbBar.style.display = probability;
             _winProbLabel.style.display = probability;
             SetWinProbability(0.5f);
+
+            // BROADCAST STRIP OFF BY DEFAULT (2026-09-07, user request).
+            //
+            // The win-probability bar and the rotating stat ticker sit directly above the
+            // play area and were reported as interfering with watching the match. Both are
+            // hidden here rather than by disabling Agent_WinProbability / Agent_MatchStats,
+            // deliberately: Agent_PlayMode_Broadcast asserts those components ARE installed
+            // in a match scene and are NOT in SCN_Training, so killing them would make
+            // those assertions pass against a no-op. The components keep running - the
+            // end-of-match telemetry table and the F3 readout are unaffected - their
+            // output simply is not painted over the pitch.
+            //
+            // Losing the win-probability bar also removes the one number on screen that
+            // needed a MODEL qualifier next to it, because it is an uncalibrated
+            // hand-tuned logistic rather than a measurement. If it comes back, that tag
+            // is mandatory - see the note on Agent_WinProbability.
+            if (_showBroadcastStrip == false)
+            {
+                _winProbBar.style.display = DisplayStyle.None;
+                _winProbLabel.style.display = DisplayStyle.None;
+                _ticker.style.display = DisplayStyle.None;
+                _broadcastTag.style.display = DisplayStyle.None;
+            }
 
             // The gallery turns match flow off, which drops the clock into its
             // training readout ("step N · goal 6.0m · bot 1.00"). That is honest
