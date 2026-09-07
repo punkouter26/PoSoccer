@@ -338,10 +338,15 @@ namespace PoSoccer
             // Guarded so 16 cloned pitches don't fight over it (they can't here - the
             // grid stays at one pitch without a communicator - but this method is the
             // only place that knows a recording is happening).
-            if (Time.timeScale < 2f)
+            // Setting this once here did NOT hold - measured 2026-09-07, the first
+            // recording ran at ~12.5 entries/s, exactly the period-8 decision rate at
+            // timeScale 1.0, so something later in startup puts the clock back.
+            // Agent_DemoClock re-asserts it every LateUpdate instead, which is correct
+            // against any one-shot writer including one nobody has identified yet.
             {
                 string ts = System.Environment.GetEnvironmentVariable("POSOCCER_DEMO_TIMESCALE");
-                Time.timeScale = float.TryParse(ts, out float scale) && scale > 0f ? scale : 20f;
+                var clock = gameObject.AddComponent<Agent_DemoClock>();
+                clock.Scale = float.TryParse(ts, out float scale) && scale > 0f ? scale : 20f;
                 Application.targetFrameRate = -1;
                 QualitySettings.vSyncCount = 0;
             }

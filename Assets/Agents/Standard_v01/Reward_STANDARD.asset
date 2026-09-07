@@ -22,7 +22,7 @@ MonoBehaviour:
   trainedOn: 2026-09-07
   evalWinRate: 0.2657
   evalEpisodes: 350
-  trainedActionGain: 1
+  trainedActionGain: 1.0
   bodyScale: 1
   bodyMass: 75
   goalScorer: 1.2
