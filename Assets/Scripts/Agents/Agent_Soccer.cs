@@ -318,6 +318,22 @@ namespace PoSoccer
             // way to make this actively harmful rather than merely useless.
             if (_behavior.BehaviorType != BehaviorType.HeuristicOnly) return;
 
+            // A recording run has NO TRAINER, so nothing applies the config's
+            // `time_scale: 20` - the player would step physics at wall-clock speed and
+            // 200k steps at a 0.01s timestep would take over half an hour of real time
+            // for a few minutes of data. Training runs never hit this because
+            // mlagents-learn sets the timescale over the communicator.
+            // Guarded so 16 cloned pitches don't fight over it (they can't here - the
+            // grid stays at one pitch without a communicator - but this method is the
+            // only place that knows a recording is happening).
+            if (Time.timeScale < 2f)
+            {
+                string ts = System.Environment.GetEnvironmentVariable("POSOCCER_DEMO_TIMESCALE");
+                Time.timeScale = float.TryParse(ts, out float scale) && scale > 0f ? scale : 20f;
+                Application.targetFrameRate = -1;
+                QualitySettings.vSyncCount = 0;
+            }
+
             var recorder = gameObject.AddComponent<DemonstrationRecorder>();
             recorder.Record = true;
             recorder.DemonstrationName = "BotExpert";

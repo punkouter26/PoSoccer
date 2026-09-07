@@ -16,7 +16,7 @@
 #
 #   .\scripts\record-demo.ps1 [-Steps 200000] [-OutDir Assets\Demonstrations]
 param(
-    [int]$Steps = 200000,
+    [int]$Steps = 150000,
     [string]$OutDir = "Assets\Demonstrations",
     [string]$ExePath = "Builds\PoSoccer\PoSoccer.exe"
 )
