@@ -33,10 +33,12 @@ New-Item -ItemType Directory -Force $outFull | Out-Null
 # a communicator is on or eval mode is set) - which is what we want: 16 pitches would
 # spawn 16 recorders and 16 files.
 #
-# POSOCCER_OPPONENT=bot forces RED to HeuristicOnly, and ApplyDemoRecording only
-# attaches to the heuristic side. Blue has no trainer and no model, so it also falls
-# back to the bot - i.e. this records bot-vs-bot, the same distribution that produces
-# the 42.5% symmetric baseline.
+# ApplyDemoRecording forces BOTH sides to HeuristicOnly, so the demonstrations come
+# from BOT-VS-BOT - the same distribution behind the 42.5% symmetric baseline. That
+# forcing is required, not incidental: SCN_Training serializes a brainModel on both
+# agents, so otherwise BLUE would run the trained policy under inference and the demos
+# would be "bot beating a weak opponent" - a one-sided distribution missing exactly
+# the contested states a learner needs to imitate.
 $env:POSOCCER_OPPONENT    = "bot"
 $env:POSOCCER_RECORD_DEMO = "1"
 $env:POSOCCER_DEMO_STEPS  = "$Steps"

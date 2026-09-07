@@ -313,10 +313,22 @@ namespace PoSoccer
             string flag = System.Environment.GetEnvironmentVariable("POSOCCER_RECORD_DEMO");
             if (string.IsNullOrEmpty(flag) || flag == "0") return;
 
-            // Only record the side actually being driven by the scripted bot. Recording
-            // the learning side would clone a policy that cannot play, which is the one
-            // way to make this actively harmful rather than merely useless.
-            if (_behavior.BehaviorType != BehaviorType.HeuristicOnly) return;
+            // BOTH sides play the bot during a recording run, so the demonstrations are
+            // drawn from BOT-VS-BOT - the same distribution that produces the 42.5%
+            // symmetric baseline.
+            //
+            // This is not automatic and I had it wrong first: SCN_Training serializes a
+            // brainModel on both agents, so without this line BLUE runs the trained
+            // policy under inference and the demos become "bot beating a weak opponent".
+            // That is a one-sided distribution missing exactly the contested states a
+            // learner needs to imitate - it would teach the clone how to walk the ball in
+            // against someone who is not defending.
+            _behavior.BehaviorType = BehaviorType.HeuristicOnly;
+
+            // Record ONE side only. Both are the same controller, so a second recorder
+            // would just double the file for no new information - and each recorder
+            // opens its own file, so it also doubles the bookkeeping.
+            if (team != Team.Red) return;
 
             // A recording run has NO TRAINER, so nothing applies the config's
             // `time_scale: 20` - the player would step physics at wall-clock speed and
