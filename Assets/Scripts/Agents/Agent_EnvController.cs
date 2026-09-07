@@ -59,8 +59,40 @@ namespace PoSoccer
         /// time-remaining scalar so the obs shape doesn't change when the
         /// profile's maxEnvironmentSteps does.
         /// </summary>
-        public int MaxEnvironmentSteps =>
-            rewards != null ? rewards.maxEnvironmentSteps : 5000;
+        public int MaxEnvironmentSteps
+        {
+            get
+            {
+                if (stepCapOverride > 0) return stepCapOverride;          // exhibition pace
+                if (CurrentEpisodeSteps > 0) return CurrentEpisodeSteps;  // trainer curriculum
+                return rewards != null ? rewards.maxEnvironmentSteps : 5000;
+            }
+        }
+
+        /// <summary>
+        /// Episode step cap requested by the trainer via the `episode_steps` environment
+        /// parameter, or 0 when nothing is driving it (every non-training run).
+        ///
+        /// WHY THIS IS A CURRICULUM PARAMETER AND NOT A PROFILE FIELD (2026-09-07).
+        /// Shortening the episode is the largest untried credit-assignment lever in this
+        /// project. At gamma 0.99 with decision period 8, a 9000-step episode is 1125
+        /// decisions, so a terminal reward valued from the episode start survives at
+        /// ~1.2e-5 - it is effectively invisible, which is why dense shaping has had to
+        /// carry all the learning. At a 2500-step cap that becomes 0.0433: the SAME goal
+        /// is ~3500x more visible, and each million steps buys ~3.6x as many terminal
+        /// events to learn from.
+        ///
+        /// But `maxEnvironmentSteps` is also what EVALUATION uses, and the win rate is
+        /// blueWins/episodes - so shortening the cap there mechanically converts wins into
+        /// stalemates and would silently break comparability with the 26.6% baseline. Two
+        /// different quantities were riding on one field. Driving it from the curriculum
+        /// keeps training free to use short episodes while eval keeps the profile's cap,
+        /// exactly like `bot_strength` (trained on a ladder, graded at 1.0).
+        ///
+        /// Precedence: stepCapOverride (exhibition scene) > episode_steps (trainer) >
+        /// the reward profile.
+        /// </summary>
+        public int CurrentEpisodeSteps { get; private set; }
         public float CurrentGoalWidth { get; private set; }
         /// <summary>Opponent difficulty applied at the last kickoff (curriculum readout).</summary>
         public float CurrentBotStrength { get; private set; }
@@ -216,9 +248,9 @@ namespace PoSoccer
         {
             StepCount++;
             SampleLocomotion();
-            int cap = stepCapOverride > 0 ? stepCapOverride
-                : rewards != null ? rewards.maxEnvironmentSteps : 5000;
-            if (StepCount >= cap)
+            // Single source of truth - this used to re-derive the cap inline and so
+            // could not see the trainer's episode_steps parameter.
+            if (StepCount >= MaxEnvironmentSteps)
                 OnStalemate();
             // OOB watchdog intentionally removed (bouncier walls in Agent_PitchGuard
             // now keep play contained, so a match should never need to be reset for
@@ -455,6 +487,12 @@ namespace PoSoccer
             // never lands mid-play.
             CurrentBotStrength = Academy.Instance.EnvironmentParameters
                 .GetWithDefault("bot_strength", defaultBotStrength);
+
+            // Episode length curriculum. Default 0 = "nobody is driving this", which is
+            // every non-training run, so eval and gameplay keep the profile's cap. Read
+            // at kickoff like the others so a lesson change never lands mid-play.
+            CurrentEpisodeSteps = Mathf.RoundToInt(
+                Academy.Instance.EnvironmentParameters.GetWithDefault("episode_steps", 0f));
             for (int botIndex = 0; botIndex < _bots.Count; botIndex++)
             {
                 if (_bots[botIndex] != null) _bots[botIndex].SetStrength(CurrentBotStrength);

@@ -1,0 +1,130 @@
+# p25 - SHORTEN THE EPISODE. Single variable vs p24: episode_steps 9000 -> 2500,
+# applied through the curriculum so it affects TRAINING ONLY.
+#
+# Requires the Agent_EnvController change of 2026-09-07 (CurrentEpisodeSteps) and a
+# REBUILT player - the parameter is inert in any build made before it.
+#
+# WHY TRAINING-ONLY MATTERS. maxEnvironmentSteps was doing two jobs: setting the
+# training horizon AND defining what counts as a stalemate at eval. The win rate is
+# blueWins/episodes, so shortening the cap globally would mechanically convert wins
+# into stalemates and break comparability with every earlier grade - a regression
+# that would have looked like a real result. Driving it from the curriculum splits
+# the two, exactly like bot_strength (laddered in training, graded at 1.0).
+#
+# WATCH FOR: stalemate rate in training. If the policy cannot create a chance inside
+# 25s the shorter cap just converts everything to timeouts, and the honest read is
+# that 2500 is too tight - try 4000 before abandoning the lever.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 3000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # THE CREDIT-ASSIGNMENT LEVER. Training-only: Agent_EnvController defaults this to
+  # 0 ("nobody is driving it"), so evaluation and gameplay keep the profile's 9000
+  # and the win rate stays comparable to the 26.6% baseline.
+  #
+  # At gamma 0.99 and decision period 8, a 9000-step episode is 1125 decisions, so a
+  # terminal reward valued from the episode start survives at ~1.2e-5 - effectively
+  # invisible, which is why dense shaping has had to carry all the learning in this
+  # project. Measured discount at the episode start by cap:
+  #
+  #     9000 steps (1125 dec, 90s)   1.2e-05      1x
+  #     4000 steps ( 500 dec, 40s)   6.6e-03    535x
+  #     2500 steps ( 312 dec, 25s)   4.3e-02   3519x
+  #
+  # 2500 is not arbitrary: SCN_Exhibition already runs at that cap via stepCapOverride
+  # for pace, so it is a known-playable length for this game, and the scripted bot
+  # reaches the ball in 2.9s. Shorter episodes also mean ~3.6x as many terminal events
+  # per million steps, so the same compute buys far more of the signal that matters.
+  episode_steps: 2500
+
+  # One flat threshold, applied to every lesson: the policy must be genuinely
+  # winning (goalScorer 0.7 vs goalConceded -1.0, so a sustained +0.5 mean means
+  # scoring materially more than it concedes) before the opponent gets stronger.
+  # min_lesson_length 1000 makes a lucky streak far too expensive to fake.
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.35
+      # Support positioning and corner craft switch on at 0.5 - the first real step up.
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.65
+      # The boost-shot switches on at 0.8.
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  # 4 is what every run in this project has ACTUALLY used: scripts/train-phase1.ps1
+  # passes --num-envs=4 on the command line, which overrides this key. The file used to
+  # say 1, so the configuration.yaml archived with each run disagreed with the run that
+  # produced it (p22's record reads num_envs: 4 against a config file reading 1).
+  # Corrected so a run launched WITHOUT the script cannot silently drop to a quarter
+  # of the throughput while looking identical in the archive.
+  num_envs: 4
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true
