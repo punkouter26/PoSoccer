@@ -101,12 +101,14 @@ Hard-won traps:
 
 | profile | run | steps | trained | graded |
 |---|---|---|---|---|
-| STANDARD | `soccer_p21curric_standard` | 10,000,034 | 2026-08-29 | **25.7%**, n=350 |
+| STANDARD | `soccer_p22gain_standard` | 10,000,986 | 2026-09-07 | **26.6%**, n=350 |
 | MATT | `soccer_p21_matt` | 10,000,311 | 2026-08-29 | ungraded |
 | NICK | `soccer_p21_nick` | 6,999,833 | 2026-08-30 | ungraded |
 | KIM | `soccer_p21_kim` | 1,999,868 | 2026-08-30 | ungraded |
 
-Four `.onnx` (462 KB each, real files not LFS stubs) in the `<Name>_v01` slots, all four `brainModel` fields populated, all trained AFTER the 2026-08-28 body-frame boundary so all four are comparable to each other. The menu no longer badges anyone "(BOT)" except BOT itself. Three of the four have never been through `evaluate.ps1` — `evalWinRate` is -1 on MATT, NICK and KIM — so the only graded number in the roster is STANDARD's 25.7%.
+**Updated 2026-09-07 (STANDARD row).** It read `soccer_p21curric_standard` / 10,000,034 / 25.7% — stale by a week, the third time this table has drifted, and for the same structural reason the paragraph below already names. **The three p21 rows are now also a known defect, not just a gap:** they were trained at `ActionGain = 1.6` against a 1.0 runtime, so they under-drive. See the ActionGain landmine in the State section. `Agent_EditMode_ActionGain` is red until they are retrained.
+
+Four `.onnx` (462 KB each, real files not LFS stubs) in the `<Name>_v01` slots, all four `brainModel` fields populated, all trained AFTER the 2026-08-28 body-frame boundary so all four are comparable to each other. The menu no longer badges anyone "(BOT)" except BOT itself. Three of the four have never been through `evaluate.ps1` — `evalWinRate` is -1 on MATT, NICK and KIM — so the only graded number in the roster is STANDARD's (26.6% as of 2026-09-07).
 
 Keep reading the superseded paragraph for the *reasoning* (why a shape-identical model can silently read a different world; why a GUID sweep is the check), which is all still correct. Just do not believe its conclusion about what is on disk. **This is the second time this section has been wrong in the same direction**, and the reason is structural: it describes mutable state that `update-model.ps1` changes without touching this file. `Reward_Settings` now carries `trainingSteps` / `trainingRunId` / `trainedOn` / `evalWinRate` / `evalEpisodes`, so the assets are the source of truth — read them, and treat this table as a snapshot with a date on it.
 
@@ -411,6 +413,39 @@ Full arc of the four fixes, all measured the same way:
 **Still far from the bar** (>=80% wins, <=10% stalemates) and the probe still reads `arrival=-1.00s` - 8.48 m of a 10.44 m chase in the 4-second window, so it very nearly arrives but not quite. The obvious continuations, in order: let the ladder run past Lesson3 (it was still climbing at 10M), then revisit `ActionGain = 1.6`, which clamps after multiplying and denies the policy any magnitude between 0.625 and 1.0 - a far more costly restriction now that it actually wants to output 0.658.
 
 **Rejected: gamma 0.999** — see p19 above. **Untested and next in line:** `ActionGain = 1.6` in `Agent_Soccer.OnActionReceived`, a band-aid added when the policy crept. It multiplies then clamps, so the policy cannot express any magnitude between 0.625 and 1.0; with the frame fixed it may now be costing resolution rather than buying force.
+
+**RESULT 2026-09-07 — p22 ran both of those continuations and NEITHER moved the win rate. The curriculum explanation is now closed.**
+
+`soccer_p22gain_standard`, 10M steps, `ActionGain` 1.6 → 1.0, everything else byte-identical to p21. It did what the paragraph above asked for: the ladder ran past Lesson3 all the way to **Lesson5_Full (`bot_strength` 1.0)** — the first policy in this project's history to train against the same opponent `evaluate.ps1` grades on.
+
+| | p21 | p22 |
+|---|---|---|
+| ActionGain | 1.6 | **1.0** |
+| curriculum reached | Lesson3_Capable (0.65) | **Lesson5_Full (1.0)** |
+| blue wins (n=350) | 25.7% | **26.6%** |
+| red wins | 49.7% | 46.0% |
+| stalemates | 24.6% | 27.4% |
+
+**+0.9 pp on a 3.3 pp SD of the difference — 0.26 SD, noise** by this file's own <10-point rule. The grade is sound: the eval JSON's `modelPath` is the deployed `STANDARD.onnx`, `modelWrittenUtc` precedes `playerBuiltUtc`, and `modelInputs` sums to 178.
+
+Read the second row carefully, because it retires the thesis this section has argued since p17. "No policy in this project has ever trained against a competent opponent" was the stated reason two large locomotion wins converted losses into draws instead of wins. **A policy has now trained against the full-strength bot and grades the same.** Train/eval opponent mismatch is no longer an available explanation. Keep `ActionGain = 1.0` — the dead-band argument for it is still correct — but it is not the lever either.
+
+**FOUND 2026-09-07 — the dense reward table could outrank the objective it shapes toward.** Nobody had ever computed what a dense term accumulates over a whole episode. `OnActionReceived` runs every physics step (ML-Agents repeats the last action between decisions), so each term is charged up to 9000 times:
+
+| term | old | ceiling/episode | vs terminal |
+|---|---|---|---|
+| `ballToGoalVelocityScale` | 0.001 | **+9.0** | 7.5× a goal (+1.2) |
+| `cornerBallPenalty` | 0.0006 | **−5.4** | 5.4× conceding (−1.0) |
+| `wallProximityPenalty` | 0.0005 | **−4.5** | 4.5× conceding |
+| `crossbarProximity` | 0.0005 | **+4.5** | 3.75× a goal |
+| `possessionScale` (NICK) | 0.0006 | **+5.4** | 4.5× a goal |
+| `defensivePositionScale` (KIM) | 0.0006 | **+5.4** | 4.2× KIM's goal |
+
+NICK was paid up to 4.5× more for holding the ball than for scoring with it. These are maxima — real duty cycles are lower — but a reachable ceiling means the table does not guarantee the ordering of outcomes. **The method was already here and simply never generalised:** `stepPenalty`'s own comment does this exact arithmetic ("9000 steps, −0.9, near-identical to `goalConceded`"). Validated against an independent figure — CLAUDE.md's own `5784 × 0.00005 = 0.289` reproduces exactly.
+
+Fixed: every per-step term ÷10 with trait ratios preserved, `facingAlignmentScale` and `crossbarProximity` retired as redundant (bearing to the ball has been an *observation* since the body-frame fix). Code defaults and all five assets moved together — a changed initializer never reaches an existing asset. `Agent_EditMode_RewardBudget` pins the **ordering property**, not a specific table, and fails if a `maxEnvironmentSteps` increase re-breaks it (the ceiling is linear in the cap). Full write-up: `docs/ml-audit-2026-09-07.md`.
+
+**LANDMINE — `ActionGain` changes the action→force mapping without touching a tensor shape.** MATT, NICK and KIM are p21 checkpoints trained at gain **1.6** against a **1.0** runtime; they load without a warning and then under-drive. This is **degraded, not scrambled** — a monotonic scaling preserves direction, unlike the 2026-08-28 frame change — but `Agent_EditMode_ObsContract` structurally cannot see it, because every number it checks is unchanged. `Reward_Settings.trainedActionGain` now records the gain each brain was trained under (stamped by `update-model.ps1`, read from source rather than duplicated), and `Agent_EditMode_ActionGain` fails on a mismatch. **That test is currently RED and correctly so** — it goes green when those three are retrained at the current gain, or when their `brainModel` is cleared.
 
 **LANDMINE — `evaluate.ps1` could not complete its own default (fixed 2026-08-29).** `-Episodes` defaults to 1000 and `-TimeoutMin` defaulted to a flat **30**, but 1000 episodes takes ~60 min (measured: 510 episodes in 30 min). So the *documented default invocation* always tripped the timeout, exited 3, and wrote **no JSON at all** — a grade that ran for half an hour and left no evidence. The timeout now scales with the episode count, and a timed-out run **salvages** the player's last `[EvalStats]` tally into a JSON marked `partial: true` with the real episode count, instead of discarding a perfectly good smaller sample.
 
