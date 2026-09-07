@@ -1,0 +1,152 @@
+# p26 - IMITATION. Clone the scripted bot, then improve on it with RL.
+#
+# Requires: scripts/record-demo.ps1 has produced Assets/Demonstrations/BotExpert.demo,
+# from a player built AFTER the ApplyDemoRecording change.
+#
+# THE REFRAME. The acceptance bar is >=80% wins, but the meaningful near-term target
+# is BOT PARITY. Bot-vs-bot measures 42.5%; the best brain this project has produced
+# grades 26.6%. The agent is still 16 points WORSE than the opponent it is trying to
+# beat, and no amount of reward tuning has changed that:
+#
+#   p6  opponent obs        +0.9 pp   noise
+#   p7  reward table        -0.5 pp   noise
+#   p10 POCA                +0.8 pp   noise
+#   p18 body frame          +1.6 pp   noise
+#   p20 stepPenalty         -3.2 pp   noise
+#   p21 curriculum          +9.1 pp   SIGNAL
+#   p22 gain + full ladder  +0.9 pp   noise
+#
+# At n=350 the 2-SD detection threshold is +/-4.7 pp, so exactly ONE lever in this
+# project's history has ever produced a measurable effect. Closing 53 points needs
+# something structural, not another coefficient.
+#
+# WHY IMITATION IS THE STRUCTURAL LEVER HERE. The bot is an ideal demonstrator and
+# has never been used as one: identical observation and action space, identical
+# 12.5 Hz decision rate (both agents carry DecisionRequester period 8, verified),
+# unlimited episodes, in-process. `behavioral_cloning` has been `None` in every
+# config this project has ever run while the pinned trainer supported it all along.
+# Cloning the bot should reach ~parity close to by construction; RL then has to
+# improve on a competent policy rather than discover competence from scratch.
+#
+# TEAM TRANSFER IS SOUND, and only because of an earlier fix: observations are
+# team-relative AND body-frame (2026-08-28), so a demo recorded from RED - the side
+# the bot plays - is valid training data for BLUE. Under the old world-frame
+# observations it would not have been.
+#
+# JUDGE THIS RUN ON: does it cross 42.5%? That is the first question. 80% is only
+# meaningful after the agent can beat the thing it is imitating.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+      # GAIL rewards LOOKING like the demonstrator, which keeps pulling toward bot-like
+      # play long after behavioral_cloning's pretraining window closes. Kept well below
+      # extrinsic so the policy is still ultimately optimising to WIN, not to imitate -
+      # the bot is a floor to clear (42.5%), not a ceiling to match.
+      gail:
+        gamma: 0.99
+        strength: 0.3
+        demo_path: Assets/Demonstrations/BotExpert.demo
+
+  # Behavioral cloning: supervised pretraining toward the demonstrator. `steps` bounds
+  # it to the first 500k, after which pure RL takes over - the point is to skip the
+  # cold-start where the policy cannot reach the ball, not to freeze it as a bot clone.
+  # strength 0.5 keeps the RL gradient meaningful throughout.
+    behavioral_cloning:
+      demo_path: Assets/Demonstrations/BotExpert.demo
+      strength: 0.5
+      steps: 500000
+      samples_per_update: 0
+      num_epoch: 3
+      batch_size: 512
+    max_steps: 3000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # One flat threshold, applied to every lesson: the policy must be genuinely
+  # winning (goalScorer 0.7 vs goalConceded -1.0, so a sustained +0.5 mean means
+  # scoring materially more than it concedes) before the opponent gets stronger.
+  # min_lesson_length 1000 makes a lucky streak far too expensive to fake.
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.35
+      # Support positioning and corner craft switch on at 0.5 - the first real step up.
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.65
+      # The boost-shot switches on at 0.8.
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  # 4 is what every run in this project has ACTUALLY used: scripts/train-phase1.ps1
+  # passes --num-envs=4 on the command line, which overrides this key. The file used to
+  # say 1, so the configuration.yaml archived with each run disagreed with the run that
+  # produced it (p22's record reads num_envs: 4 against a config file reading 1).
+  # Corrected so a run launched WITHOUT the script cannot silently drop to a quarter
+  # of the throughput while looking identical in the archive.
+  num_envs: 4
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

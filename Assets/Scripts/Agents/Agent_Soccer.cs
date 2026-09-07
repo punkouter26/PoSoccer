@@ -2,6 +2,7 @@ using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
+using Unity.MLAgents.Demonstrations;
 using UnityEngine;
 using UnityEngine.Serialization;
 
@@ -279,7 +280,63 @@ namespace PoSoccer
                     ActionSpec.MakeContinuous(ContinuousActionCount);
                 ApplyEvalMode();
                 ApplyTrainingOpponent();
+                ApplyDemoRecording();
             }
+        }
+
+        /// <summary>
+        /// Records the SCRIPTED BOT playing, into a .demo file that behavioral cloning
+        /// (and GAIL) can train against. Opt-in via POSOCCER_RECORD_DEMO=1.
+        ///
+        /// WHY (2026-09-07). The acceptance bar is >=80% wins, but the honest near-term
+        /// target is BOT PARITY: bot-vs-bot measures 42.5%, and the best brain this
+        /// project has produced grades 26.6% - still 16 points WORSE than the opponent it
+        /// is trying to beat. Seven reward/curriculum/perception levers have been tried
+        /// and exactly one (p21's curriculum, +9.1 pp) cleared the n=350 detection
+        /// threshold of +/-4.7 pp. Another coefficient is not going to close 53 points.
+        ///
+        /// The bot is an ideal demonstrator and nobody has used it as one: it plays the
+        /// SAME observation and action space, in-process, at the same 12.5 Hz decision
+        /// rate (both agents carry DecisionRequester period 8, verified), and it can
+        /// generate unlimited episodes. `behavioral_cloning` has been `None` in every
+        /// config this project has ever run, while the trainer has supported it all along.
+        ///
+        /// TEAM TRANSFER IS SOUND, and only because of an earlier fix. Observations are
+        /// team-relative (goals come from GetGoalPosition(team)) AND body-frame (the
+        /// 2026-08-28 change). So a demo recorded from RED - which is the side the bot
+        /// plays under POSOCCER_OPPONENT=bot - is valid training data for BLUE. Under the
+        /// old world-frame observations it would NOT have been, which is worth knowing
+        /// before anyone tries this against a pre-2026-08-28 checkpoint.
+        /// </summary>
+        void ApplyDemoRecording()
+        {
+            string flag = System.Environment.GetEnvironmentVariable("POSOCCER_RECORD_DEMO");
+            if (string.IsNullOrEmpty(flag) || flag == "0") return;
+
+            // Only record the side actually being driven by the scripted bot. Recording
+            // the learning side would clone a policy that cannot play, which is the one
+            // way to make this actively harmful rather than merely useless.
+            if (_behavior.BehaviorType != BehaviorType.HeuristicOnly) return;
+
+            var recorder = gameObject.AddComponent<DemonstrationRecorder>();
+            recorder.Record = true;
+            recorder.DemonstrationName = "BotExpert";
+
+            // Relative paths resolve against the process working directory, so a headless
+            // run launched from the repo root writes straight into the project. The env
+            // var exists so the recording script can place it explicitly rather than
+            // depending on where it happened to be invoked from.
+            string dir = System.Environment.GetEnvironmentVariable("POSOCCER_DEMO_DIR");
+            recorder.DemonstrationDirectory =
+                string.IsNullOrEmpty(dir) ? "Assets/Demonstrations" : dir;
+
+            // The recorder calls Application.Quit once this many steps are written, so a
+            // recording run terminates ITSELF rather than needing a timeout to kill it.
+            // 0 would mean "record forever", which in a headless run means "until someone
+            // notices" - the failure mode that leaves orphaned players behind.
+            string steps = System.Environment.GetEnvironmentVariable("POSOCCER_DEMO_STEPS");
+            recorder.NumStepsToRecord =
+                int.TryParse(steps, out int parsed) && parsed > 0 ? parsed : 200000;
         }
 
         /// <summary>
