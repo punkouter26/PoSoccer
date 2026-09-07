@@ -40,6 +40,8 @@ MonoBehaviour:
   useDifferentialProximity: 1
   facingAlignmentScale: 0
   ballToGoalVelocityScale: 0.00011
+  useDifferentialBallToGoal: 1
+  ballToGoalProgressScale: 0.02
   actionJitterScale: 0.0004
   wallProximityPenalty: 5e-05
   cornerBallPenalty: 6e-05

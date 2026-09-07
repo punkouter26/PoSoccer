@@ -75,11 +75,39 @@ namespace PoSoccer.Tests
             }
         }
 
+        /// <summary>
+        /// Pitch LENGTH in world units (36 x 54 in SCN_Training). Telescoping terms are
+        /// bounded by geometry rather than by step count, so this - not the step cap - is
+        /// what sets their ceiling.
+        /// </summary>
+        const float PitchLength = 54f;
+
+        /// <summary>
+        /// Terms whose per-step deltas telescope over a trajectory, so the episode total
+        /// collapses to `scale * distanceTravelled` no matter how many steps it took.
+        ///
+        /// These are POTENTIAL-BASED (Ng, Harada &amp; Russell 1999) and provably leave the
+        /// optimal policy unchanged at any magnitude, which is exactly why they are allowed
+        /// a far larger coefficient than a per-step rate. Modelling them as `scale x 9000`
+        /// would be arithmetically wrong and would fail a correctly-designed term.
+        /// </summary>
+        static (string name, float ceiling)[] TelescopingTermsOf(Reward_Settings p) => new[]
+        {
+            // agent -> ball, bounded by the pitch diagonal it could ever close
+            (nameof(p.ballProximityScale),
+             p.useDifferentialProximity ? Mathf.Abs(p.ballProximityScale) * PitchLength : 0f),
+            // ball -> goal, bounded by the length of the pitch
+            (nameof(p.ballToGoalProgressScale),
+             p.useDifferentialBallToGoal ? Mathf.Abs(p.ballToGoalProgressScale) * PitchLength : 0f),
+        };
+
         static DenseTerm[] TermsOf(Reward_Settings p) => new[]
         {
             new DenseTerm(nameof(p.stepPenalty),            p.stepPenalty),
             new DenseTerm(nameof(p.facingAlignmentScale),   p.facingAlignmentScale),
-            new DenseTerm(nameof(p.ballToGoalVelocityScale), p.ballToGoalVelocityScale),
+            // Only charged when the legacy velocity-rate mode is selected.
+            new DenseTerm(nameof(p.ballToGoalVelocityScale),
+                          p.useDifferentialBallToGoal ? 0f : p.ballToGoalVelocityScale),
             new DenseTerm(nameof(p.crossbarProximity),      p.crossbarProximity),
             new DenseTerm(nameof(p.wallProximityPenalty),   -Mathf.Abs(p.wallProximityPenalty)),
             new DenseTerm(nameof(p.cornerBallPenalty),      -Mathf.Abs(p.cornerBallPenalty)),
@@ -116,6 +144,19 @@ namespace PoSoccer.Tests
                         bad.AppendLine(
                             $"  {p.playerName}: {t.Name} = {t.PerCharge:G4} x {charges} charges " +
                             $"= {ceiling:F2} per episode, vs largest terminal {terminal:F2} " +
+                            $"({ceiling / terminal:F1}x).  [{path}]");
+                    }
+                }
+
+                // Telescoping terms are bounded by the pitch, not by the step cap.
+                foreach (var (name, ceiling) in TelescopingTermsOf(p))
+                {
+                    if (ceiling <= 0f) continue;
+                    if (ceiling > terminal)
+                    {
+                        bad.AppendLine(
+                            $"  {p.playerName}: {name} telescopes to {ceiling:F2} over a " +
+                            $"full-pitch trajectory, vs largest terminal {terminal:F2} " +
                             $"({ceiling / terminal:F1}x).  [{path}]");
                     }
                 }

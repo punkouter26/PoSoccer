@@ -1,4 +1,4 @@
-﻿using Unity.MLAgents;
+using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
@@ -127,6 +127,9 @@ namespace PoSoccer
         float _nextWallKick;                           // kick-out cooldown timestamp
         readonly float[] _prevActions = new float[4];  // for the jitter penalty
         float _prevBallDist = float.PositiveInfinity;  // for differential-proximity reward
+        // Potential for the ball->goal shaping term. Same telescoping trick as
+        // _prevBallDist, applied to the BALL's distance to the attacking goal.
+        float _prevBallGoalDist = float.PositiveInfinity;
 
         /// <summary>Standard gravity, used for the traction budget (mu * m * g).</summary>
         const float Gravity = 9.81f;
@@ -408,6 +411,7 @@ namespace PoSoccer
             _nextWallKick = 0f;
             System.Array.Clear(_prevActions, 0, _prevActions.Length);
             _prevBallDist = float.PositiveInfinity;
+            _prevBallGoalDist = float.PositiveInfinity;
             Stamina.ResetForEpisode();
             if (_contact == null) _contact = GetComponent<Agent_Contact>();
             if (_contact != null) _contact.ResetForEpisode();
@@ -794,12 +798,52 @@ namespace PoSoccer
             float align = Vector2.Dot(transform.up, toBall.normalized);
             AddReward(rewards.facingAlignmentScale * align);
 
-            // The "shoot goalward" gradient: reward ball velocity toward the opponent
-            // net (signed - shooting at your own net costs the same amount).
-            Vector2 ballToOppGoal =
-                (env.GetGoalPosition(Opponent(team)) - env.Ball.position).normalized;
-            float progress = Vector2.Dot(env.Ball.linearVelocity, ballToOppGoal);
-            AddReward(rewards.ballToGoalVelocityScale * Mathf.Clamp(progress * 0.1f, -1f, 1f));
+            // The "shoot goalward" gradient.
+            //
+            // v6 (2026-09-07): POTENTIAL-BASED by default. The old term rewarded ball
+            // VELOCITY toward the net, which is a rate: it accumulates without bound, so
+            // over a 9000-step episode it ceilinged at 7.5x a goal, and it is farmable -
+            // knocking the ball goalward and letting it come back pays twice and costs
+            // nothing. Shrinking the coefficient (v5) bounded the damage but also starved
+            // the gradient, which matters more than it looks: at gamma 0.99 with decision
+            // period 8, a terminal reward is 1125 decisions from the episode start and
+            // arrives discounted by ~1e-5. Dense shaping IS the learning signal here.
+            //
+            // The fix is not a smaller number, it is the right FORM. Rewarding the DECREASE
+            // in the ball's distance to the goal telescopes to scale * (dStart - dEnd) over
+            // any trajectory - bounded by the pitch, unfarmable (there and back nets zero),
+            // and potential-based in the Ng/Harada/Russell sense, so it provably leaves the
+            // optimal policy unchanged at ANY magnitude. That is why this can carry a
+            // coefficient 100x the v5 velocity scale without reintroducing the defect.
+            //
+            // This is the same trick ballProximityScale already uses for agent->ball; the
+            // ball->goal half had simply never been converted.
+            {
+                Vector2 oppGoal = env.GetGoalPosition(Opponent(team));
+                if (rewards.useDifferentialBallToGoal)
+                {
+                    float ballGoalDist = (oppGoal - env.Ball.position).magnitude;
+                    if (!float.IsPositiveInfinity(_prevBallGoalDist))
+                    {
+                        // Positive = the ball got closer to the opponent net this step.
+                        AddReward(rewards.ballToGoalProgressScale
+                                  * (_prevBallGoalDist - ballGoalDist));
+                    }
+                    _prevBallGoalDist = ballGoalDist;
+                }
+                else
+                {
+                    Vector2 dir = (oppGoal - env.Ball.position).normalized;
+                    float rate = Vector2.Dot(env.Ball.linearVelocity, dir);
+                    AddReward(rewards.ballToGoalVelocityScale
+                              * Mathf.Clamp(rate * 0.1f, -1f, 1f));
+                }
+            }
+
+            // Retained for the crossbar term below, which keys off closing speed.
+            float progress = Vector2.Dot(
+                env.Ball.linearVelocity,
+                (env.GetGoalPosition(Opponent(team)) - env.Ball.position).normalized);
 
             // Crossbar proximity - close-range shot gradient. Pays per step while the
             // ball sits inside the attacking goal mouth AND is moving toward the net,

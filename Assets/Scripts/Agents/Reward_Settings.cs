@@ -197,6 +197,27 @@ namespace PoSoccer
         // See Agent_EditMode_RewardBudget, which now fails if any term regains a ceiling
         // above the largest terminal reward.
         public float ballToGoalVelocityScale = 0.0001f;
+
+        [Tooltip("Use the v6 POTENTIAL-BASED ball->goal term (reward the decrease in the " +
+                 "ball's distance to the attacking goal) instead of the legacy velocity " +
+                 "rate. Telescopes, so it cannot be farmed and cannot outgrow the pitch.")]
+        public bool useDifferentialBallToGoal = true;
+
+        /// <summary>
+        /// Scale for the potential-based ball->goal term. Telescopes to
+        /// `scale * (startDist - endDist)`, so its episode ceiling is set by the PITCH
+        /// (54 units long), not by the step count: 0.01 * 54 = 0.54, comfortably under a
+        /// goal, and it stays there no matter how long the episode runs.
+        ///
+        /// It can safely be ~100x the velocity scale it replaces because potential-based
+        /// shaping provably preserves the optimal policy at any magnitude (Ng, Harada &amp;
+        /// Russell 1999). That property is what lets this restore a real learning gradient
+        /// - which matters because at gamma 0.99 a terminal reward is 1125 decisions from
+        /// episode start and arrives discounted by ~1e-5.
+        /// </summary>
+        [Tooltip("Scale for the potential-based ball->goal term. Telescopes to " +
+                 "scale * distanceClosed, so the ceiling is bounded by pitch length.")]
+        public float ballToGoalProgressScale = 0.02f;
         [Tooltip("Penalty scale on per-step action change (anti-twitch; smooth, deliberate movement). " +
                  "v2 halved from 0.001: hard cuts are *correct* for soccer (cutting inside the box) " +
                  "and the old penalty was teaching the brain to be smooth and idle.")]
