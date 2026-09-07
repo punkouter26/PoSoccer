@@ -128,3 +128,13 @@ desktop.ini
 # Play publishing tooling venv — deliberately not .venv, which carries
 # load-bearing ml-agents/torch pins.
 Tools/publish-venv/
+
+# Recorded demonstrations (scripts/record-demo.ps1).
+# A .demo stores the full observation vector per step, and this environment emits 178
+# floats - so 150k steps is ~112 MB. It is also fully REGENERABLE from the scripted
+# bot in about 90 seconds, which makes it exactly the kind of artefact that belongs
+# out of git rather than in LFS: unlike a trained .onnx, nothing is lost by rebuilding
+# it, and unlike a sprite, it is not an authored asset.
+# Keep the folder (and its .meta) so Unity does not drop the directory.
+Assets/Demonstrations/*.demo
+Assets/Demonstrations/*.demo.meta
