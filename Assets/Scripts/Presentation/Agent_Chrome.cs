@@ -5,11 +5,12 @@ using UnityEngine.UIElements;
 namespace PoSoccer
 {
     /// <summary>
-    /// Persistent screen chrome: the four corners plus a centred frame-rate
-    /// readout, identical in the menu and in a match.
+    /// Persistent screen chrome: the four corners, identical in the menu and in
+    /// a match. Nothing here occupies the centre of the screen - that belongs to
+    /// Agent_HUD in a match and to the menu's own title in SCN_Menu, and a
+    /// sortingOrder-90 overlay that strays into it wins over both.
     ///
-    ///   upper-left    product name
-    ///   top-centre    FPS
+    ///   upper-left    product name, with the FPS readout beneath it
     ///   upper-right   MENU  (back to the start menu; hidden while already there)
     ///   lower-left    DEBUG (toggles Agent_Telemetry)
     ///   lower-right   version
@@ -119,23 +120,67 @@ namespace PoSoccer
             var top = Row();
             safe.Add(top);
 
-            top.Add(CornerLabel(Application.productName, Agent_UIStyle.TextPrimary, Agent_UIStyle.FontM));
+            // Product name and FPS stack in the LEFT corner.
+            //
+            // The readout used to sit top-centre, pushed down by a hand-tuned
+            // marginTop meant to clear the scoreboard. It never cleared it. This
+            // row and Agent_HUD's #top-band are both anchored to the top of the
+            // same safe area, so any constant here is a guess about a different
+            // UIDocument's layout - and Chrome draws at sortingOrder 90, so when
+            // the guess is wrong the diagnostic wins and the score loses.
+            //
+            // Measured 2026-09-07 at 1170x2532: the band runs y=141..440 and the
+            // label sat at y=192, printing "60 FPS" through a score at
+            // y=169..271 - a 178x61 px overprint, in every match. The old 168 was
+            // derived from score + clock + padding alone; the broadcast layer
+            // (2026-09-06) then added the win-probability strip and the stat
+            // ticker to the same band and nobody re-derived it. Even for the
+            // original two children it was short: 24 + 168 = 192 was already
+            // inside the band.
+            //
+            // SCN_Menu was no better - the menu's own title holds x=307..770,
+            // y=173..356. The centre is contested in both scenes and this
+            // component owns nothing but corners, so the readout moves to one.
+            // Children STRETCH to the column's width on purpose - do not switch
+            // this to Align.FlexStart to make the labels hug their text. The
+            // column's own width is fixed (flexGrow 1 / flexBasis 0 against the
+            // MENU button), but FlexStart makes each child's width content-driven,
+            // and the FPS text changes four times a second: "9 FPS" -> "10 FPS"
+            // re-measures the label, dirties this panel's layout, and does it
+            // again 0.25 s later, forever. Measured 2026-09-07 - with FlexStart
+            // the PlayMode suite failed four consecutive runs, each time a
+            // different wall-clock budget assertion (episode never ended in 90 s,
+            // countdown never handed the clock back, a 180 s test timeout), while
+            // the same suite on the unmodified file passed 63/63. Stretching keeps
+            // the width independent of the text; unityTextAlign does the visual
+            // placement instead.
+            var leftCorner = new VisualElement();
+            leftCorner.style.flexGrow = 1;
+            leftCorner.style.flexBasis = 0;
+            leftCorner.pickingMode = PickingMode.Ignore;
+            top.Add(leftCorner);
 
-            _fpsLabel = CornerLabel(string.Empty, Agent_UIStyle.TextMuted, Agent_UIStyle.FontM);
-            _fpsLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-            // Pushed clear of the scoreboard. This row and Agent_HUD's top band
-            // are both anchored to the top of the safe area and both put content
-            // dead centre, so the FPS readout was drawing straight through the
-            // score - "1 - 5" and "2 FPS" occupying the same pixels, in every
-            // screenshot of every match. 168 clears the band: score (--font-l 64)
-            // + clock (--font-s 38) + the band's 2x24 padding, plus a gap.
-            _fpsLabel.style.marginTop = 168;
+            // CornerLabel ships flexGrow 1 / flexBasis 0, which is what the corners
+            // want as ROW children - they divide the row's width. Stacked in a
+            // COLUMN those same two properties apply to height, and a 0 basis that
+            // is not allowed to grow collapses the label to ~7 px: laid out, not
+            // clipped, and reported as present by any test that only asks whether
+            // the label exists. Both must go back to auto here.
+            var productLabel = CornerLabel(Application.productName, Agent_UIStyle.TextPrimary, Agent_UIStyle.FontM);
+            productLabel.style.flexGrow = 0;
+            productLabel.style.flexBasis = StyleKeyword.Auto;
+            leftCorner.Add(productLabel);
+
+            _fpsLabel = CornerLabel(string.Empty, Agent_UIStyle.TextMuted, Agent_UIStyle.FontS);
+            _fpsLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+            _fpsLabel.style.flexGrow = 0;
+            _fpsLabel.style.flexBasis = StyleKeyword.Auto;
             _fpsLabel.style.display = _showFps ? DisplayStyle.Flex : DisplayStyle.None;
-            top.Add(_fpsLabel);
+            leftCorner.Add(_fpsLabel);
 
             _menuButton = ChromeButton("MENU", ReturnToMenu);
-            // Already at the menu: keep the slot so the FPS readout stays centred,
-            // but nothing to navigate to.
+            // Already at the menu: keep the slot so the row keeps its shape, but
+            // nothing to navigate to.
             _menuButton.style.visibility = inMenu ? Visibility.Hidden : Visibility.Visible;
             top.Add(_menuButton);
 
