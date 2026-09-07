@@ -39,9 +39,29 @@ namespace PoSoccer
                 if (builder.Length > 0) builder.Append(", ");
                 builder.Append(holder is Object unityObject && unityObject != null
                     ? $"{holder.GetType().Name}({unityObject.name})"
-                    : holder.GetType().Name);
+                    : holder.ToString());
             }
             return builder.ToString();
+        }
+
+        /// <summary>
+        /// A named hold. Use this instead of a bare <c>new object()</c>.
+        ///
+        /// The phase tokens in Agent_MatchFlow were plain objects, so
+        /// <see cref="DescribeHolders"/> printed the type name - "Object" - for
+        /// every one of them. That is exactly the case this class's diagnostic
+        /// exists for and exactly where it said nothing: a test failure on
+        /// 2026-09-06 read "Held by: Object", which is true of the countdown, the
+        /// goal sequence, halftime, golden goal and full time alike. Naming the
+        /// token turns a hung game into a one-line diagnosis.
+        /// </summary>
+        public sealed class Hold
+        {
+            readonly string _name;
+
+            public Hold(string name) => _name = name;
+
+            public override string ToString() => _name;
         }
 
         /// <summary>

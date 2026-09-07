@@ -3,6 +3,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UIElements;
 
 namespace PoSoccer.Tests
 {
@@ -318,6 +319,66 @@ namespace PoSoccer.Tests
             Assert.AreEqual(1f, possessionTotal, 0.05f,
                 "Possession shares do not sum to 1, so some ticks were credited to " +
                 "nobody or to more than one player.");
+        }
+
+        /// <summary>
+        /// Neither half of the win-probability bar ever collapses to nothing.
+        ///
+        /// Measured live on 2026-09-06 with the match at 1-5: winprob-blue
+        /// resolved to 0.00 px wide. A two-colour bar showing one colour does not
+        /// read as "blue is at 0%", it reads as a widget that failed - and it sits
+        /// in the same band as a stat ticker whose numbers ARE measured, so a
+        /// viewer who discounts the broken-looking half discounts the honest one
+        /// beside it.
+        ///
+        /// The floor is on the DRAWN WIDTH only. The label still prints the true
+        /// percentage, which is what stops this from being the thing this project
+        /// has already had to retract once: a number on a scoreboard flattered by
+        /// its presentation.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator WinProbabilityBar_NeverCollapsesEitherSide()
+        {
+            yield return LoadExhibition();
+
+            var hud = Object.FindAnyObjectByType<Agent_HUD>();
+            Assert.IsNotNull(hud);
+
+            // Agent_WinProbability drives this strip every frame from the live
+            // score, so it overwrites anything written here on the very next
+            // frame - the first version of this test read back "BLUE 49%" after
+            // asking for 0%. Taking the live driver out is the difference between
+            // testing the HUD's floor and testing the estimator's output.
+            var driver = Object.FindAnyObjectByType<Agent_WinProbability>();
+            if (driver != null) driver.enabled = false;
+
+            var root = hud.GetComponent<UIDocument>().rootVisualElement;
+            var blue = root.Q<VisualElement>("winprob-blue");
+            var red = root.Q<VisualElement>("winprob-red");
+            var label = root.Q<Label>("winprob-label");
+            Assert.IsNotNull(blue); Assert.IsNotNull(red); Assert.IsNotNull(label);
+
+            foreach (float share in new[] { 0f, 0.005f, 0.5f, 0.995f, 1f })
+            {
+                hud.SetWinProbability(share);
+                yield return null;
+                yield return null;   // one more frame for layout to resolve
+
+                Assert.Greater(blue.resolvedStyle.width, 0.5f,
+                    $"Blue half collapsed to nothing at share {share}");
+                Assert.Greater(red.resolvedStyle.width, 0.5f,
+                    $"Red half collapsed to nothing at share {share}");
+            }
+
+            // The label is not floored: at 0 it must still say 0.
+            hud.SetWinProbability(0f);
+            yield return null;
+            StringAssert.Contains("BLUE 0%", label.text,
+                "The drawn floor leaked into the readout. The bar may round up for " +
+                "legibility; the number may not.");
+            StringAssert.Contains("MODEL", label.text,
+                "The MODEL caption is what keeps an uncalibrated logistic from reading " +
+                "as a measurement.");
         }
     }
 }

@@ -46,6 +46,16 @@
     --space-6: 32px;
     --space-7: 48px;
 
+    /* Minimum tappable edge. Android's guidance is 48dp; on a 1080 px portrait
+       phone at ~420 dpi that is ~126 px, and the PanelSettings reference is
+       1080-wide match-WIDTH, so 120 px here is ~7.6 mm of real glass. Agent_Chrome
+       had this constant in C# and enforced it on two buttons; every other button
+       in the game was smaller (presets 74, steppers 86, roster 78, and the HUD
+       sound/pause pair measured 80.75 live on 2026-09-06 - about 5.1 mm). One
+       token, applied to .btn, so the policy cannot hold in one screen and not the
+       other. Do not shrink these to make a layout fit; take the space from margins. */
+    --touch-min: 120px;
+
     /* Radii */
     --radius-sm: 8px;
     --radius-md: 16px;
@@ -181,6 +191,8 @@
 
 .btn {
     font-size: var(--font-s);
+    min-height: var(--touch-min);
+    justify-content: center;
     color: var(--color-text);
     background-color: var(--color-panel);
     border-top-left-radius: var(--radius-md);
@@ -253,7 +265,7 @@
 }
 
 .btn--roster {
-    height: 78;
+    height: var(--touch-min);
     font-size: var(--font-s);
     color: rgb(0, 0, 0);
     -unity-font-style: bold;
@@ -906,7 +918,6 @@
 }
 
 .menu__preset {
-    height: 74;
     -unity-font-style: bold;
     padding-left: 30;
     padding-right: 30;
@@ -955,8 +966,8 @@
 .menu__team-name--red { color: var(--color-team-red); }
 
 .menu__stepper {
-    width: 86;
-    height: 86;
+    width: var(--touch-min);
+    height: var(--touch-min);
     font-size: 54px;
     -unity-font-style: bold;
     padding-left: 0;

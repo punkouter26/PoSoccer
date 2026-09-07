@@ -63,7 +63,7 @@ namespace PoSoccer
         /// replay, the countdown and the end panel instead of fighting them - the
         /// clock resumes only when every holder has let go.
         /// </summary>
-        readonly object _pauseToken = new();
+        readonly object _pauseToken = new Agent_TimeFreeze.Hold("HUD.Pause");
 
         public bool IsPaused => _pausePanel != null;
 
@@ -309,6 +309,15 @@ namespace PoSoccer
         /// Agent_WinProbability), and a percentage on a scoreboard reads as
         /// measured unless it says otherwise. This project has already published
         /// one retraction over a number that looked measured and was not.
+        ///
+        /// THE DRAWN WIDTH IS FLOORED; THE NUMBER IS NOT. Measured live on
+        /// 2026-09-06 at 1-5 down: winprob-blue resolved to 0.00 px wide. A bar
+        /// with one side literally absent does not read as "blue is at 0%", it
+        /// reads as a broken widget - and it sits beside a stat ticker that IS
+        /// measured, so the failure mode is a viewer discounting the honest half
+        /// of the band too. A 2% sliver keeps the losing side visible as a side.
+        /// The label and _shownWinPercent keep the true value, so nothing that
+        /// reads this back is told a rounded-up story.
         /// </summary>
         public void SetWinProbability(float blueShare01)
         {
@@ -319,10 +328,18 @@ namespace PoSoccer
             if (percent == _shownWinPercent) return;
             _shownWinPercent = percent;
 
-            _winProbBlue.style.width = Length.Percent(percent);
-            _winProbRed.style.width = Length.Percent(100 - percent);
+            int drawn = Mathf.Clamp(percent, WINPROB_MIN_VISIBLE, 100 - WINPROB_MIN_VISIBLE);
+            _winProbBlue.style.width = Length.Percent(drawn);
+            _winProbRed.style.width = Length.Percent(100 - drawn);
             _winProbLabel.text = $"BLUE {percent}%  ·  MODEL  ·  RED {100 - percent}%";
         }
+
+        /// <summary>
+        /// Narrowest either half of the win-probability bar is ever drawn, in
+        /// percent. Pinned by Agent_PlayMode_Broadcast so the floor cannot be
+        /// tuned back to zero without the test saying what that costs.
+        /// </summary>
+        public const int WINPROB_MIN_VISIBLE = 2;
 
         /// <summary>
         /// One line of live match telemetry in the bottom band. Pass null or an

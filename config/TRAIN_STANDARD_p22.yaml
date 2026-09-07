@@ -1,0 +1,114 @@
+# p22 - the ActionGain lever. SINGLE VARIABLE vs p21: this file is byte-identical
+# to TRAIN_STANDARD_p21.yaml below the header. The ONLY change is in code:
+# Agent_Soccer.OnActionReceived, const ActionGain 1.6 -> 1.0.
+#
+# WHY. The 1.6 gain multiplies then clamps, so every raw output >= 0.625 collapses
+# to 1.0. p21's policy mean is |move| = 0.658 - it lives inside that dead band and
+# cannot express any throttle between 0.625 and full. The gain also applies to the
+# TURN channel, where 0.6 becomes 0.96.
+#
+# MEASURED 2026-09-07 on the deployed p21 brains (Agent_PlayMode_MovementProbe):
+#   PROBE-D (blue, trained side): 8.35 m of a 10.44 m chase (80%), never arrived,
+#                                 max 2.85 m/s, headingChurn 174 deg / 4 s
+#   PROBE-C (scripted bot):      13.16 m (126%), arrived 2.90 s,
+#                                 max 4.72 m/s, headingChurn  83 deg / 4 s
+# The trained agent spins at 2.1x the bot's rate. p21 fixed forward commitment
+# (1 sign flip per 400 steps on move) but not the turn channel, and an over-gained
+# turn is a concrete mechanism for that.
+#
+# COMPARABILITY. The reward table is UNCHANGED, so mean reward IS comparable to p21
+# (unlike the p18->p20 stepPenalty step). Judge on: lessons reached, the probe
+# (headingChurn and arrival above all), and eval win rate vs p21's 25.7% (n=350).
+#
+# LANDMINE. This changes the action->force mapping, so every .onnx trained under
+# 1.6 is out of distribution while loading without a single warning - the same
+# shape-identical/meaning-changed trap as the 2026-08-28 frame boundary.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 10000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # One flat threshold, applied to every lesson: the policy must be genuinely
+  # winning (goalScorer 0.7 vs goalConceded -1.0, so a sustained +0.5 mean means
+  # scoring materially more than it concedes) before the opponent gets stronger.
+  # min_lesson_length 1000 makes a lucky streak far too expensive to fake.
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.35
+      # Support positioning and corner craft switch on at 0.5 - the first real step up.
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.65
+      # The boost-shot switches on at 0.8.
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  num_envs: 1
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

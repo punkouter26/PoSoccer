@@ -70,6 +70,26 @@ namespace PoSoccer
             // neither of which belongs on a menu with no pitch.
             Application.targetFrameRate = 60;
 
+            // Reaching the menu means no lineup is chosen. Statics survive a
+            // scene load in a player build, so without this every flag set by the
+            // last launch is still standing here - GalleryMode in particular,
+            // which decides whether SCN_Exhibition builds one pitch or a grid.
+            //
+            // It was already correct, but only because StartMatch and OpenGallery
+            // BOTH remember to Clear() first. That is an invariant maintained by
+            // two call sites agreeing, and a third entry point inherits the stale
+            // flag with no error - the visible symptom being PLAY opening the
+            // gallery. Clearing on arrival makes the flags dead by default and
+            // owned by the launcher that sets them, one line before it loads.
+            Agent_MatchSetup.Clear();
+
+            // The menu's own way back out (and its DEBUG toggle) rides on the
+            // chrome. Guaranteed here rather than relying on the serialized
+            // object in SCN_Menu, for the reason spelled out in
+            // Agent_Presentation.EnsureChrome - this scene has no Agent_Bootstrap
+            // to do it, deliberately, so the call belongs here.
+            Agent_Presentation.EnsureChrome();
+
             var doc = GetComponent<UIDocument>();
             var root = doc.rootVisualElement;
             if (doc.panelSettings == null || root == null)

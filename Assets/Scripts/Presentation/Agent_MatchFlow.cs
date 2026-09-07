@@ -63,11 +63,11 @@ namespace PoSoccer
         /// it. The sequencing guard makes that unreachable today, which is
         /// exactly why it would have been missed when the next phase is added.
         /// </summary>
-        readonly object _openingToken = new();
-        readonly object _goalToken = new();
-        readonly object _halftimeToken = new();
-        readonly object _goldenToken = new();
-        readonly object _fullTimeToken = new();
+        readonly object _openingToken = new Agent_TimeFreeze.Hold("MatchFlow.OpeningCountdown");
+        readonly object _goalToken = new Agent_TimeFreeze.Hold("MatchFlow.GoalSequence");
+        readonly object _halftimeToken = new Agent_TimeFreeze.Hold("MatchFlow.Halftime");
+        readonly object _goldenToken = new Agent_TimeFreeze.Hold("MatchFlow.GoldenGoal");
+        readonly object _fullTimeToken = new Agent_TimeFreeze.Hold("MatchFlow.FullTime");
 
         Agent_EnvController _env;
         Agent_HUD _hud;

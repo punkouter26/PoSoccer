@@ -72,6 +72,12 @@ namespace PoSoccer
             var hud = FindFirstObjectByType<Agent_HUD>();
             var env = FindFirstObjectByType<Agent_EnvController>();
 
+            // MENU is the only way out of a match or the gallery, so the chrome
+            // that carries it is guaranteed rather than left to a serialized
+            // object each scene has to remember. Ahead of the two Install calls
+            // so a gallery clone never inherits a second copy.
+            if (gallery || Agent_Presentation.IsMatchScene(hud)) Agent_Presentation.EnsureChrome();
+
             if (gallery)
             {
                 // Visual layer only, installed BEFORE Agent_Gallery clones the

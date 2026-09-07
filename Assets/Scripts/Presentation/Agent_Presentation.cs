@@ -115,6 +115,40 @@ namespace PoSoccer
             if (env.GetComponent<Agent_Gallery>() == null) env.gameObject.AddComponent<Agent_Gallery>();
         }
 
+        /// <summary>
+        /// Guarantees the persistent screen chrome exists in a scene a human is
+        /// looking at: product name, FPS, MENU, DEBUG, version.
+        ///
+        /// WHY THIS IS HERE AND NOT LEFT IN THE SCENES. Agent_Chrome was the one
+        /// presentation component still authored as a serialized GameObject -
+        /// present in SCN_Menu and SCN_Exhibition, absent from SCN_Training - while
+        /// every sibling is attached in code precisely so a scene cannot drift out
+        /// of sync with the code. The cost of the exception is specific rather than
+        /// theoretical: MENU is the ONLY way out of a match or the gallery, so a
+        /// scene that missed the object is a scene the player cannot leave, and
+        /// nothing logs. Scene authoring is MCP-only under UNITY_RULES, which makes
+        /// "remember to add the object" a manual step on the one component whose
+        /// absence strands the player.
+        ///
+        /// Idempotent, so the objects already serialized into the two scenes are
+        /// found and reused rather than duplicated - Agent_Chrome is
+        /// [DisallowMultipleComponent] and would refuse a second copy anyway.
+        ///
+        /// Its own GameObject, never an existing one: Agent_Chrome takes over the
+        /// UIDocument on whatever it is attached to and rewrites that document's
+        /// sortingOrder and root. Landing it on the HUD would silently replace the
+        /// scoreboard with the chrome.
+        /// </summary>
+        public static void EnsureChrome()
+        {
+            if (Agent_EvalStats.EvalMode) return;
+            if (Unity.MLAgents.Academy.Instance.IsCommunicatorOn) return;
+            if (Object.FindFirstObjectByType<Agent_Chrome>(FindObjectsInactive.Include) != null) return;
+
+            var go = new GameObject("Chrome");
+            go.AddComponent<Agent_Chrome>();
+        }
+
         /// <summary>Per-pitch visuals, shared by both modes.</summary>
         static void InstallVisuals(GameObject go)
         {

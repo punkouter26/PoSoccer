@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-PoSoccer: a top-down 2D physics soccer game + **ML-Agents training benchmark**. Unity 6 (6000.5.6f1, 2D URP, mobile portrait) + Python `mlagents` trainer. Two faces, one codebase:
+PoSoccer: a top-down 2D physics soccer game + **ML-Agents training benchmark**. Unity 6 (**6000.6.0f1**, 2D URP, mobile portrait) + Python `mlagents` trainer. Two faces, one codebase:
 - **Benchmark**: train a brain that beats the rule-based bot ≥80% of eval episodes with ≤10% stalemates (spec: `docs/plans/2026-07-30-posoccer-v1-training-benchmark-design.md`).
 - **Game**: `SCN_Menu` → pick 2v2 matchups from a roster of four personalities → exhibition match with scoreboard, first-to-5, goal toasts, stadium lighting and sound.
+
+**Corrected 2026-09-06 — the editor is 6000.6.0f1, not 6000.5.6f1.** This file carried `6000.5.6f1` while `ProjectSettings/ProjectVersion.txt` and the live bridge both report **6000.6.0f1** (`f7f8ed4d1e24`). A minor-version claim is not cosmetic here: the "Unity 6.5 turns deprecations into errors" note below, and every third-party package version choice reasoned against it, start from the editor version. Read `ProjectVersion.txt`, not this line.
 
 ## Hard rules (UNITY_RULES)
 
@@ -79,6 +81,10 @@ Hard-won traps:
 - **An unfocused editor barely runs play-mode frames** — unattended play + screenshots look "frozen" while the game is fine. Verify behavior with PlayMode tests (test runner forces frames; see `HeuristicBots_ActuallyMove`) or the headless build. `runInBackground=1` is set; "Enter Play Mode Options" must stay OFF (ML-Agents Academy needs domain reload).
 - Unity 6.5 turns deprecations into errors (`GetInstanceID`, `TreeView`, old `Object.FindObjectsByType` overloads) — affects our code and third-party package version choices.
 - The move/rename asset tool sometimes reports failure while succeeding — verify on disk before retrying.
+- **`manage_camera(action="screenshot")` is the wrong tool for auditing this game, twice over (measured 2026-09-06).** It renders through a camera, and every screen in PoSoccer is UI Toolkit on a `PanelSettings` overlay — so the HUD, the menu, the pause panel and the end panel are all **absent** from what comes back, and the picture looks like a game with no interface. It also **resized the Game View** as a side effect (1170x2532 -> 321x531), which then silently changes every `Screen.*` and `resolvedStyle` reading taken afterwards; a UI measurement taken after a screenshot is a measurement of a different device. For UI, query the visual tree instead: walk `UIDocument.rootVisualElement` and read `layout` / `resolvedStyle` / `worldBound` through `execute_code`. That reports exact rects, catches NaN and zero-size elements a screenshot cannot show, and perturbs nothing.
+- **`execute_menu_item` on any menu entry that opens a CONFIRMATION DIALOG hangs the editor indefinitely, and it looks exactly like a dead bridge (2026-09-06).** Calling `Assets/Reimport All` popped Unity's "Are you sure you want to reimport all assets?" modal. A modal blocks the editor's main thread, so the MCP bridge stopped answering: `last_heartbeat` froze, every tool call failed with `closed`, and the status file still said `"reason":"ready"` because nothing was left running to update it. Thirteen minutes were spent diagnosing a "hung bridge" that was a dialog waiting for a click. **The process-level tells:** `Get-Process Unity` shows `Responding=True` with almost no CPU (a real reimport burns CPU), and enumerating the process's visible windows shows a `#32770` (Win32 dialog) alongside `UnityContainerWndClass`. It can be dismissed from the outside by finding the dialog's child `Button` named Cancel and sending it `BM_CLICK` (0x00F5) via user32 - which is a recovery, not a workflow. **Prefer the API over the menu**: `AssetDatabase.Refresh()` / `refresh_unity` instead of Reimport All, and check whether a menu item prompts before invoking it blind.
+- **An MCP tool call failing with "No Unity Editor instances found" does not mean the editor is gone.** Seen repeatedly on 2026-09-06 around domain reloads: `~/.unity-mcp/unity-mcp-status-*.json` still said `"reason":"ready"` on port 6400 and the bridge answered a raw socket immediately, while the MCP server kept reporting no instances for minutes. Check the status file before concluding anything, and fall back to the raw framed-TCP protocol documented above — it drove a 55-test PlayMode run to completion in this exact situation.
+- **A completed PlayMode run often leaves the runner unable to enumerate PlayMode tests, and it reports SUCCESS (2026-09-06).** Seen repeatedly across a long verify session: the job finishes in ~5 s with `status: succeeded`, `summary.total: 0`, `completed: 1`, `last_finished_test_full_name: "PoSoccer"`. A real run of this suite takes 170-430 s and reports 63. **`resultState: Passed` with `total: 0` is not a pass, it is a no-op**, and a script that only checks `status` or `failed == 0` will report green on a suite that never ran. Always assert on `summary.total`. EditMode is unaffected and keeps returning 50 throughout, so it is not a compilation or assembly-resolution problem. Re-running usually clears it; budget retries rather than trusting one result.
 - **The PlayMode test runner can wedge on the first run after a package-install domain reload** — it reports `stuck_suspected` with `last_update` frozen, and `run_tests` then returns `tests_running` forever. It is *not* a real test failure: `manage_editor stop` + a forced script recompile clears it, and the suite passes normally afterward. Do not start reverting code over this.
 
 ## Architecture (cross-file)
@@ -113,6 +119,12 @@ Keep reading the superseded paragraph for the *reasoning* (why a shape-identical
 **Personalities**: a player = `Reward_Settings` asset (`Assets/Agents/<Name>_v01/Reward_<NAME>.asset`) = reward DNA + `playerName`/`playerColor`/`brainModel`. Roster: STANDARD (balanced, trained), MATT (striker), KIM (wall, `defensivePositionScale`), NICK (midfielder, `possessionScale`), plus **BOT** (`Assets/Agents/Bot_v01/Reward_BOT.asset`) — the rule-based benchmark opponent, `brainModel` permanently null so picking it always fields `Agent_HeuristicBot` (this is how a trained brain gets played against the bot inside a normal match; the HUD chip tags each player AI/BOT). Pinned by `Agent_EditMode_BotProfile`. See `docs/players.md`. Bodies identical by design; brains interchangeable. Body wears `playerColor`, **team shows as thick outline frame + eye color** (built at runtime in `Agent_Soccer.Start` along with the initial letter label).
 
 **Game flow**: `Agent_MainMenu` (4 picker rows, untrained players badged "(BOT)") → statics in `Agent_MatchSetup` → `Agent_MatchLoader` (order −60) applies profile/brain per agent (`brainModel` null ⇒ heuristic bot). `Agent_HUD` = scoreboard band + match clock + identity chips + goal/RESET toasts + first-to-5 end panel (match flow off in SCN_Training). `Agent_Stadium` builds 2D lights/shadows/post at runtime; `Agent_MatchFX` trail/shake/squash/boost particles; `Agent_Audio` velocity-scaled SFX + reactive crowd (placeholder WAVs in `Assets/Audio` — Store-pack clips drop into the same fields).
+
+**Two rules the flow layer now enforces, both added 2026-09-06 after an end-to-end audit.**
+
+1. **`Agent_MatchSetup` is cleared on ARRIVAL at the menu, not only before each launch.** The statics survive a scene load in a player build, and `GalleryMode` decides whether `SCN_Exhibition` builds one pitch or a grid of six. It was already correct — but only because `StartMatch` and `OpenGallery` each remembered to `Clear()` first, i.e. an invariant held by two call sites agreeing. A third entry point inherits the stale flag with no error, and the visible symptom is PLAY opening the checkpoint gallery. `Agent_MainMenu.OnEnable` now clears, so the flags are dead by default and owned by the launcher that sets them one line before loading.
+
+2. **`Agent_Chrome` is code-installed via `Agent_Presentation.EnsureChrome`.** It was the last presentation component still authored as a serialized GameObject — in `SCN_Menu` and `SCN_Exhibition`, absent from `SCN_Training` — while every sibling is attached in code precisely so a scene cannot drift from the code. That exception was the expensive one to keep: **MENU is the only way out of a match or the gallery**, so a scene that missed the object is a scene the player cannot leave, and nothing logs. Installation is idempotent (the two serialized objects are found and reused) and goes on its OWN GameObject — `Agent_Chrome` takes over the `UIDocument` of whatever it is attached to and rewrites that document's `sortingOrder` and root, so landing it on the HUD would replace the scoreboard with the chrome. `Agent_PlayMode_GameFlow.EveryPlayerFacingScene_CanBeLeftAgain` pins presence in the menu and the match, exactly one instance, and absence in training.
 
 **Broadcast layer (2026-09-06).** Seven components on the pitch root, installed by `Agent_Presentation` and gated the same way everything else in the spectator layer is. Every mark is sourced from a number the simulation already computes; nothing here is on a timer.
 
@@ -155,6 +167,10 @@ Four rules this layer establishes:
 
 3. **The impact overlays are disabled between goals, not merely transparent.** They are two full-view transparent quads; left enabled they would be pure overdraw on a phone for something invisible 99% of a match. `Agent_PlayMode_Gfx` asserts they are idle at rest, that a fired one clears itself, and that neither object exists in `SCN_Training`.
 4. **Full-screen passes DO NOT WORK on this renderer - do not try again without reading the record.** Items 1 and 7 were first built as a URP full-screen pass and measured not to execute, five different ways, including after an editor restart. See the landmine below and `docs/gfx-audio-pass-2026-09-06.md`; `Agent_EditMode_Palette.The2DRenderer_CarriesNoRendererFeatures` fails if a feature is added without revisiting it.
+5. **One touch-target token, and `.btn` is where it lives (2026-09-06).** `Agent_Chrome` enforced 120 units (~7.6 mm, Android 48dp) on the two buttons it owns and told the next person not to shrink them; nothing else obeyed. Measured live: the HUD sound/pause pair at 80.75, menu presets 74, steppers 86, roster 78 — every one of them under the floor the project had already written down. `--touch-min` in `PoSoccerTheme.uss` now feeds `.btn`, and the three rules that undercut it with an explicit `height` were raised to match. `Agent_PlayMode_Portrait.EveryTappableButton_MeetsTheTouchTargetMinimum` asserts on **resolved layout** across the menu and the match, because the failure mode is a more specific selector quietly setting `height` below the minimum, which a test of the declared rule would miss.
+
+6. **The win-probability bar floors its DRAWN width, never its number.** At 1-5 down, `winprob-blue` resolved to 0.00 px — one colour where a two-colour bar should be, which reads as a broken widget rather than as 0%. `Agent_HUD.WINPROB_MIN_VISIBLE` keeps a 2% sliver; the label still prints the true percentage, which is the line between legibility and the kind of flattering presentation this project has already retracted once.
+
 4. **Kits ship switched OFF on every profile.** UNITY_RULES reserves how a brain looks to its author ("never auto-assign one"), and a procedural jersey is a texture by that standard. `Agent_EditMode_Palette.EveryShippedProfile_ShipsWithNoKit` is the guard.
 
 **LANDMINE — every UV-space shader effect was reading the atlas page, not the sprite (found and fixed 2026-09-06).** `PitchAtlas` packs `pitch.png`, `ball.png`, `tile.png` and `backdrop.png` — the pitch, the ball and every player body. A packed sprite's mesh UVs span its SLOT on the page, so `length(uv - 0.5)` measured distance from the centre of the PAGE: the team rim on every player was a near-constant, i.e. a flat tint, and the mown stripes ran at whatever fraction of `_StripeCount` the pitch's slot subtended. **Neither failed. A flat tint reads as a design choice**, which is why it survived from the day the shader was written. The project had already hit this once on the goal net (`Agent_Surfaces.BuildNetQuad` dodges the atlas with a private texture and says so) and never generalised the fix. `Agent_Surfaces` now measures the slot from `Sprite.uv` into `_SpriteRect` and `PoSoccerLocalUV` maps every term through it; the identity default keeps unatlased sprites bit-identical. **Any new UV-space term must go through `PoSoccerLocalUV`** — `Agent_EditMode_Palette.EveryUvSpaceEffect_MapsThroughTheSpriteSlot` reads the HLSL and fails if it does not.
@@ -206,6 +222,71 @@ Four rules this layer establishes:
 ## Coding rules
 
 Enforced style lives in `.claude/rules/` and is loaded automatically: `architecture.md` (MVS + VContainer + MessagePipe + UniTask — aspirational; the current code is plain MonoBehaviour/ScriptableObject and does **not** yet follow it), `csharp-unity.md` (naming, `[SerializeField] private`, no LINQ in gameplay), `performance.md` (zero alloc in Update, draw-call/atlas budget), `serialization.md` (**`[FormerlySerializedAs]` on every rename**), `unity-specifics.md` (no `?.` on Unity objects, no coroutines).
+
+## Toolchain state (VERIFIED 2026-09-07 - read this before believing any claim below)
+
+**The "Open items" paragraph in the State section says the full training toolchain is
+healthy. On 2026-09-07 that was false, and it cost ~40 minutes.** A fresh checkout of this
+machine had **no Python at all** (`python` was the Microsoft Store alias stub, no
+`PythonCore` registry keys, no install dirs), no `.venv`, no `Builds/`, no `results/`, and
+`.tooling/` held only MCP servers - not the ml-agents clone. Every `scripts/*.ps1` was
+therefore inoperable.
+
+This is the same structural failure the Architecture section already documents about the
+brain table: **these paragraphs describe mutable state that scripts and machines change
+without touching this file.** Check the filesystem, never this line.
+
+Rebuilt 2026-09-07, verified end to end:
+
+| | |
+|---|---|
+| interpreter | Python **3.10.11** (python.org installer, user scope) |
+| mlagents / mlagents_envs | **1.2.0.dev0** / 1.2.0.dev0 (editable @ `ab179e18`) - parity OK |
+| torch | **2.5.1+cu121**, `cuda_available=True`, RTX 2060, `default_device()` = `cuda` |
+| player | `Builds/PoSoccer/PoSoccer.exe`, 155 MB, 204 managed DLLs |
+
+**LANDMINE - do not "fix" PYTHON_MAX by raising it.** `requirements-training.txt` pins
+`PYTHON_MAX=3.10.12`, and that is NOT a stale bound: it mirrors ml-agents' own
+`python_requires = '<=3.10.12,>=3.10.1'` at the pinned commit. Raising the anchor does
+nothing, because **pip enforces the upstream constraint**: `uv`'s only 3.10 is 3.10.21 and
+it fails with `Package 'mlagents-envs' requires a different Python: 3.10.21 not in
+'<=3.10.12,>=3.10.1'`. python.org's last 3.10 Windows installer is **3.10.11** - that is the
+interpreter to install. (This was tried and reverted on 2026-09-07; the anchor comment now
+records it.)
+
+**Three setup traps, all hit on 2026-09-07:**
+1. `setup-training-env.ps1` sets `$ErrorActionPreference = "Stop"`, and **git writes progress
+   to stderr**. The clone dies as a `NativeCommandError` *after* creating the directory,
+   leaving a hollow `.tooling/ml-agents/` with an empty `.git` - and `git -C` inside it then
+   resolves **up to the PoSoccer repo**, so `rev-parse HEAD` returns a PoSoccer commit and
+   the clone looks real. Delete the directory and clone by hand, then re-run.
+2. PowerShell **execution policy blocks every `scripts/*.ps1`**. Use
+   `powershell -ExecutionPolicy Bypass -File ...` per invocation; do not change the machine policy.
+3. Plain `pip install -e ml-agents` resolves **torch CPU** (2.8.0+cpu). Install
+   `torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121` afterwards. This is worth
+   doing even though the Landmines section correctly says the GPU is not the bottleneck:
+   moving the policy update off the CPU gives it back to the four env processes, which are.
+
+**MEASURED 2026-09-07 - the deployed p21 brains, live probe (`Agent_PlayMode_MovementProbe`):**
+
+| 10.44 m chase, 4 s | trained (PROBE-D) | scripted bot (PROBE-C) |
+|---|---|---|
+| distance | 8.35 m (80%) | 13.16 m (126%) |
+| reached ball | **never** | 2.90 s |
+| max speed | 2.85 m/s | 4.72 m/s |
+| **heading churn** | **174 deg** | 83 deg |
+
+p21 fixed *forward* commitment (1 sign flip / 400 steps on `move`) but **not the turn
+channel** - the trained agent still spins at **2.1x the bot's rate**. `ActionGain` gained
+`turn` as well as `move`, so a 0.6 turn output became 0.96. That is the measured basis for
+the p22 change below.
+
+**Suites both genuinely green 2026-09-07:** EditMode **50/50** (`total=50`), PlayMode
+**63/63** (`total=63`, 232 s). The PlayMode runner wedged twice first (`failed to
+initialize`, then the `total: 0` no-op); a forced script recompile cleared it. Assert on
+`summary.total`, exactly as the landmine says.
+
+---
 
 ## State (2026-08-04)
 
@@ -412,7 +493,9 @@ Net **12× swing against moving** on STANDARD, **50× on KIM**. Standing still w
 
 **LANDMINE — a domain reload during play mode freezes the pitch with no error visible in game.** `ResetPitch` threw `KeyNotFoundException` on `_spawnRotations[agent]` every `FixedUpdate`, so every episode reset aborted and the pitch locked: agents motionless, **all four actions exactly 0.0000**, stamina untouched, `StepCount` still climbing. It reads exactly like "the brain is broken". Cause: "Enter Play Mode Options → DisableDomainReload" wipes non-serialized state without re-running `Start`; `agents` is serialized so it returns populated while the spawn dictionaries return empty. **The setting must stay OFF** (ML-Agents Academy needs the reload). `Agent_EnvController.EnsureSpawnCache` now heals and warns once instead of bricking. **And it does not stay off by itself: running the PlayMode suite flips `ProjectSettings/EditorSettings.asset` `m_EnterPlayModeOptions` from `0` to `1` (DisableDomainReload) every time** — observed twice on 2026-08-05, once per `run_tests` PlayMode invocation. So the normal verify loop re-arms this landmine, and pressing Play after a test run walks straight into it. Always `git diff -- ProjectSettings/EditorSettings.asset` after a PlayMode run and `git checkout` it if the value is `1`; never commit that flip.
 
-**Still true 2026-09-06, and the MCP package's own guard does not cover it.** Confirmed again after a 43-test PlayMode run: the value was `1` afterwards and had to be reverted by hand. The CoplayDev package now logs `[PlayModeOptionsGuard] Restored enterPlayModeOptions after interrupted test run` — note the last three words. It restores the setting when a run is **interrupted**, which is a different and rarer case than a run that completes normally. A clean run still leaves the flip behind. The manual check remains mandatory.
+**Still true 2026-09-06, and the MCP package's own guard does not cover it.** Confirmed again after a 43-test PlayMode run: the value was `1` afterwards and had to be reverted by hand. The CoplayDev package now logs `[PlayModeOptionsGuard] Restored enterPlayModeOptions after interrupted test run` — note the last three words. It restores the setting when a run is **interrupted**, which is a different and rarer case than a run that completes normally. A clean run still leaves the flip behind. The manual check WAS mandatory; see the next paragraph.
+
+**FIXED 2026-09-06 — `Assets/Editor/Editor_PlayModeOptionsGuard.cs` now resets it automatically.** Confirmed once more on a 55-test PlayMode run (`0` -> `1`, reverted by hand) and then automated, because a checklist item guarding a landmine that re-arms itself on every single verify loop had already been missed twice. The guard is `[InitializeOnLoad]` plus a `playModeStateChanged` hook: it corrects the setting on `EnteredEditMode` and on domain reload, and **never while play mode is running or entering** — the test framework flip has to survive its own run, and fighting it mid-run would be a worse bug than the one it fixes. It logs what it corrected. Per-user opt-out at *PoSoccer -> Guard Enter Play Mode Options* (EditorPrefs, so switching it off cannot be committed by accident). Note it enforces `m_EnterPlayModeOptions: 0` while leaving `m_EnterPlayModeOptionsEnabled: 1` — that pair means the toggle is explicit and neither reload is disabled, which is the committed state.
 
 **The `POSOCCER_BOT_VISION` knob is a dead end.** `perceptionRadius` gates only the shoulder-charge, which itself requires the opponent within **2 units** — so any radius ≥ 2 is a no-op. The bot barely consults opponent state at all, which means **in 1v1 there is essentially no information asymmetry**: both sides get exact ball, goal and pitch state. The phase-6 perception thesis was wrong for this matchup; it would only bite in 2v2.
 

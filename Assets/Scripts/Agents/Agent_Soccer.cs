@@ -635,14 +635,26 @@ namespace PoSoccer
                 actions.ContinuousActions[0], actions.ContinuousActions[1],
                 actions.ContinuousActions[2], actions.ContinuousActions[3]);
 
-            // Action gain: trained brains converged on cautious magnitudes
-            // (~0.1-0.5; anti-twitch reward + small ball-proximity gradient
-            // rewards trained them to creep). Raw drive force scaled by those
-            // magnitudes (driveForce * intentMag) gets killed by linear + lateral
-            // drag before the body builds visible speed. 1.6x lifts a 0.3 brain
-            // output to 0.48 (well above the brake/drag cutoff) while still
-            // saturating at 1 for full-throttle decisions - no contract change.
-            const float ActionGain = 1.6f;
+            // Action gain. WAS 1.6 from 2026-08 until 2026-09-07, added when trained
+            // brains crept at ~0.1-0.5 and raw driveForce * intentMag died to drag
+            // before the body built visible speed. That premise expired: p21 measures
+            // the policy mean at |move| = 0.658.
+            //
+            // The gain multiplies THEN clamps, so every raw output >= 0.625 collapses
+            // to 1.0 - the policy has no way to express any magnitude between 0.625
+            // and 1.0, and p21 sits exactly in that dead band. It also gains the TURN
+            // channel, where a 0.6 turn becomes 0.96 (near full rate). Measured on the
+            // live p21 brains 2026-09-07 (Agent_PlayMode_MovementProbe, PROBE-D):
+            // headingChurn 174 deg / 4 s against the scripted bot's 83 deg - the
+            // trained agent spins at 2.1x the bot while covering 80% of the distance
+            // the bot covers at 126%.
+            //
+            // 1.0 restores the identity contract: what the policy asks for is what the
+            // feet get, in all three channels. This CHANGES THE ACTION->FORCE MAPPING,
+            // so every .onnx trained under 1.6 is out of distribution - a full retrain,
+            // exactly like the 2026-08-28 frame boundary. Treat pre-2026-09-07
+            // checkpoints as incomparable to later ones.
+            const float ActionGain = 1.0f;
             float move = Mathf.Clamp(actions.ContinuousActions[0] * ActionGain, -1f, 1f);
             float lateral = Mathf.Clamp(actions.ContinuousActions[1] * ActionGain, -1f, 1f);
             float turn = Mathf.Clamp(actions.ContinuousActions[2] * ActionGain, -1f, 1f);

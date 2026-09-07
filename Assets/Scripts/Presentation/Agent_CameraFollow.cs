@@ -39,11 +39,11 @@ namespace PoSoccer
         [Tooltip("Position lerp toward the ball (per second at 60 fps).")]
         [Range(2f, 12f)] [SerializeField] private float _followSpeed = 6f;
         [Tooltip("Extra world units the view may show beyond the touchline.")]
-        [SerializeField] private float _edgeMargin = 0.5f;
+        [SerializeField] private float _edgeMargin = DEFAULT_EDGE_MARGIN;
         [Tooltip("Fraction of the pitch WIDTH the wide shot may crop on very tall screens, " +
                  "so the pitch keeps filling the height instead of shrinking. The camera pans " +
                  "horizontally to cover whatever is cropped.")]
-        [Range(0f, 0.35f)] [SerializeField] private float _maxWidthCrop = 0.14f;
+        [Range(0f, 0.35f)] [SerializeField] private float _maxWidthCrop = DEFAULT_MAX_WIDTH_CROP;
 
         Camera _cam;
         Agent_EnvController _env;
@@ -184,11 +184,39 @@ namespace PoSoccer
         /// narrower than the pitch. So the tall-screen case degrades into a tracking shot
         /// rather than a letterbox.
         /// </summary>
-        float PitchWideOrthoSize(Vector2 half)
+        float PitchWideOrthoSize(Vector2 half) =>
+            WideOrthoSize(half, _cam.aspect > 0.01f ? _cam.aspect : FALLBACK_ASPECT, _maxWidthCrop);
+
+        /// <summary>9:16, used when the camera reports no usable aspect yet.</summary>
+        public const float FALLBACK_ASPECT = 0.5625f;
+
+        /// <summary>The shipped value of <c>_maxWidthCrop</c>.</summary>
+        public const float DEFAULT_MAX_WIDTH_CROP = 0.14f;
+
+        /// <summary>The shipped value of <c>_edgeMargin</c>, in world units.</summary>
+        public const float DEFAULT_EDGE_MARGIN = 0.5f;
+
+        /// <summary>
+        /// The wide establishing shot as pure arithmetic, so it can be swept
+        /// across aspect ratios and squad sizes without a camera, a pitch or a
+        /// play-mode frame.
+        ///
+        /// IT IS PUBLIC BECAUSE THE TEST USED TO RESTATE IT. Agent_PlayMode_Portrait
+        /// carried its own `Mathf.Max(padded.y, padded.x * (1 - CROP) / aspect)`
+        /// with a comment saying it "must match Agent_CameraFollow" - so the
+        /// assertion held against a copy, and the one edit it exists to catch,
+        /// a change to the real formula, would have left it green. Same shape of
+        /// mistake as a shipped .onnx that loads against a changed observation
+        /// contract: identical numbers, different meaning.
+        /// </summary>
+        /// <param name="paddedHalfExtents">Pitch half-extents INCLUDING the edge margin.</param>
+        /// <param name="aspect">Viewport width / height.</param>
+        /// <param name="maxWidthCrop">Fraction of pitch WIDTH the shot may crop.</param>
+        public static float WideOrthoSize(Vector2 paddedHalfExtents, float aspect, float maxWidthCrop)
         {
-            float aspect = _cam.aspect > 0.01f ? _cam.aspect : 0.5625f;
-            float heightFit = half.y;
-            float widthFit = half.x * (1f - _maxWidthCrop) / aspect;
+            if (aspect <= 0.01f) aspect = FALLBACK_ASPECT;
+            float heightFit = paddedHalfExtents.y;
+            float widthFit = paddedHalfExtents.x * (1f - maxWidthCrop) / aspect;
             return Mathf.Max(heightFit, widthFit);
         }
 
