@@ -455,6 +455,20 @@ NICK was paid up to 4.5× more for holding the ball than for scoring with it. Th
 
 Fixed: every per-step term ÷10 with trait ratios preserved, `facingAlignmentScale` and `crossbarProximity` retired as redundant (bearing to the ball has been an *observation* since the body-frame fix). Code defaults and all five assets moved together — a changed initializer never reaches an existing asset. `Agent_EditMode_RewardBudget` pins the **ordering property**, not a specific table, and fails if a `maxEnvironmentSteps` increase re-breaks it (the ceiling is linear in the cap). Full write-up: `docs/ml-audit-2026-09-07.md`.
 
+**RESULT 2026-09-07 — p24 (potential-based shaping) is a WASH and p26 (imitation) is significantly WORSE.**
+
+| run | lever | graded (n=350) | red | stalemates |
+|---|---|---|---|---|
+| `soccer_p22gain_standard` | ActionGain 1.0 + full curriculum | **26.6%** | 46.0% | 27.4% |
+| `soccer_p24potential_standard` | reward budget caps + potential-based ball→goal | *ungraded*; **+0.049 vs p22** at matched 2.6–3.0M — wash | | |
+| `soccer_p26imitate_standard` | BC 500k + GAIL 0.3 vs bot demos | **12.6%** | 53.7% | 33.7% |
+
+p26 is −14.0 pp on a combined SD of ~3.0 — about **4.7 SD**. Imitation did not fail to help, it **halved the win rate**. Likely causes, all unmeasured hypotheses: covariate shift (demos are bot-vs-bot; the learner faces bot-vs-itself *while losing*, drifting into states the demonstrator never visited — the failure DAgger exists for), GAIL rewarding resemblance to a state distribution the agent cannot reach, and BC anchoring the policy RL then spends budget undoing. Separating them needs an ablation, not another combined run.
+
+**METHOD, THE HARD VERSION — on this task mean reward is NOT a decision variable.** Three times in one session a mid-training curve pointed the opposite way from the graded outcome: p23 was killed for a flat −1.2 stretch that is the normal shape of every run here before ~800k (p22 did the same and is the best brain the project has); p24 was read as "falling behind" from noisy points and came out a wash; p26 led p24 by −0.324 vs −0.700 over 1.8–2.3M and then graded **half** p22's win rate. Adjacent summaries swing by ±0.7, which is wider than any effect worth detecting. **Put the candidate curve next to p22's on the same axis, and do not conclude anything until `evaluate.ps1` has run.** Curves live in `results/<run>/STANDARD/events.out.tfevents.*` and take seconds to extract.
+
+Full record, including the reward-budget audit and the sensor-geometry measurements: `docs/ml-audit-2026-09-07.md`.
+
 **LANDMINE — `ActionGain` changes the action→force mapping without touching a tensor shape.** MATT, NICK and KIM are p21 checkpoints trained at gain **1.6** against a **1.0** runtime; they load without a warning and then under-drive. This is **degraded, not scrambled** — a monotonic scaling preserves direction, unlike the 2026-08-28 frame change — but `Agent_EditMode_ObsContract` structurally cannot see it, because every number it checks is unchanged. `Reward_Settings.trainedActionGain` now records the gain each brain was trained under (stamped by `update-model.ps1`, read from source rather than duplicated), and `Agent_EditMode_ActionGain` fails on a mismatch. **That test is currently RED and correctly so** — it goes green when those three are retrained at the current gain, or when their `brainModel` is cleared.
 
 **LANDMINE — `evaluate.ps1` could not complete its own default (fixed 2026-08-29).** `-Episodes` defaults to 1000 and `-TimeoutMin` defaulted to a flat **30**, but 1000 episodes takes ~60 min (measured: 510 episodes in 30 min). So the *documented default invocation* always tripped the timeout, exited 3, and wrote **no JSON at all** — a grade that ran for half an hour and left no evidence. The timeout now scales with the episode count, and a timed-out run **salvages** the player's last `[EvalStats]` tally into a JSON marked `partial: true` with the real episode count, instead of discarding a perfectly good smaller sample.
