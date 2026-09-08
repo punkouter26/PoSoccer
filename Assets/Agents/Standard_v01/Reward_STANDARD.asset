@@ -17,11 +17,11 @@ MonoBehaviour:
     personality is measured against.
   playerColor: {r: 0.25, g: 0.75, b: 0.35, a: 1}
   brainModel: {fileID: 5022602860645237092, guid: f1597e3428e30bf449e02a88dff39f89, type: 3}
-  trainingSteps: 10000986
-  trainingRunId: soccer_p22gain_standard
+  trainingSteps: 3000032
+  trainingRunId: soccer_p25episode_standard
   trainedOn: 2026-09-07
-  evalWinRate: 0.2657
-  evalEpisodes: 350
+  evalWinRate: -1
+  evalEpisodes: 0
   trainedActionGain: 1.0
   bodyScale: 1
   bodyMass: 75
