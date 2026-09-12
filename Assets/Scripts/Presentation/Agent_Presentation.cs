@@ -87,6 +87,16 @@ namespace PoSoccer
             if (go.GetComponent<Agent_Director>() == null) go.AddComponent<Agent_Director>();
             if (go.GetComponent<Agent_MatchStats>() == null) go.AddComponent<Agent_MatchStats>();
 
+            // Agent_Overtime OWNS THE PITCH GEOMETRY, which is why it is here rather
+            // than in InstallVisuals despite drawing its own boundary: it calls
+            // ResizePitch and SetGoalWidth, and six gallery clones each squeezing
+            // the pitch they share a camera with is not a thing anyone wants to
+            // debug. Agent_BrainCam owns a screen panel and Agent_Dossier writes the
+            // end panel, so both are scoreboard-side by the rule above.
+            if (go.GetComponent<Agent_Overtime>() == null) go.AddComponent<Agent_Overtime>();
+            if (go.GetComponent<Agent_BrainCam>() == null) go.AddComponent<Agent_BrainCam>();
+            if (go.GetComponent<Agent_Dossier>() == null) go.AddComponent<Agent_Dossier>();
+
             // Screen-space and device-wide owners. All three are singular by
             // nature - one framebuffer, one vibrator, one frame budget - so they
             // belong here rather than in InstallVisuals, whatever the gallery
@@ -162,6 +172,9 @@ namespace PoSoccer
             if (go.GetComponent<Agent_Limbs>() == null) go.AddComponent<Agent_Limbs>();
             if (go.GetComponent<Agent_Intent>() == null) go.AddComponent<Agent_Intent>();
             if (go.GetComponent<Agent_VisionView>() == null) go.AddComponent<Agent_VisionView>();
+            // Per-pitch: the tracer projects THIS pitch's ball off THIS pitch's
+            // walls, so every gallery clone needs its own.
+            if (go.GetComponent<Agent_ShotTracer>() == null) go.AddComponent<Agent_ShotTracer>();
         }
     }
 }

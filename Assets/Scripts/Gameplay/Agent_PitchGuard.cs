@@ -21,6 +21,18 @@ namespace PoSoccer
     {
         // Radius chosen so the arc midpoint sits flush in front of the existing
         // 45-degree bevel face (bevel face ~1.04 from the corner; r*(sqrt2-1)=1.08).
+        /// <summary>
+        /// Bounciness of the four straight walls. Public because
+        /// <see cref="Agent_ShotTracer"/> reflects its projected ball off the same
+        /// surfaces, and a projection that used a different restitution than the
+        /// physics would drift away from the ball it is drawing a line for -
+        /// silently, and only on shots that actually hit a wall.
+        /// </summary>
+        public const float SideBounciness = 0.85f;
+
+        /// <summary>Bounciness of the corner arcs, which eject a settling ball.</summary>
+        public const float CornerBounciness = 0.95f;
+
         public const float CornerRadius = 2.6f;
         const int ArcSegments = 12;
         const float WallOverlap = 0.45f;
@@ -38,8 +50,8 @@ namespace PoSoccer
             // instead of depenetrating through the wall (which used to trigger
             // the OOB reset in the env controller). 0.85 sides + 0.95 corners
             // covers every realistic shot/trap speed.
-            _slickWall ??= new PhysicsMaterial2D("SlickWall") { friction = 0f, bounciness = 0.85f };
-            _bouncyCorner ??= new PhysicsMaterial2D("BouncyCorner") { friction = 0f, bounciness = 0.95f };
+            _slickWall ??= new PhysicsMaterial2D("SlickWall") { friction = 0f, bounciness = SideBounciness };
+            _bouncyCorner ??= new PhysicsMaterial2D("BouncyCorner") { friction = 0f, bounciness = CornerBounciness };
 
             foreach (var col in env.GetComponentsInChildren<Collider2D>())
                 if (col.CompareTag("Wall") && !col.isTrigger)

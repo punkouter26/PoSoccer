@@ -627,6 +627,31 @@ namespace PoSoccer
             _episodeEnding = false;
         }
 
+        /// <summary>
+        /// Set the goal mouth width OUTSIDE a kickoff, absolutely rather than
+        /// through the curriculum.
+        ///
+        /// Exists for <see cref="Agent_Overtime"/>, which widens the mouths while the
+        /// pitch closes in so a goalless match is forced to resolve. It is deliberately
+        /// absolute rather than a multiplier: ResetPitch re-reads the width from the
+        /// `goal_width` environment parameter on every kickoff, so whatever overtime
+        /// does here is discarded at the next restart and cannot accumulate across a
+        /// match.
+        ///
+        /// SAFE TO CALL MID-EPISODE BECAUSE NOTHING OBSERVES IT. The brain contract
+        /// carries goal POSITION, never goal width, so this changes no tensor and takes
+        /// no policy out of distribution - the curriculum has been moving this exact
+        /// value between lessons since phase 1. Gameplay-only regardless: the only
+        /// caller is gated on Agent_Presentation.IsMatchScene.
+        /// </summary>
+        public void SetGoalWidth(float width)
+        {
+            if (width <= 0.01f) return;
+            CurrentGoalWidth = width;
+            ApplyGoalWidth(blueGoal, width);
+            ApplyGoalWidth(redGoal, width);
+        }
+
         static void ApplyGoalWidth(Transform goal, float width)
         {
             if (goal == null) return;
