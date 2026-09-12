@@ -150,7 +150,22 @@ Keep reading the superseded paragraph for the *reasoning* (why a shape-identical
 | `Agent_ImpactFX` | body-contact shocks, traction scuffs, effort wisps, boost ignition | `Agent_Contact.PlayerContact` (new event), `TractionSaturation`, `Agent_Stamina` |
 | `Agent_Gallery` | grid of pitches, one archived brain each vs the bot | `Agent_Checkpoint` assets, or the live roster when none exist |
 
-Keys in a match: **I** intent overlay, **V** cycles vision (off → last toucher → all), **F3** telemetry.
+**Spectator pass 2026-09-12.** Four more, same gating discipline.
+
+| component | shows | source | gate |
+|---|---|---|---|
+| `Agent_Overtime` | sudden death: pitch closes in, goal mouths widen, until somebody scores | goalless seconds on the physics clock; drives `ResizePitch` + the new `SetGoalWidth` | `IsMatchScene` |
+| `Agent_ShotTracer` | where the ball ends up if nobody touches it, gold when that is a net | forward integration of the SAME damping / Magnus / wall-reflection terms `Agent_EnvController` applies | `IsVisualScene` |
+| `Agent_BrainCam` | the four raw action outputs per player, plus commitment and sign-flip churn | `Agent_Soccer.LastRawActions`, sampled per DECISION | `IsMatchScene` |
+| `Agent_Dossier` | per-player occupancy heatmap + advancement / attacking share / lateral spread | `FixedUpdate` occupancy grid in NORMALISED coords (the walls move) | `IsMatchScene` |
+
+Three rules this pass establishes:
+
+1. **`Agent_Overtime`'s gate is load-bearing in a way the 2026-09-06 layer's is not.** Those components only DRAW. This one moves the walls and widens the goals, and the benchmark's headline number is `blueWins/episodes` over a fixed episode count - so a training or eval run that got it would convert stalemates into goals and inflate the very figure the project exists to measure, with **nothing in any eval JSON able to reveal it** (run id, model path and input count would all still be correct). `Agent_PlayMode_Overtime.TrainingScene_HasNoneOfTheseComponents` asserts it. It is safe for a trained brain for a separate reason: pitch size and goal width are not in the observation vector (the contract carries goal POSITION), and goal width has been the `goal_width` curriculum axis since phase 1.
+2. **The shot tracer's accuracy is MEASURED, not asserted.** It draws a line claiming to know the future, on a scoreboard that sits next to an explicitly uncalibrated win-probability strip. `ShotTracer_PredictsWhereTheBallActuallyGoes` launches the ball across an empty pitch, **writes the prediction down**, lets physics run, and fails if the ball misses by >0.35 m. Note the trap that test first fell into: reading a path point AFTER the wait reads a projection taken from where the ball had already got to, and fails by roughly one flight's worth of distance (measured 2.79 m). Snapshot the prediction, then check it. The tracer deliberately does NOT model other bodies or `Agent_PitchGuard`'s corner arcs, and the docstring says so.
+3. **The brain cam samples per DECISION, not per tick, and shows RAW actions.** ML-Agents repeats the last action between decisions (period 8), so counting sign flips per physics step divides every churn figure by eight and makes a thrashing policy look steady. And `ActionGain` multiplies then clamps, so gained actions destroy the distinction between every output past the dead-band edge - which is the entire defect that took MATT/NICK/KIM out of comparability. Bars show what the network emitted; the gain is printed in the header.
+
+Keys in a match: **I** intent overlay, **V** cycles vision (off → last toucher → all), **T** shot tracer, **B** brain cam, **F3** telemetry.
 
 Three rules this layer establishes, all of them load-bearing:
 
