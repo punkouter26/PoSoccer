@@ -149,12 +149,31 @@ namespace PoSoccer
             else Hide();
         }
 
+        /// <summary>
+        /// Set POSOCCER_TELEMETRY=1 to bring the overlay up from the first frame
+        /// with no keypress.
+        ///
+        /// The overlay's whole value is the CSV, and the CSV is only written for a
+        /// session that was VISIBLE - recorders are allocated on show, so an
+        /// unattended run measures nothing. Every other unattended switch in this
+        /// project is an environment variable read in Awake (POSOCCER_EVAL,
+        /// POSOCCER_OPPONENT, POSOCCER_BOT_VISION), so this is the same door
+        /// rather than a new one.
+        /// </summary>
+        public const string ENV_TELEMETRY = "POSOCCER_TELEMETRY";
+
+        static bool TelemetryForcedOn()
+        {
+            string flag = System.Environment.GetEnvironmentVariable(ENV_TELEMETRY);
+            return !string.IsNullOrEmpty(flag) && flag != "0";
+        }
+
         void Start()
         {
             _env = FindFirstObjectByType<Agent_EnvController>();
             _samples = new float[Mathf.Max(30, _sampleWindow)];
             _builder = new System.Text.StringBuilder(512);
-            if (_visibleOnStart) Show();
+            if (_visibleOnStart || TelemetryForcedOn()) Show();
         }
 
         void OnDestroy() => Hide();
