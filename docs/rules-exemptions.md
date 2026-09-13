@@ -201,3 +201,34 @@ rule still governs what we *author*.
 without uGUI, or drop the package. A floating `#main` in `manifest.json` means
 an upstream commit can break this project's builds with no local change, which
 is how this arrived. Removing the package makes this exemption unnecessary.
+
+## `Editor_` prefix in `Assets/Editor/` (Rule: `Agent_` is the blanket prefix) — EXEMPT (2026-09-13)
+
+**Rule.** UNITY_RULES: script prefixes are `Agent_` / `Sensor_` / `Reward_`, with
+`Agent_` as the blanket project prefix "covering non-agents like `Agent_UIStyle`".
+
+**Deviation.** Seven of the nine files in `Assets/Editor/` are named `Editor_*`:
+`Editor_BuildAndroid`, `Editor_BuildAndroidAAB`, `Editor_BuildAndroidDebugApk`,
+`Editor_BuildSpriteAtlases`, `Editor_ConfigureAndroidRelease`, `Editor_GenerateAudio`,
+`Editor_MakeAudioStems`, `Editor_PlayModeOptionsGuard`. Only the two batch-mode
+entry points carry `Agent_`.
+
+**Why it stays.** Renaming them would break a documented CLI contract for no
+functional gain. `Editor_BuildAndroidAAB.Build` is named in CLAUDE.md's headless
+build command and is invoked by `-executeMethod` from `scripts/build-android-aab.ps1`
+and `Tools/play_publish.py`'s documented flow; `-executeMethod` resolves a
+fully-qualified name, so a rename is a breaking change to every caller inside and
+outside the repo. The prefix also carries real information here — `Editor_` means
+"editor tooling, never in a player build", which is exactly what the folder's
+asmdef enforces.
+
+**Why this is consistency rather than a mess.** The rule's purpose is that a reader
+can predict a file's name from its role. Within `Assets/Editor/` that holds: the
+family is internally consistent, and the boundary is a folder with its own assembly
+definition. Reviewed 2026-09-13 while consolidating the build entry points; the two
+`Agent_Build*Command` files were kept under `Agent_` for the same
+do-not-break-callers reason, which is the one genuine inconsistency remaining.
+
+**Cost.** Two naming schemes in one folder, nine files. If the CLI contracts are
+ever revised, rename the whole folder to `Agent_` in the same change and update
+`scripts/*.ps1`, `Tools/play_publish.py` and CLAUDE.md's headless command together.
