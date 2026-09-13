@@ -63,6 +63,56 @@ namespace PoSoccer
             set => PlayerPrefs.SetInt("posoccer_muted", value ? 1 : 0);
         }
 
+        /// <summary>
+        /// Player-set output levels, 0..1, persisted across sessions.
+        ///
+        /// SEPARATE FROM THE SERIALIZED FIELDS BELOW, AND THAT DISTINCTION IS THE
+        /// WHOLE POINT. `_musicVolume = 0.25f` is a MIX decision - it is where
+        /// music sits against the crowd and the impacts, and it was chosen by
+        /// listening. If a settings slider wrote into that field, moving music to
+        /// "half" would mean 0.125 absolute on one machine and something else on
+        /// any build where the mix was retuned, and restoring the designed
+        /// balance afterwards would be impossible. These are a MULTIPLIER on top,
+        /// so the mix survives and the player controls the output.
+        ///
+        /// Until now the only control was the binary SND ON / SND OFF toggle,
+        /// which is the one setting players reliably want graduated: a phone game
+        /// people play next to other people usually wants the crowd and music
+        /// down and the cues audible, and the only expressible answer was "all of
+        /// it, or none of it".
+        ///
+        /// Not a serialized field, and static rather than per-instance, for the
+        /// same reason Muted is both: the menu and the match each build their own
+        /// Agent_Audio, and a per-instance preference would reset on every scene
+        /// load. PlayerPrefs is the store the mute toggle already uses.
+        /// </summary>
+        public static float MasterVolume
+        {
+            get => PlayerPrefs.GetFloat("posoccer_vol_master", 1f);
+            set => PlayerPrefs.SetFloat("posoccer_vol_master", Mathf.Clamp01(value));
+        }
+
+        /// <summary>Impacts, whistle, horn and the physics layers. See <see cref="MasterVolume"/>.</summary>
+        public static float SfxVolume
+        {
+            get => PlayerPrefs.GetFloat("posoccer_vol_sfx", 1f);
+            set => PlayerPrefs.SetFloat("posoccer_vol_sfx", Mathf.Clamp01(value));
+        }
+
+        /// <summary>Crowd bed, swell and roar. See <see cref="MasterVolume"/>.</summary>
+        public static float CrowdVolume
+        {
+            get => PlayerPrefs.GetFloat("posoccer_vol_crowd", 1f);
+            set => PlayerPrefs.SetFloat("posoccer_vol_crowd", Mathf.Clamp01(value));
+        }
+
+        /// <summary>The three music stems. See <see cref="MasterVolume"/>.</summary>
+        public static float MusicVolume
+        {
+            get => PlayerPrefs.GetFloat("posoccer_vol_music", 1f);
+            set => PlayerPrefs.SetFloat("posoccer_vol_music", Mathf.Clamp01(value));
+        }
+
         [Header("Clips (placeholders generated; swap with Store packs freely)")]
         public AudioClip kick;
         public AudioClip wall;
@@ -151,6 +201,9 @@ namespace PoSoccer
         [SerializeField] private float _maxDistance = 40f;
         [Tooltip("Extra stereo spread applied on top of 3D panning - phone speakers barely resolve the 3D image.")]
         [Range(0f, 1f)] [SerializeField] private float _stereoSpread = 0.7f;
+        [Tooltip("Low-pass cutoff for an impact at maxDistance. Air absorbs treble with " +
+                 "distance, so a far kick should sound dull as well as quiet. 22000 disables it.")]
+        [SerializeField] private float _farCutoff = 900f;
 
         [Header("Dynamics")]
         [Tooltip("How far the crowd and music duck under a whistle or horn.")]
@@ -159,6 +212,14 @@ namespace PoSoccer
         [SerializeField] private float _duckRelease = 1.4f;
         [Tooltip("Low-pass cutoff while the clock is frozen (replay, countdown, end panel).")]
         [SerializeField] private float _frozenCutoff = 850f;
+
+        // Designed mix level x the player's preference. Read on every level
+        // computation rather than cached, so a slider drag is audible while the
+        // panel is still open - PlayerPrefs.GetFloat is a dictionary lookup, and
+        // these run a handful of times per frame, not per sample.
+        float SfxBus => _sfxVolume * _masterVolume * SfxVolume * MasterVolume;
+        float CrowdBus => _crowdVolume * _masterVolume * CrowdVolume * MasterVolume;
+        float MusicBus => _musicVolume * _masterVolume * MusicVolume * MasterVolume;
 
         Agent_EnvController _env;
         AudioSource _crowd, _music, _swell;
@@ -170,8 +231,17 @@ namespace PoSoccer
         AudioLowPassFilter _tensionFilter, _driveFilter;
         Agent_WinProbability _winProbability;
         AudioSource[] _pool;
+        // One filter per voice, not one on the pool root: a shared filter would
+        // be re-tuned by whichever impact fired last and would drag every voice
+        // still ringing with it. Same reasoning as BuildMixingDesk's split.
+        AudioLowPassFilter[] _poolFilters;
+        // Cached because PlayAt runs on every ball contact and Camera.main does a
+        // find internally (see .claude/rules/performance.md).
+        Transform _listener;
         AudioSource[] _broadcast;
         int _nextVoice;
+        /// <summary>Slot NextVoice just handed out, so PlayAt can reach its filter.</summary>
+        int _lastVoice = -1;
         int _nextBroadcast;
         AudioSource _roll, _breath;
         AudioLowPassFilter _rollFilter;
@@ -305,12 +375,18 @@ namespace PoSoccer
             poolRoot.transform.SetParent(transform, false);
 
             _pool = new AudioSource[Mathf.Max(1, _voices)];
+            _poolFilters = new AudioLowPassFilter[_pool.Length];
             for (int i = 0; i < _pool.Length; i++)
             {
                 var go = new GameObject($"Voice_{i}");
                 go.transform.SetParent(poolRoot.transform, false);
                 _pool[i] = NewPositionalVoice(go);
+                _poolFilters[i] = go.AddComponent<AudioLowPassFilter>();
+                _poolFilters[i].cutoffFrequency = 22000f;
             }
+
+            var listener = FindAnyObjectByType<AudioListener>();
+            if (listener != null) _listener = listener.transform;
 
             BuildBroadcastBus();
             BuildPhysicsVoices();
@@ -424,7 +500,7 @@ namespace PoSoccer
             if (clip == null || source == null || Muted) return;
             source.panStereo = 0f;
             source.pitch = pitch;
-            source.volume = Mathf.Clamp01(volume) * _sfxVolume * _masterVolume;
+            source.volume = Mathf.Clamp01(volume) * SfxBus;
             source.clip = clip;
             source.Play();
         }
@@ -444,9 +520,52 @@ namespace PoSoccer
             source.panStereo = Mathf.Clamp(offset, -1f, 1f) * _stereoSpread;
 
             source.pitch = pitch;
-            source.volume = Mathf.Clamp01(volume) * _sfxVolume * _masterVolume;
+            source.volume = Mathf.Clamp01(volume) * SfxBus;
+            ApplyAirAbsorption(worldPosition);
             source.clip = clip;
             source.Play();
+        }
+
+        /// <summary>
+        /// Rolls the treble off a distant impact.
+        ///
+        /// The 3D image already attenuates with distance, so a far kick is
+        /// quieter - and on a phone speaker at the levels people actually play
+        /// at, quieter is very nearly inaudible as a CUE. It reads as "this mix
+        /// is inconsistent", not as "that happened over there". This is the same
+        /// problem panStereo was added to solve above, and the same fix: put the
+        /// distance information somewhere the hardware can still convey it.
+        ///
+        /// Air absorbs high frequencies over distance, so the physical answer and
+        /// the legibility answer agree here - a far contact should be dull as
+        /// well as quiet. Mapped across minDistance..maxDistance, which are the
+        /// same bounds the rolloff uses, so the two cues move together instead of
+        /// describing two different pitches.
+        ///
+        /// Set per PLAY rather than per frame. A voice keeps the cutoff it was
+        /// launched with for the length of its clip, which is right: a ball
+        /// impact is an event at a place, not a moving source, and re-tuning it
+        /// while it rings would sweep the filter audibly.
+        /// </summary>
+        void ApplyAirAbsorption(Vector3 worldPosition)
+        {
+            if (_poolFilters == null || _lastVoice < 0 || _lastVoice >= _poolFilters.Length) return;
+
+            var filter = _poolFilters[_lastVoice];
+            if (filter == null) return;
+
+            // No listener found (headless, or a scene mid-load): leave it open
+            // rather than guessing a distance. Silence is a worse failure than a
+            // missing cue.
+            if (_listener == null)
+            {
+                filter.cutoffFrequency = 22000f;
+                return;
+            }
+
+            float distance = Vector3.Distance(worldPosition, _listener.position);
+            float t = Mathf.InverseLerp(_minDistance, _maxDistance, distance);
+            filter.cutoffFrequency = Mathf.Lerp(22000f, Mathf.Max(200f, _farCutoff), t);
         }
 
         /// <summary>
@@ -458,13 +577,16 @@ namespace PoSoccer
             if (_pool == null) return null;
             for (int i = 0; i < _pool.Length; i++)
             {
-                var candidate = _pool[(_nextVoice + i) % _pool.Length];
+                int slot = (_nextVoice + i) % _pool.Length;
+                var candidate = _pool[slot];
                 if (candidate != null && !candidate.isPlaying)
                 {
+                    _lastVoice = slot;
                     _nextVoice = (_nextVoice + i + 1) % _pool.Length;
                     return candidate;
                 }
             }
+            _lastVoice = _nextVoice;
             var source = _pool[_nextVoice];
             _nextVoice = (_nextVoice + 1) % _pool.Length;
             return source;
@@ -592,7 +714,7 @@ namespace PoSoccer
             if (_crowd == null || _crowd.clip == null) return;
 
             float duck = 1f - _duck * _duckAmount;
-            float bus = _crowdVolume * _masterVolume;
+            float bus = CrowdBus;
 
             float target = Muted
                 ? 0f
@@ -629,7 +751,7 @@ namespace PoSoccer
 
             float speed01 = Mathf.Clamp01(
                 _env.Ball.linearVelocity.magnitude / Mathf.Max(0.1f, _rollFullSpeed));
-            float target = Muted ? 0f : speed01 * _rollVolume * _sfxVolume * _masterVolume;
+            float target = Muted ? 0f : speed01 * _rollVolume * SfxBus;
             _roll.volume = Mathf.MoveTowards(_roll.volume, target, dt * 2.5f);
 
             if (_rollFilter != null)
@@ -668,7 +790,7 @@ namespace PoSoccer
                 _breath.transform.position = tired.transform.position;
                 // Loudest when empty, silent at the threshold.
                 float exhaustion = 1f - lowest / Mathf.Max(0.01f, _breathBelow);
-                target = exhaustion * _breathVolume * _sfxVolume * _masterVolume;
+                target = exhaustion * _breathVolume * SfxBus;
                 // Breathing speeds up as it gets harder, which is a cue nothing
                 // else in the mix carries.
                 _breath.pitch = Mathf.Lerp(0.9f, 1.25f, exhaustion);
@@ -697,7 +819,7 @@ namespace PoSoccer
         {
             if (_music == null || _music.clip == null) return;
 
-            float bus = _musicVolume * _masterVolume * (1f - _duck * _duckAmount);
+            float bus = MusicBus * (1f - _duck * _duckAmount);
             float bedTarget = Muted ? 0f : bus;
             _music.volume = Mathf.MoveTowards(_music.volume, bedTarget, dt * 0.8f);
 

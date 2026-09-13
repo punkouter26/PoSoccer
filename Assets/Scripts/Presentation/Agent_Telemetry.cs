@@ -108,6 +108,17 @@ namespace PoSoccer
 
         readonly List<ProfilerRecorder> _recorders = new();
         readonly List<Stat> _live = new();
+
+        /// <summary>Sparkline glyphs, ascending. Index 0 is a comfortably idle frame.</summary>
+        static readonly char[] Blocks = { '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█' };
+
+        /// <summary>
+        /// Sparkline width. Sized so the strip plus its axis label fits the
+        /// 1080-wide portrait panel at the overlay's size without wrapping - a
+        /// wrapped sparkline reads as two unrelated charts.
+        /// </summary>
+        const int COLUMNS = 48;
+
         float[] _samples;
         int _sampleCount;
         int _sampleHead;
@@ -314,6 +325,7 @@ namespace PoSoccer
             AppendGraded(p95.ToString("0.0"), frameOver);
             _builder.Append(" / ").Append(_frameBudgetMs.ToString("0.0"))
                     .Append("   max ").Append(worst.ToString("0.0")).Append('\n');
+            AppendSparkline();
 
             for (int i = 0; i < _live.Count; i++)
             {
@@ -451,6 +463,72 @@ namespace PoSoccer
         /// Percentile over the frame-time window. Copies and sorts only the
         /// populated part, and only on refresh (4x a second), never per frame.
         /// </summary>
+        /// <summary>
+        /// A frame-time history strip, drawn as one line of block characters.
+        ///
+        /// WHY THIS EXISTS. Every number above it is an AGGREGATE over the sample
+        /// window - mean, p95, max. All three are blind to shape: a run that
+        /// stutters once a second and a run that is uniformly slow can report the
+        /// same p95, and the breach counter says how MANY refreshes went over
+        /// without ever saying when, or whether it is getting worse. The CSV has
+        /// the shape, but reading it means stopping. This is the same data, on
+        /// screen, while the thing is happening.
+        ///
+        /// WHY TEXT RATHER THAN A DRAWN CHART. The overlay is a single Label and
+        /// costs nothing while hidden, which is the property that lets it stay in
+        /// a shipping build. A VisualElement chart would mean a mesh, a generator
+        /// callback and a layout pass per refresh - overhead inside the very
+        /// measurement it reports. Eight glyphs cost one Append each.
+        ///
+        /// THE SUBTLE PART IS THE ORDER. _samples is a ring buffer and _sampleHead
+        /// is the NEXT slot to write, so index 0 is not the oldest sample once the
+        /// buffer has wrapped. Reading it in array order draws a discontinuity
+        /// wherever the head happens to sit - which looks exactly like a real
+        /// spike, on a widget whose whole purpose is finding spikes. Walk forward
+        /// from the head instead.
+        ///
+        /// The scale is fixed at twice the budget rather than auto-fitted to the
+        /// window, so a column means the same thing from one refresh to the next
+        /// and the budget always falls on the middle glyph. An auto-fitted axis
+        /// makes a perfectly healthy window look as dramatic as a bad one.
+        /// </summary>
+        void AppendSparkline()
+        {
+            if (_sampleCount <= 1) return;
+
+            int columns = Mathf.Min(COLUMNS, _sampleCount);
+
+            // Oldest sample still inside the window, walking forward from the head.
+            int start = (_sampleHead - columns + _samples.Length * 2) % _samples.Length;
+
+            // Full scale is two budgets, so the budget line is the middle glyph.
+            float full = Mathf.Max(0.001f, _frameBudgetMs * 2f);
+
+            _builder.Append("frame ");
+            bool red = false;
+            for (int i = 0; i < columns; i++)
+            {
+                float ms = _samples[(start + i) % _samples.Length];
+                bool over = ms > _frameBudgetMs;
+
+                // One colour span per RUN of over-budget columns, not one per
+                // column: a rich-text tag per glyph would be ~30 bytes of string
+                // per sample in a method that runs four times a second.
+                if (over != red)
+                {
+                    _builder.Append(over ? "<color=#ff6b6b>" : "</color>");
+                    red = over;
+                }
+
+                int level = Mathf.Clamp(
+                    Mathf.FloorToInt(ms / full * Blocks.Length), 0, Blocks.Length - 1);
+                _builder.Append(Blocks[level]);
+            }
+            if (red) _builder.Append("</color>");
+
+            _builder.Append("  0-").Append((_frameBudgetMs * 2f).ToString("0")).Append(" ms\n");
+        }
+
         float Percentile(float fraction)
         {
             if (_sampleCount == 0) return 0f;

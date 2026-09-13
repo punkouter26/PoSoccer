@@ -1138,3 +1138,70 @@
     border-left-color: var(--color-team-red);
     border-right-color: var(--color-team-red);
 }
+
+/* ------------------------------------------------------- volume sliders - */
+
+/* The output-level rows built by Agent_UIStyle.VolumeSliders, shown on the
+   pause panel. Every size here comes from a token: the row is --touch-min tall
+   because a slider is dragged with a thumb like any other control, and the two
+   labels use --font-s rather than --font-xs so the readout stays legible while
+   a finger is over the track. */
+
+.volumes {
+    width: 900px;
+    margin-bottom: var(--space-5);
+}
+
+.volumes__row {
+    flex-direction: row;
+    align-items: center;
+    height: var(--touch-min);
+}
+
+.volumes__label {
+    width: 240px;
+    font-size: var(--font-s);
+    color: var(--color-text-muted);
+    -unity-text-align: middle-left;
+}
+
+.volumes__slider {
+    flex-grow: 1;
+}
+
+/* The percentage sits in a fixed-width box, right-aligned. Left to size itself
+   the row would visibly reflow between "9%" and "100%" as the handle moves,
+   which reads as the layout being unstable rather than as the number changing. */
+.volumes__value {
+    width: 150px;
+    font-size: var(--font-s);
+    color: var(--color-text);
+    -unity-text-align: middle-right;
+}
+
+/* UI Toolkit's default tracker is a hairline against this scrim. These two put
+   it on the spacing scale so the drag target matches the row it lives in. */
+.volumes__slider > .unity-base-slider__input > .unity-base-slider__tracker {
+    height: var(--space-2);
+    margin-top: var(--space-1);
+    background-color: var(--color-edge-light);
+    border-top-width: 0;
+    border-bottom-width: 0;
+    border-left-width: 0;
+    border-right-width: 0;
+}
+
+.volumes__slider > .unity-base-slider__input > .unity-base-slider__dragger {
+    width: 56px;
+    height: 56px;
+    margin-top: -22px;
+    border-top-left-radius: 28px;
+    border-top-right-radius: 28px;
+    border-bottom-left-radius: 28px;
+    border-bottom-right-radius: 28px;
+    background-color: var(--color-accent);
+    border-top-width: 0;
+    border-bottom-width: 0;
+    border-left-width: 0;
+    border-right-width: 0;
+}

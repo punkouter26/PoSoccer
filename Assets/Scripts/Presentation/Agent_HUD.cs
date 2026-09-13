@@ -487,8 +487,14 @@ namespace PoSoccer
 
             var score = new Label($"{_blueScore}  —  {_redScore}");
             score.AddToClassList("clock");
-            score.style.marginBottom = 40;
+            score.style.marginBottom = 24;
             _pausePanel.Add(score);
+
+            // Pause is where a volume control belongs: it is the only screen
+            // reachable mid-match, and adjusting the mix is precisely something
+            // you want to do while listening to the thing being mixed. The clock
+            // is already frozen here, so nothing is lost to the time spent.
+            _pausePanel.Add(Agent_UIStyle.VolumeSliders());
 
             _pausePanel.Add(EndButton("RESUME", true, Resume));
             _pausePanel.Add(EndButton("MENU", false,

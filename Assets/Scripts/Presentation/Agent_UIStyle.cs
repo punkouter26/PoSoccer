@@ -212,5 +212,75 @@ namespace PoSoccer
             b.AddToClassList("btn");
             return b;
         }
+
+        /// <summary>
+        /// The four output-level sliders, bound to <see cref="Agent_Audio"/>'s
+        /// persisted player volumes.
+        ///
+        /// These sit alongside <see cref="SoundToggleButton"/> rather than
+        /// replacing it. The toggle is the one control someone reaches for
+        /// without looking - the room just got quiet, kill it now - and a slider
+        /// is a poor substitute for that. What the toggle could never express is
+        /// the ordinary case: crowd and music down, impacts and whistle up,
+        /// because those are the sounds that carry information about the match.
+        ///
+        /// Built in code and shared, for the same reason the toggle is: the menu
+        /// and the match HUD both present them, and a second copy would drift.
+        ///
+        /// CHANGES APPLY LIVE AND PERSIST IMMEDIATELY. There is no OK button, so
+        /// there is no state to lose, no way to leave the panel in a half-applied
+        /// condition, and the player hears what they are setting while they set
+        /// it - which for a volume control is the only way to set it at all.
+        /// </summary>
+        public static VisualElement VolumeSliders()
+        {
+            var panel = new VisualElement();
+            panel.AddToClassList("volumes");
+
+            panel.Add(VolumeRow("MASTER",
+                () => Agent_Audio.MasterVolume, v => Agent_Audio.MasterVolume = v));
+            panel.Add(VolumeRow("EFFECTS",
+                () => Agent_Audio.SfxVolume, v => Agent_Audio.SfxVolume = v));
+            panel.Add(VolumeRow("CROWD",
+                () => Agent_Audio.CrowdVolume, v => Agent_Audio.CrowdVolume = v));
+            panel.Add(VolumeRow("MUSIC",
+                () => Agent_Audio.MusicVolume, v => Agent_Audio.MusicVolume = v));
+
+            return panel;
+        }
+
+        /// <summary>
+        /// One labelled slider with a live percentage readout.
+        ///
+        /// The readout is not decoration. A bare slider on a phone is set by a
+        /// thumb that covers the handle, so the only feedback while dragging is
+        /// the audio itself - and the crowd bed in particular changes slowly
+        /// enough that a small move sounds like nothing happened.
+        /// </summary>
+        static VisualElement VolumeRow(string label, System.Func<float> get, System.Action<float> set)
+        {
+            var row = new VisualElement();
+            row.AddToClassList("volumes__row");
+
+            var name = new Label(label);
+            name.AddToClassList("volumes__label");
+            row.Add(name);
+
+            var slider = new Slider(0f, 1f) { value = get() };
+            slider.AddToClassList("volumes__slider");
+            row.Add(slider);
+
+            var readout = new Label($"{Mathf.RoundToInt(get() * 100f)}%");
+            readout.AddToClassList("volumes__value");
+            row.Add(readout);
+
+            slider.RegisterValueChangedCallback(evt =>
+            {
+                set(evt.newValue);
+                readout.text = $"{Mathf.RoundToInt(evt.newValue * 100f)}%";
+            });
+
+            return row;
+        }
     }
 }

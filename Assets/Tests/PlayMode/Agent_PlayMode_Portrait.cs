@@ -335,6 +335,143 @@ namespace PoSoccer.Tests
                 "PLAY runs past the top of the safe area.");
         }
 
+        /// <summary>
+        /// No primary screen asks the player to scroll.
+        ///
+        /// The project targets locked portrait on a phone, and the design rule is
+        /// that a screen fits. Menu_FitsWithinTheSafeArea already pins that for
+        /// the menu, but it pins ONE element (PLAY) against ONE container, which
+        /// is the thing that was known to be at risk in 2026-09-06 when the touch
+        /// targets grew. It says nothing about the HUD, the pause panel or the end
+        /// panel, and nothing at all about the mechanism by which a full screen
+        /// stops being a full screen: somebody wraps the overflowing column in a
+        /// ScrollView and the symptom disappears while the layout defect stays.
+        ///
+        /// A ScrollView is not banned because scrolling is wrong - it is banned
+        /// HERE because it is the silent fix. Content that no longer fits is a
+        /// design decision someone should have to make on purpose; a scroll
+        /// container makes it never surface.
+        ///
+        /// ONE DOCUMENTED EXEMPTION, and it is deliberately not in this list.
+        /// Agent_MainMenu.OpenCards builds a scrolling player card, because
+        /// personalityNotes is free-authored text that runs to several lines on
+        /// KIM and NICK, so that card's height is content-driven and genuinely
+        /// cannot be bounded at authoring time - the comment there records the
+        /// alternative, which is the provenance line and the buttons walking off
+        /// the bottom on exactly those two profiles. It is a transient modal, so
+        /// it does not exist on a freshly loaded screen and this test never sees
+        /// it. If it ever becomes permanent, this test starts failing, which is
+        /// the correct outcome: that would be a new decision.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator NoPrimaryScreen_RequiresVerticalScrolling()
+        {
+            foreach (string scene in new[] { "SCN_Menu", "SCN_Exhibition" })
+            {
+                SceneManager.LoadScene(scene);
+                yield return Frames(4);
+
+                var offenders = new System.Text.StringBuilder();
+                foreach (var doc in Object.FindObjectsByType<UIDocument>(FindObjectsSortMode.None))
+                {
+                    VisualElement root = doc.rootVisualElement;
+                    if (root == null) continue;
+
+                    root.Query<ScrollView>().ForEach(sv =>
+                        offenders.AppendLine(
+                            $"  ScrollView '{sv.name}' on {doc.gameObject.name}"));
+                }
+
+                Assert.AreEqual(string.Empty, offenders.ToString(),
+                    $"{scene} builds a scrolling container on a screen that is " +
+                    $"supposed to fit:\n{offenders}" +
+                    "Either the content genuinely no longer fits portrait - in which " +
+                    "case cut or paginate it - or this is hiding a layout defect.");
+            }
+        }
+
+        /// <summary>
+        /// Every laid-out label and button sits inside its own panel.
+        ///
+        /// This is the general form of Menu_FitsWithinTheSafeArea. That test
+        /// measures PLAY against the safe container because PLAY was the element
+        /// known to be at risk; this one measures everything that carries text or
+        /// takes a tap, on both player-facing scenes, against the panel it is
+        /// drawn on. An element outside the panel is content the player cannot
+        /// read or reach, and UI Toolkit reports it exactly the way it reports a
+        /// correct layout: silently.
+        ///
+        /// Measured on RESOLVED world bounds rather than declared style, for the
+        /// same reason the touch-target test is - the failures this catches come
+        /// from cascade and layout, not from a rule anyone wrote down.
+        ///
+        /// NaN and display:none are skipped: a panel that is not laid out this
+        /// frame reports NaN, and failing on that would report a scene-timing
+        /// problem as an overflow. The HUD's toasts legitimately start off screen
+        /// and animate in, so only the horizontal bound is enforced on elements
+        /// that are mid-transition vertically - a toast off the TOP is a toast
+        /// doing its job, while anything past the left or right edge is clipped
+        /// on every device regardless of animation state.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator EveryVisibleLabelAndButton_StaysInsideItsPanel()
+        {
+            const float SLACK = 2f;   // sub-pixel rounding in resolved layout
+
+            foreach (string scene in new[] { "SCN_Menu", "SCN_Exhibition" })
+            {
+                SceneManager.LoadScene(scene);
+                yield return Frames(4);
+
+                int checkedCount = 0;
+                var offenders = new System.Text.StringBuilder();
+
+                foreach (var doc in Object.FindObjectsByType<UIDocument>(FindObjectsSortMode.None))
+                {
+                    VisualElement root = doc.rootVisualElement;
+                    if (root == null) continue;
+
+                    Rect panel = root.worldBound;
+                    if (panel.width <= 1f || float.IsNaN(panel.width)) continue;
+
+                    root.Query<VisualElement>().ForEach(element =>
+                    {
+                        if (element is not (Label or Button)) return;
+                        if (element.resolvedStyle.display == DisplayStyle.None) return;
+
+                        Rect r = element.worldBound;
+                        if (float.IsNaN(r.x) || float.IsNaN(r.y)) return;
+                        if (r.width <= 0.5f || r.height <= 0.5f) return;
+
+                        checkedCount++;
+
+                        string label = element is Button b && !string.IsNullOrEmpty(b.text)
+                            ? b.text
+                            : element.name;
+
+                        if (r.xMin < panel.xMin - SLACK || r.xMax > panel.xMax + SLACK)
+                        {
+                            offenders.AppendLine(
+                                $"  '{label}' on {doc.gameObject.name} runs off the side: " +
+                                $"x {r.xMin:F0}..{r.xMax:F0} vs panel {panel.xMin:F0}..{panel.xMax:F0}");
+                        }
+                        else if (r.yMin > panel.yMax + SLACK)
+                        {
+                            offenders.AppendLine(
+                                $"  '{label}' on {doc.gameObject.name} sits below the screen: " +
+                                $"y {r.yMin:F0}..{r.yMax:F0} vs panel {panel.yMin:F0}..{panel.yMax:F0}");
+                        }
+                    });
+                }
+
+                Assert.Greater(checkedCount, 0,
+                    $"{scene}: found no laid-out labels or buttons, so this asserted nothing");
+                Assert.AreEqual(string.Empty, offenders.ToString(),
+                    $"{scene}: UI outside the panel - unreadable or untappable on " +
+                    $"every device:\n{offenders}");
+            }
+        }
+
         static VisualElement RootOfMenu()
         {
             var menu = Object.FindAnyObjectByType<Agent_MainMenu>();
