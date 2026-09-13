@@ -16,6 +16,23 @@
 # ML_AGENTS_PY_VERSION=1.2.0.dev0
 # CSHARP_PACKAGE_VERSION=4.1.0
 # PYTHON_MAX=3.10.12
+# TORCH_VERSION=2.5.1
+# TORCH_INDEX_URL=https://download.pytorch.org/whl/cu121
+#
+# TORCH IS NOT LISTED AS A REQUIREMENT BELOW, AND MUST NOT BE. ml-agents depends
+# on torch, so the editable installs above resolve one from PyPI - and PyPI's
+# default wheel for Windows is the CPU build (measured 2026-09-13: 2.8.0+cpu,
+# torch.cuda.is_available() False, mlagents default_device() 'cpu'). Nothing
+# fails; training simply runs the policy update on the CPU, on a machine with an
+# RTX 2060, and the only symptom is wall-clock. So the CUDA build is installed
+# AFTERWARDS from the index URL above, overwriting whatever the resolver chose.
+# Listing torch here instead would not work: pip applies one index to the whole
+# requirements file, and the pytorch index does not carry mlagents' other deps.
+#
+# Worth knowing before optimising: the GPU is NOT the bottleneck here - the policy
+# is a 256x2 MLP and utilisation sits at ~18-21%. Wall-clock is set by the env
+# processes stepping physics on the CPU. Installing the CUDA build is still right,
+# because it gives those cores back to the env processes.
 #
 # Installed editable from the clone (in this order):
 #   -e <clone>/ml-agents-envs

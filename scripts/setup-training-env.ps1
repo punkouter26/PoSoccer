@@ -127,6 +127,36 @@ Write-Host "Installing mlagents-envs and mlagents (editable, from the pinned com
 #    that mismatches the embedded Google.Protobuf.dll 3.21.12 (see CLAUDE.md landmines).
 & $py -m pip install -r $req --quiet
 
+# 6b. Replace whatever torch the resolver chose with the pinned CUDA build.
+#
+# ml-agents depends on torch, and PyPI's default Windows wheel is the CPU build -
+# measured 2026-09-13 on a fresh run of this very script: 2.8.0+cpu, with
+# torch.cuda.is_available() False and mlagents default_device() reporting 'cpu'
+# on a machine with an RTX 2060. NOTHING FAILS. The trainer runs, the curves look
+# normal, and the only symptom is wall-clock - which is exactly the kind of silent
+# degradation this project keeps getting caught by, so the script now fixes it
+# instead of leaving it as a numbered step in CLAUDE.md that someone has to
+# remember. This has to come after the editable installs, or they overwrite it.
+$torchVersion = Get-Anchor "TORCH_VERSION"
+$torchIndex   = Get-Anchor "TORCH_INDEX_URL"
+$currentTorch = (& $py -c "import torch; print(torch.__version__)" 2>$null)
+if ($LASTEXITCODE -ne 0) { $currentTorch = "(none)" } else { $currentTorch = $currentTorch.Trim() }
+if ($currentTorch -notmatch [regex]::Escape($torchVersion) -or $currentTorch -match '\+cpu') {
+    Write-Host "torch is '$currentTorch'; installing pinned $torchVersion from $torchIndex ..."
+    & $py -m pip install "torch==$torchVersion" --index-url $torchIndex --quiet
+}
+
+$cudaOk = (& $py -c "import torch; print(torch.cuda.is_available())").Trim()
+$torchNow = (& $py -c "import torch; print(torch.__version__)").Trim()
+if ($cudaOk -ne "True") {
+    # A warning, not a throw: a machine with no NVIDIA GPU is a legitimate setup
+    # and training still works. Saying so plainly beats a green run that is
+    # quietly using the CPU.
+    Write-Warning "torch $torchNow reports CUDA unavailable - training will run on the CPU. Expected on a machine with no NVIDIA GPU; on one with a GPU, check the driver."
+} else {
+    Write-Host "torch $torchNow with CUDA available."
+}
+
 # 7. Verify parity end to end.
 # NB: the mlagents package does not expose __version__; ask the metadata instead.
 $actualPy = (& $py -c "from importlib.metadata import version; print(version('mlagents'))").Trim()
