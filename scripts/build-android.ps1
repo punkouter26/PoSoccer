@@ -21,7 +21,22 @@ $LogsDir = Join-Path $ProjectRoot 'Logs'
 $BuildDir = Join-Path $ProjectRoot 'Builds\PoSoccer'
 $ApkPath = Join-Path $BuildDir 'PoSoccer.apk'
 $LogPath = Join-Path $LogsDir 'AndroidBuild.log'
-$UnityEditor = 'C:\Program Files\Unity\Hub\Editor\6000.5.6f1\Editor\Unity.exe'
+# The editor version is READ FROM THE PROJECT, never hardcoded. This script and
+# build-android-aab.ps1 both carried a literal 6000.5.6f1 long after the project
+# moved to 6000.6.0f1, so $UnityEditor pointed at a directory that does not exist
+# and every invocation died on a path nobody re-read. ProjectVersion.txt is the
+# one file that cannot drift from the editor that opens the project.
+$versionLine = Get-Content (Join-Path $ProjectRoot 'ProjectSettings\ProjectVersion.txt') |
+               Where-Object { $_ -match '^m_EditorVersion:' } | Select-Object -First 1
+if (-not $versionLine) { throw "Cannot read m_EditorVersion from ProjectSettings\ProjectVersion.txt" }
+$EditorVersion = ($versionLine -split ':\s*', 2)[1].Trim()
+$EditorRoot = "C:\Program Files\Unity\Hub\Editor\$EditorVersion"
+$UnityEditor = Join-Path $EditorRoot 'Editor\Unity.exe'
+if (-not (Test-Path $UnityEditor)) {
+    Write-Host "ERROR: Unity $EditorVersion is not installed at $EditorRoot" -ForegroundColor Red
+    Write-Host "       Install it via Unity Hub, or open the project to see which version it wants." -ForegroundColor Yellow
+    exit 3
+}
 
 New-Item -ItemType Directory -Force -Path $LogsDir, $BuildDir | Out-Null
 
@@ -37,10 +52,10 @@ if ($unityProcs) {
 }
 
 # 2. Sanity-check the Android player module is installed.
-$apkMarker = 'C:\Program Files\Unity\Hub\Editor\6000.5.6f1\Editor\Data\PlaybackEngines\AndroidPlayer\Apk'
+$apkMarker = Join-Path $EditorRoot "Editor\Data\PlaybackEngines\AndroidPlayer\Apk"
 if (-not (Test-Path $apkMarker)) {
     Write-Host "ERROR: AndroidPlayer module not installed at $apkMarker" -ForegroundColor Red
-    Write-Host "       Install it via Unity Hub -> 6000.5.6f1 -> Add Modules -> Android Build Support." -ForegroundColor Yellow
+    Write-Host "       Install it via Unity Hub -> $EditorVersion -> Add Modules -> Android Build Support." -ForegroundColor Yellow
     exit 3
 }
 

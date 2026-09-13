@@ -23,7 +23,7 @@
         -alias posoccer -keyalg RSA -keysize 2048 -validity 10000
 
   Unity ships a JDK at:
-    C:\Program Files\Unity\Hub\Editor\6000.5.6f1\Editor\Data\PlaybackEngines\AndroidPlayer\OpenJDK\bin\keytool.exe
+    C:\Program Files\Unity\Hub\Editor<see ProjectVersion.txt>ditor\Data\PlaybackEngines\AndroidPlayer\OpenJDK\bin\keytool.exe
 
 .EXAMPLE
   .\scripts\build-android-aab.ps1

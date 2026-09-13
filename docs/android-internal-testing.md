@@ -119,7 +119,7 @@ All human-authored, none of it in the repo:
 Once the keystore env vars are set:
 
 ```powershell
-& "C:\Program Files\Unity\Hub\Editor\6000.5.6f1\Editor\Unity.exe" -quit -batchmode -nographics -projectPath . -executeMethod BuildAabCommand.Build -logFile Logs\aab-build.log
+& "C:\Program Files\Unity\Hub\Editor\6000.6.0f1\Editor\Unity.exe" -quit -batchmode -nographics -projectPath . -executeMethod BuildAabCommand.Build -logFile Logs\aab-build.log
 ```
 
 The editor must be **closed** for a batchmode build. Output lands in `Builds/`.

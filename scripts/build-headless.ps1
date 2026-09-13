@@ -10,7 +10,7 @@ $root = Split-Path $PSScriptRoot -Parent
 
 # Resolve the editor from ProjectSettings/ProjectVersion.txt rather than a
 # hardcoded path. This was pinned to 6000.5.4f1 and silently broke the moment
-# the project moved to 6000.5.6f1 - every call failed with "not recognized as
+# the project moved to 6000.6.0f1 - every call failed with "not recognized as
 # a name of a cmdlet", which reads like a PowerShell problem rather than a
 # stale version pin. Deriving it from the project also guarantees the build
 # uses the same editor the project opens with.

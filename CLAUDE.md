@@ -169,6 +169,48 @@ Three rules this pass establishes:
 
 Keys in a match: **I** intent overlay, **V** cycles vision (off → last toucher → all), **T** shot tracer, **B** brain cam, **F3** telemetry.
 
+**Scene composition — what may be serialized into a scene, and what may not (2026-09-13).**
+The nine components `Agent_Presentation.InstallVisuals` adds (`Agent_Surfaces`,
+`Agent_ParticleFX`, `Agent_ImpactFX`, `Agent_Shadows`, `Agent_Wear`, `Agent_Limbs`,
+`Agent_Intent`, `Agent_VisionView`, `Agent_ShotTracer`) are now **serialized onto the pitch
+root in `SCN_Exhibition`**, so they are tunable in the Inspector rather than only in code.
+`Agent_Presentation` is unchanged and still find-or-create, so the scene and the installer
+cannot disagree — whichever runs first wins and the other is a no-op.
+
+**The other fourteen must stay code-installed, and this is not a style preference.**
+`SCN_Exhibition` hosts two modes and **`Agent_Gallery` CLONES the pitch root.** The nine are
+added in both modes, so every clone is meant to have them. The fourteen that `Install` adds
+on top own GLOBAL state — the clock (`Agent_Replay`, `Agent_Hitstop`), the camera
+(`Agent_Director`), the scoreboard (`Agent_WinProbability`, `Agent_MatchStats`), the pitch
+geometry (`Agent_Overtime`) — and the gallery is spared them today **only because
+`InstallGallery` does not add them**, not because anything gates them out. Serialize one
+into the scene and all six clones get it: six directors fighting over one camera. This is
+the concrete reason the code installer is load-bearing, and it answers the standing question
+of why this project builds its presentation layer in code rather than in the editor.
+`Agent_EditMode_SceneComposition` pins all three halves — the nine present, the fourteen
+absent, and `SCN_Training` carrying neither.
+
+**Diagnostics (`Assets/Scripts/Diagnostics/`, 2026-09-13).** `Agent_Telemetry` moved here
+from `Presentation` and is joined by **`Agent_ErrorSink`**, which records every Error,
+Assert and Exception with the scene and clock reading it fired at, de-duplicated by message
+with a count, and writes it beside the telemetry CSV in `persistentDataPath`. It installs
+itself with `[RuntimeInitializeOnLoadMethod]` so it is in every scene and every player build
+with nothing to wire, and it has no `Update` — the delegate returns immediately for Log and
+Warning, which is what makes it safe to leave installed during training and eval where
+perturbing timing corrupts the benchmark's own numbers. `Agent_Telemetry` gained
+**`POSOCCER_TELEMETRY=1`**, which shows the overlay from the first frame; its recorders are
+allocated on show, so an unattended session previously measured nothing and wrote no CSV.
+
+**`Agent_PlayMode_SmokeRun`** is the runner for the non-training scenes: it boots `SCN_Menu`,
+sweeps every roster profile at 1v1 and 2v2 plus the checkpoint gallery, plays each for six
+real seconds, and fails with the whole error report if anything was logged. It catches the
+class of defect the rest of the suite structurally cannot: every other test asserts a claim
+somebody thought of in advance, and a null reference thrown once per frame inside a
+presentation component violates none of them — the match still starts, scores and ends.
+**The error budget is zero on purpose.** If it goes red for a message that is genuinely
+expected, stop logging that at Error severity; do not add an ignore list, which is how a
+suite ends up green against a game that throws.
+
 Three rules this layer establishes, all of them load-bearing:
 
 1. **`Agent_Presentation.IsMatchScene` vs `IsVisualScene`.** Components that own GLOBAL state — the clock (`Agent_Replay`, `Agent_Hitstop`), the camera (`Agent_Director`), the scoreboard (`Agent_WinProbability`, `Agent_MatchStats`) — gate on `IsMatchScene`. Components that only draw their OWN pitch gate on `IsVisualScene`, which also opens in the gallery. Get this backwards and six cloned pitches fight over one clock and one camera.
@@ -224,6 +266,14 @@ Four rules this layer establishes:
 
 ## Landmines
 
+- **LANDMINE — a static holder set means a freeze can outlive the object that took it (found and fixed 2026-09-13).** `Agent_TimeFreeze.Holders` is a `static HashSet<object>`, and `Agent_HUD.OnDestroy` did not release `_pauseToken`. So a HUD destroyed **while paused** left a holder that nothing could ever release — no reference to that token survived — and `IsFrozen` stayed true **for the rest of the process**. Every later match then started with a stopped clock whose only trace is a holder named `HUD.Pause` belonging to a HUD that no longer exists. It survived because both exits from the pause panel (its MENU button and the hardware back button on the result screen) call `ReleaseAll`; the leak needs the HUD destroyed while paused by any *other* route — a scene load from elsewhere, a rematch, a test fixture. `OnDestroy` now releases, and `Release` is idempotent so the ordinary Resume-then-destroy path is unchanged. **The generalisation is the point: any `static` registry keyed on an instance-owned token needs a release in `OnDestroy`, or the registry outlives its owner.**
+
+- **METHOD — "this failure is pre-existing" is a claim that needs a control run, not a matching comment (2026-09-13).** The leak above surfaced as `MatchScene_NeverLeavesTheClockStopped` going red right after an unrelated new test fixture was added. `Agent_PlayMode_Overtime`'s docstring describes that exact symptom (`holders: HUD.Pause` in the full suite), and the test passed in isolation — so it was recorded as a known pre-existing flake. **That was inference and it was wrong.** The control run settled it in ten minutes: stash the scene change and the new fixture → **80/80**; restore the scene change alone → **80/80**; which leaves the new fixture as the trigger and a real leak as the cause. Reordering the suite was the trigger, the defect was always there, and "it passes alone" is evidence of pollution, not of innocence. This project has already published one retraction over a number that looked measured and was not; a green suite attributed to someone else's flake is the same mistake in a cheaper place.
+
+- **A low cross-reference count does NOT mean a component is dead.** Sweeping `Assets/Scripts` for types with one reference outside their own file returns `Agent_Limbs`, `Agent_DemoClock` and friends — every one of them live, because `Agent_Presentation` installs the whole spectator layer with exactly one `AddComponent<T>()` line each. `Agent_PlayerCard` has three such references and a 200-line EditMode test. A dead-code sweep on this repo must count **installer lines and test references** as uses, or it proposes deleting the presentation layer. Checked 2026-09-13: there are **no orphaned types** in `Assets/Scripts`.
+
+- **The audio in `Assets/Resources/Audio` is NOT 18 MB in the build.** The four music stems are 4 MB each *on disk*, which makes the folder look like the biggest shipping cost in the project. Every one of them imports at `compressionFormat: 1` (Vorbis), `quality: 0.7`, `loadType: 1` (Compressed In Memory), `preloadAudioData: 0` — so the player ships roughly 1.5 MB, and the 18 MB is repo and LFS weight only. Checked 2026-09-13 before "optimising" something that was already correct; `Compressed In Memory` is also the right call over streaming here, because the adaptive stems play simultaneously and streaming four of them would mean four disk readers on Android.
+
 - **LANDMINE — "the pitch fills the screen" is not "the pitch is visible", and both goal mouths were behind the HUD (found and fixed 2026-09-13).** `Agent_HUD`'s own docstring says its bands sit "above and below the pitch" so that "nothing ever covers the play area". That was true of the authored 36 × 54 letterboxed pitch and stopped being true the day `Agent_CameraFollow`'s wide shot was changed to fill the portrait viewport top to bottom — the bands became an **overlay on a full-screen pitch**, and nobody re-read the older claim. Measured live: the bands cover **19.6%** of the screen (7.4% top, 12.2% bottom), and at every shipped aspect the goal lines landed at viewport y **0.981 and 0.019** against a clear band of **0.122 … 0.926**. Both goal mouths — the only two places a goal can happen — were under the scoreboard and the chip row, in every match since. **Nothing threw and the test suite was green**, because `Agent_PlayMode_Portrait` asserted the pitch fills the *screen*, which is precisely the wrong invariant once part of the screen is opaque; a framing test that measures the viewport cannot see this class of defect at all. The camera now frames the pitch into the clear band (`Agent_HUD.TopBandFraction` / `.BottomBandFraction` → `Agent_CameraFollow.ClearFraction`) and offsets so that band, not the viewport, is centred on the pitch; the vertical pan clamp is against the clear half-height for the same reason. Goal lines now read 0.911 / 0.138. `WideOrthoSize` took a fourth parameter defaulting to 1, so the three-argument arithmetic tests still mean what they meant. Guarded by `WideShot_FitsThePitchInsideTheClearBand_AtEveryPlausibleHudInset` (sweeps aspect × squad size × inset) and `TheCamerasWideShot_ClearsTheMeasuredHudBands`, which **asserts the bands measured non-zero first** — a HUD reporting 0/0 makes the inset a no-op that every other assertion still passes.
 
 - **A touch-target floor declared with zero slack is a red test, not a policy (2026-09-13).** `--touch-min` was `120px` and the assertion was `>= 120` — but UI Toolkit resolves layout to whole **device** pixels, and this panel is match-width against a 1080 reference, so a panel unit is rarely a whole pixel. At a 0.889 scale a box declared at exactly 120 whose top and bottom round in opposite directions measures 106 device px = **119.25 units**. Eight menu buttons failed on that alone. The token is now **124** (floor + rounding headroom) and the assertion stays at **120** (the ergonomic number, Android's 48dp). Do not "fix" a future recurrence by lowering the assertion to match the token — that re-imports the same zero-slack problem one level up.
@@ -271,7 +321,21 @@ This is the same structural failure the Architecture section already documents a
 brain table: **these paragraphs describe mutable state that scripts and machines change
 without touching this file.** Check the filesystem, never this line.
 
-Rebuilt 2026-09-07, verified end to end:
+**AND IT WENT STALE AGAIN WITHIN A WEEK. Measured 2026-09-13: there is no Python on this
+machine.** `python` is the Microsoft Store alias stub, exactly as described for 2026-09-07,
+and `python scripts/make-icons.py` fails with the Store redirect. There is no `.venv`, no
+`.venv2`, no `.tooling/ml-agents`, no `Builds/`, no `results/`. **The whole table below is
+therefore aspirational, not current** - it records what a working setup looks like, which
+is useful, but nothing in it is installed right now. Consequences worth knowing before
+planning work: no training run, no `evaluate.ps1`, no `update-model.ps1` and no headless
+build can be started without redoing the rebuild described here first, and the three
+Python scripts in `scripts/` cannot run either.
+
+This is now the THIRD dated correction in this section, all in the same direction. The
+lesson is not that someone keeps breaking the machine - it is that **this section should
+be read as a recipe and never as a status.**
+
+Rebuilt 2026-09-07, verified end to end (NOT true as of 2026-09-13):
 
 | | |
 |---|---|
@@ -320,6 +384,25 @@ the p22 change below.
 **63/63** (`total=63`, 232 s). The PlayMode runner wedged twice first (`failed to
 initialize`, then the `total: 0` no-op); a forced script recompile cleared it. Assert on
 `summary.total`, exactly as the landmine says.
+
+**Updated 2026-09-13: EditMode 67/68 (`total=68`), PlayMode 84/84 (`total=84`, 358 s).**
+The counts in the line above were a week stale, which is the same drift this file already
+documents for the brain table and the toolchain block - **read `summary.total` from a run,
+not this line.** The single EditMode red is
+`Agent_EditMode_ActionGain.EveryDeployedBrain_WasTrainedAtTheCurrentActionGain`, which is
+correctly red and is the MATT/NICK/KIM gain mismatch recorded below; it needs a retrain,
+and this machine currently has no Python at all (see the toolchain correction above).
+The PlayMode runner wedged on the first run after **every** domain reload in this session -
+four times out of six - and `manage_editor stop` plus a retry cleared it each time. Budget
+the retries; a wedged run also leaves the editor IN play mode, so the next attempt fails
+with "Cannot start a test run while the Editor is in or entering Play Mode" rather than
+with anything that names the real problem.
+
+`Editor_PlayModeOptionsGuard` was verified to hold across five PlayMode runs on
+2026-09-13: `m_EnterPlayModeOptions` was still `0` afterwards and
+`ProjectSettings/EditorSettings.asset` was unmodified. The manual `git diff` check the
+landmine below prescribes is no longer needed, but the landmine is kept because the
+guard is what makes it unnecessary.
 
 ---
 

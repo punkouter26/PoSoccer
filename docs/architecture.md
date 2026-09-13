@@ -1,7 +1,7 @@
 # PoSoccer — ML-Agents Architecture Diagram Suite
 
 Generated **2026-08-05** against `master` @ `5f25701`.
-Project: top-down 2D physics soccer. Unity 6000.5.6f1, 2D URP, **Box2D** (`Physics2D`).
+Project: top-down 2D physics soccer. Unity 6000.6.0f1, 2D URP, **Box2D** (`Physics2D`).
 
 **Read this before the diagrams.** Two facts shape every one of them:
 
