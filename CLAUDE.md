@@ -323,21 +323,26 @@ This is the same structural failure the Architecture section already documents a
 brain table: **these paragraphs describe mutable state that scripts and machines change
 without touching this file.** Check the filesystem, never this line.
 
-**AND IT WENT STALE AGAIN WITHIN A WEEK. Measured 2026-09-13: there is no Python on this
-machine.** `python` is the Microsoft Store alias stub, exactly as described for 2026-09-07,
-and `python scripts/make-icons.py` fails with the Store redirect. There is no `.venv`, no
-`.venv2`, no `.tooling/ml-agents`, no `Builds/`, no `results/`. **The whole table below is
-therefore aspirational, not current** - it records what a working setup looks like, which
-is useful, but nothing in it is installed right now. Consequences worth knowing before
-planning work: no training run, no `evaluate.ps1`, no `update-model.ps1` and no headless
-build can be started without redoing the rebuild described here first, and the three
-Python scripts in `scripts/` cannot run either.
+**PARTIALLY STALE AGAIN 2026-09-13 — and note the trap, because I fell in it first.**
+The **interpreter is fine**: Python **3.10.11**, x64, at
+`%LOCALAPPDATA%\Programs\Python\Python310\python.exe`, registered under
+`HKCU:\SOFTWARE\Python\PythonCore\3.10`. What is missing is everything built on top:
+no `.venv`, no `.venv2`, no `.tooling/ml-agents`, no `Builds/`, no `results/`.
 
-This is now the THIRD dated correction in this section, all in the same direction. The
-lesson is not that someone keeps breaking the machine - it is that **this section should
-be read as a recipe and never as a status.**
+**`python` on PATH is the Microsoft Store alias stub**
+(`%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe`), so a bare `python …` fails with the
+Store redirect and looks *exactly* like "Python is not installed on this machine" — which
+is what an earlier pass of this session concluded and wrote into this file. It was wrong.
+**Check `py -0p` and `HKCU:\SOFTWARE\Python\PythonCore` before concluding anything about
+Python here**; the launcher finds the real interpreter that PATH hides. Invoke it by full
+path, or via `py -3.10`.
 
-Rebuilt 2026-09-07, verified end to end (NOT true as of 2026-09-13):
+So the table below is accurate about the interpreter and aspirational about the rest: no
+training run, `evaluate.ps1`, `update-model.ps1` or headless build works until the venv and
+the ml-agents clone are rebuilt, but the hard part (getting a 3.10.11 that satisfies
+`PYTHON_MAX`) is already done.
+
+Rebuilt 2026-09-07; interpreter row still true 2026-09-13, the rest not:
 
 | | |
 |---|---|

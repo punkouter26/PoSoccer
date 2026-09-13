@@ -53,8 +53,33 @@ if ($csVersion -ne $expectedCs) {
 }
 Write-Host "C# package com.unity.ml-agents $csVersion matches the pin."
 
-# 2. Interpreter check - ml-agents does not support Python > $pythonMax.
-$pyVersion = (& python -c "import sys;print('.'.join(map(str,sys.version_info[:3])))").Trim()
+# 2. Resolve the interpreter BEFORE using it.
+#
+# `python` on PATH is not necessarily a Python. On a default Windows profile it
+# is the Microsoft Store alias stub in %LOCALAPPDATA%\Microsoft\WindowsApps,
+# which exits with a Store redirect - so `& python -m venv` here produced no venv
+# and an error that reads exactly like "Python is not installed", on a machine
+# with a perfectly good 3.10.11 the py launcher can see. Prefer the launcher,
+# which reads the registry rather than PATH.
+$pythonExe = $null
+$pyLauncher = Get-Command py -ErrorAction SilentlyContinue
+if ($pyLauncher) {
+    $pinMM = ($pinnedPy -split '\.')[0..1] -join '.'
+    $candidate = (& py "-$pinMM" -c "import sys; print(sys.executable)" 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $candidate) { $pythonExe = $candidate.Trim() }
+}
+if (-not $pythonExe) {
+    $onPath = Get-Command python -ErrorAction SilentlyContinue
+    # WindowsApps entries are the Store stubs; never accept one.
+    if ($onPath -and $onPath.Source -notmatch 'WindowsApps') { $pythonExe = $onPath.Source }
+}
+if (-not $pythonExe) {
+    throw "No usable Python found. `py -$pinnedPy` did not resolve and the `python` on PATH is the Microsoft Store stub. Install Python $pinnedPy from python.org (user scope is fine) and re-run."
+}
+Write-Host "Interpreter: $pythonExe"
+
+# 2b. Interpreter check - ml-agents does not support Python > $pythonMax.
+$pyVersion = (& $pythonExe -c "import sys;print('.'.join(map(str,sys.version_info[:3])))").Trim()
 if ([version]$pyVersion -gt [version]$pythonMax) {
     throw "Python $pyVersion is newer than the supported maximum $pythonMax. Install 3.10.x and re-run."
 }
@@ -88,7 +113,7 @@ if ($Force -and (Test-Path $venv)) {
     Write-Host "Removing existing .venv (-Force) ..."
     Remove-Item $venv -Recurse -Force
 }
-if (-not (Test-Path $venv)) { & python -m venv $venv }
+if (-not (Test-Path $venv)) { & $pythonExe -m venv $venv }
 $py = Join-Path $venv "Scripts\python.exe"
 
 & $py -m pip install --upgrade pip --quiet
