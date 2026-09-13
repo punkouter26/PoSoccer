@@ -318,6 +318,27 @@ namespace PoSoccer
             // Bound rather than applied once, so a resolution change re-insets.
             Agent_UIStyle.BindSafeArea(safe);
 
+            // RESERVE AGENT_CHROME'S TOP BAR ON THE BAND, NOT ON ITS PARENT.
+            //
+            // The reservation keeps the score and the clock out of the chrome
+            // bar: measured on a Pixel 9 Pro 2026-09-13, without it the chrome
+            // row resolved to y=132..253 and the score to y=132..236 - the same
+            // strip, with the higher-sorted overlay winning.
+            //
+            // It has to be padding on the BAND. Agent_CameraFollow frames the
+            // pitch into whatever TopBandFraction leaves clear, and that
+            // fraction is the band's own measured HEIGHT. Padding the safe
+            // container instead moves the band down without making it taller,
+            // so the camera keeps framing against the old figure and the top
+            // goal mouth ends up under the bar - which is the 2026-09-13
+            // landmine returning by a different route. Tried exactly that way
+            // first and the goal was behind the chrome on device.
+            //
+            // Agent_UIStyle.Pad is the .band rule's own padding-top
+            // (--space-5: 24px), added back because assigning style.paddingTop
+            // replaces the stylesheet value rather than adding to it.
+            _topBand.style.paddingTop = Agent_UIStyle.Pad + Agent_Chrome.BAR_HEIGHT;
+
             // The training scene has no match, so a frozen 0-0 would only mislead.
             _score.style.display = enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
 

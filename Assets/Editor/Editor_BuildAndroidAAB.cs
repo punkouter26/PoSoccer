@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace PoSoccer.EditorTools
 {
@@ -107,6 +108,8 @@ namespace PoSoccer.EditorTools
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
             PlayerSettings.SetIl2CppCompilerConfiguration(NamedBuildTarget.Android, Il2CppCompilerConfiguration.Release);
 
+            string runtimeReport = ApplyDeviceRuntimeSettings();
+
             // .aab, not .apk. This is the switch Play cares about most.
             EditorUserBuildSettings.buildAppBundle = true;
             EditorUserBuildSettings.androidBuildType = AndroidBuildType.Release;
@@ -126,7 +129,7 @@ namespace PoSoccer.EditorTools
             Debug.Log($"AAB BUILD START: {APP_ID} v{PlayerSettings.bundleVersion} " +
                       $"(code {PlayerSettings.Android.bundleVersionCode}) " +
                       $"target={TARGET_SDK} min={MIN_SDK} scenes={scenes.Count} " +
-                      $"boot={Path.GetFileNameWithoutExtension(scenes[0])}");
+                      $"boot={Path.GetFileNameWithoutExtension(scenes[0])} | {runtimeReport}");
 
             BuildReport report;
             try
@@ -144,6 +147,64 @@ namespace PoSoccer.EditorTools
             Debug.Log($"AAB BUILD RESULT: {summary.result} | errors={summary.totalErrors} | " +
                       $"size={summary.totalSize / (1024 * 1024)}MB | " +
                       $"time={summary.totalTime.TotalMinutes:F1}min | {summary.outputPath}");
+        }
+
+        /// <summary>
+        /// The settings that decide how the app BEHAVES on the device, as opposed
+        /// to how Play identifies it. Both Android builders call this, so a
+        /// sideload and a store bundle cannot quietly run differently.
+        ///
+        /// Each of these was previously left at "whatever the default is", which
+        /// is not the same as being chosen:
+        ///
+        ///   GRAPHICS APIs - the project had auto-API on (m_BuildTargetGraphicsAPIs
+        ///     was an empty list). Auto currently resolves to Vulkan-then-GLES3 on
+        ///     Android, which is what we want, but it is a Unity default and not a
+        ///     project decision - an editor upgrade can reorder it and nothing here
+        ///     would say so. Pinning the order makes the intent reviewable and the
+        ///     fallback explicit: Vulkan where the device has it, GLES3 where it
+        ///     does not.
+        ///   FRAME PACING - Android's Swappy. Off, a 60 Hz target on a 120 Hz panel
+        ///     judders because frames are presented on whatever vsync they land on.
+        ///   RENDER OUTSIDE SAFE AREA - stays ON deliberately. The pitch should run
+        ///     under the cutout; it is the UI that must not, and Agent_UIStyle's
+        ///     BindSafeArea pads every screen's root against Screen.safeArea. Turning
+        ///     this off would letterbox the game to avoid a problem the UI already
+        ///     solves.
+        ///
+        /// Returns a one-line report for the build log, because a setting applied
+        /// silently is a setting nobody can confirm from an artifact.
+        /// </summary>
+        internal static string ApplyDeviceRuntimeSettings()
+        {
+            PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
+            PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[]
+            {
+                GraphicsDeviceType.Vulkan,
+                GraphicsDeviceType.OpenGLES3,
+            });
+
+            PlayerSettings.Android.optimizedFramePacing = true;
+            PlayerSettings.Android.renderOutsideSafeArea = true;
+
+            // Portrait is locked project-wide. Assert it here rather than assume:
+            // a rotated build is the kind of thing that gets blamed on the device.
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
+            PlayerSettings.allowedAutorotateToPortrait = true;
+            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+            PlayerSettings.allowedAutorotateToLandscapeLeft = false;
+            PlayerSettings.allowedAutorotateToLandscapeRight = false;
+
+            GraphicsDeviceType[] apis = PlayerSettings.GetGraphicsAPIs(BuildTarget.Android);
+            var order = new System.Text.StringBuilder();
+            for (int i = 0; i < apis.Length; i++)
+            {
+                if (i > 0) order.Append('>');
+                order.Append(apis[i]);
+            }
+            return $"gfx={order} framePacing={PlayerSettings.Android.optimizedFramePacing} " +
+                   $"outsideSafeArea={PlayerSettings.Android.renderOutsideSafeArea} " +
+                   $"orientation={PlayerSettings.defaultInterfaceOrientation}";
         }
 
         /// Verifies every shipping scene is actually on disk and returns them in

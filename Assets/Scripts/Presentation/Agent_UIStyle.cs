@@ -192,10 +192,16 @@ namespace PoSoccer
         /// Applies the safe-area inset, converted into panel units. Returns what was
         /// written so the caller can tell whether anything actually changed.
         /// </summary>
-        public static Vector4 ApplySafeArea(VisualElement element)
+        public static Vector4 ApplySafeArea(
+            VisualElement element, float extraTop = 0f, float extraBottom = 0f)
         {
             if (element == null) return Vector4.zero;
+            // The device inset is measured in SCREEN pixels and converted; the
+            // reservations are authored in PANEL units already, so they are added
+            // after the conversion, never before it.
             Vector4 padding = SafeAreaPadding() / PanelScale(element);
+            padding.x += extraTop;
+            padding.y += extraBottom;
             element.style.paddingTop = padding.x;
             element.style.paddingBottom = padding.y;
             element.style.paddingLeft = padding.z;
@@ -206,6 +212,13 @@ namespace PoSoccer
         /// <summary>
         /// Applies the safe area now AND keeps it correct afterwards.
         ///
+        /// <paramref name="extraTop"/> / <paramref name="extraBottom"/> reserve
+        /// space for Agent_Chrome's corner bars on top of the device inset. They
+        /// are part of THIS call rather than a separate padding assignment
+        /// because the safe-area binding rewrites paddingTop/paddingBottom on
+        /// every resolution change, so any padding set elsewhere on the same
+        /// element is silently erased the first time the screen resizes.
+        ///
         /// ApplySafeArea on its own runs once in OnEnable and never again, so any
         /// later change to the reported insets - a resolution change, split
         /// screen, or just resizing the Game View - left stale padding baked in.
@@ -213,7 +226,8 @@ namespace PoSoccer
         /// GeometryChangedEvent handler causes another geometry change, so this
         /// only re-applies when the computed insets actually differ.
         /// </summary>
-        public static void BindSafeArea(VisualElement element)
+        public static void BindSafeArea(
+            VisualElement element, float extraTop = 0f, float extraBottom = 0f)
         {
             if (element == null) return;
             // The first call runs before the element is attached to a panel, so the
@@ -223,13 +237,15 @@ namespace PoSoccer
             // rather than the raw Screen.safeArea: the inset can be unchanged while
             // the scale that converts it is not, and comparing the input would then
             // never re-apply.
-            Vector4 applied = ApplySafeArea(element);
+            Vector4 applied = ApplySafeArea(element, extraTop, extraBottom);
             element.RegisterCallback<GeometryChangedEvent>(_ =>
             {
                 Vector4 current = SafeAreaPadding() / PanelScale(element);
+                current.x += extraTop;
+                current.y += extraBottom;
                 if (current == applied) return;
                 applied = current;
-                ApplySafeArea(element);
+                ApplySafeArea(element, extraTop, extraBottom);
             });
         }
 

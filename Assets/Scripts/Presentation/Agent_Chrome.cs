@@ -10,7 +10,8 @@ namespace PoSoccer
     /// Agent_HUD in a match and to the menu's own title in SCN_Menu, and a
     /// sortingOrder-90 overlay that strays into it wins over both.
     ///
-    ///   upper-left    product name, with the FPS readout beneath it
+    ///   upper-left    product name
+    ///   upper-centre  FPS readout, parked clear of whatever owns the centre
     ///   upper-right   MENU  (back to the start menu; hidden while already there)
     ///   lower-left    DEBUG (toggles Agent_Telemetry)
     ///   lower-right   version
@@ -48,6 +49,21 @@ namespace PoSoccer
         // guidance. Do not shrink these to make the layout prettier.
         const int BUTTON_HEIGHT = 120;
         const int BUTTON_MIN_WIDTH = 200;
+
+        /// <summary>
+        /// Total height one corner bar occupies: the row plus the gutter above
+        /// and below it. Screens RESERVE this at top and bottom so their own
+        /// content starts clear of the chrome.
+        ///
+        /// It has to be reserved rather than merely drawn over. This overlay is
+        /// at sortingOrder 90, above the HUD and the menu, so anything it lands
+        /// on it wins - the FPS readout printed through the score at 1170x2532
+        /// for exactly this reason, and the DEBUG button sat on top of the
+        /// menu's settings row, where a tap could plausibly have been meant for
+        /// either. Giving the bar its own strip is what makes the corner map a
+        /// layout rather than a collision.
+        /// </summary>
+        public const int BAR_HEIGHT = Agent_UIStyle.Pad + BUTTON_HEIGHT + Agent_UIStyle.Pad;
 
         UIDocument _doc;
         Label _fpsLabel;
@@ -108,8 +124,28 @@ namespace PoSoccer
             Agent_UIStyle.ApplyTheme(root);
             root.pickingMode = PickingMode.Ignore;
 
+            // THE CORNERS ARE IN NORMAL FLOW, NOT ABSOLUTELY POSITIONED, AND THAT
+            // IS THE WHOLE POINT (fixed 2026-09-13).
+            //
+            // BindSafeArea writes the device inset as PADDING on this element.
+            // An absolutely positioned child resolves its offsets against its
+            // containing block's PADDING box, not its content box - so `top: 24`
+            // on an absolute row means 24 px from the outer edge and the padding
+            // is simply skipped. Every corner of this overlay was therefore
+            // ignoring the safe area on every device that has one, which on a
+            // punch-hole phone puts the product name and the FPS readout up
+            // under the status bar. Nothing logged, and the inset was being
+            // computed correctly the whole time - it just was not reaching
+            // anything.
+            //
+            // Laying the two rows out as ordinary flex children of a
+            // space-between column makes them respect the padding by
+            // construction, which is a property of the layout rather than an
+            // arithmetic correction somebody has to remember.
             var safe = new VisualElement();
             safe.style.flexGrow = 1;
+            safe.style.flexDirection = FlexDirection.Column;
+            safe.style.justifyContent = Justify.SpaceBetween;
             safe.pickingMode = PickingMode.Ignore;
             Agent_UIStyle.BindSafeArea(safe);
             root.Add(safe);
@@ -155,6 +191,7 @@ namespace PoSoccer
             // the width independent of the text; unityTextAlign does the visual
             // placement instead.
             var leftCorner = new VisualElement();
+            leftCorner.name = "chrome-left";
             leftCorner.style.flexGrow = 1;
             leftCorner.style.flexBasis = 0;
             leftCorner.pickingMode = PickingMode.Ignore;
@@ -167,47 +204,90 @@ namespace PoSoccer
             // clipped, and reported as present by any test that only asks whether
             // the label exists. Both must go back to auto here.
             var productLabel = CornerLabel(Application.productName, Agent_UIStyle.TextPrimary, Agent_UIStyle.FontM);
+            productLabel.name = "chrome-title";
             productLabel.style.flexGrow = 0;
             productLabel.style.flexBasis = StyleKeyword.Auto;
             leftCorner.Add(productLabel);
 
-            _fpsLabel = CornerLabel(string.Empty, Agent_UIStyle.TextMuted, Agent_UIStyle.FontS);
-            _fpsLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
-            _fpsLabel.style.flexGrow = 0;
-            _fpsLabel.style.flexBasis = StyleKeyword.Auto;
-            _fpsLabel.style.display = _showFps ? DisplayStyle.Flex : DisplayStyle.None;
-            leftCorner.Add(_fpsLabel);
-
             _menuButton = ChromeButton("MENU", ReturnToMenu);
+            _menuButton.name = "chrome-menu";
             // Already at the menu: keep the slot so the row keeps its shape, but
             // nothing to navigate to.
             _menuButton.style.visibility = inMenu ? Visibility.Hidden : Visibility.Visible;
             top.Add(_menuButton);
 
+            // -- top centre: the FPS readout ---------------------------------
+            //
+            // Absolutely positioned INSIDE the top row, stretched edge to edge.
+            // That places it dead centre horizontally and on the same baseline as
+            // the product name and MENU - one top bar, three slots - and because
+            // the row itself is laid out in normal flow, the safe-area inset it
+            // sits inside is inherited rather than recomputed.
+            //
+            // AN EARLIER VERSION OF THIS MEASURED ITS OWN CLEARANCE and scanned
+            // down the centre column for the first gap that would fit. It was
+            // built to avoid the 2026-09-07 defect where a hand-tuned marginTop
+            // of 168 printed the readout straight through the score. It failed
+            // twice on device, both times by finding a "clear" slot far from the
+            // top: once at mid-pitch over the roster cards, and once - after the
+            // scan was corrected to walk down from the top - stepping through
+            // eight consecutive menu rows and stopping, still overlapping,
+            // because a dense screen has no gap that size anywhere in its centre
+            // column. The lesson is that the readout does not want the first
+            // clear slot in the centre; it wants the top BAR, which is a place
+            // this component already owns and nothing else draws into. A fixed
+            // slot in a row that is itself laid out correctly needs no
+            // measurement, and there is no longer a number here to be wrong.
+            _fpsLabel = CornerLabel(string.Empty, Agent_UIStyle.TextMuted, Agent_UIStyle.FontS);
+            _fpsLabel.name = "chrome-fps";
+            _fpsLabel.style.position = Position.Absolute;
+            _fpsLabel.style.left = 0;
+            _fpsLabel.style.right = 0;
+            _fpsLabel.style.top = 0;
+            _fpsLabel.style.bottom = 0;
+            _fpsLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+            _fpsLabel.style.flexGrow = 0;
+            _fpsLabel.style.flexBasis = StyleKeyword.Auto;
+            _fpsLabel.style.display = _showFps ? DisplayStyle.Flex : DisplayStyle.None;
+            // Behind the two buttons in the same row, and never picking, so a tap
+            // meant for MENU is never swallowed by a full-width diagnostic label.
+            _fpsLabel.pickingMode = PickingMode.Ignore;
+            top.Insert(0, _fpsLabel);
+
             // -- bottom row --------------------------------------------------
+            // Space-between puts this against the bottom of the content box; it
+            // needs no offsets of its own.
             var bottom = Row();
-            bottom.style.top = StyleKeyword.Null;
-            bottom.style.bottom = Agent_UIStyle.Pad;
             safe.Add(bottom);
 
-            bottom.Add(ChromeButton("DEBUG", ToggleTelemetry));
+            var debugButton = ChromeButton("DEBUG", ToggleTelemetry);
+            debugButton.name = "chrome-debug";
+            bottom.Add(debugButton);
 
             var spacer = new VisualElement { style = { flexGrow = 1 } };
             spacer.pickingMode = PickingMode.Ignore;
             bottom.Add(spacer);
 
             var version = CornerLabel("v" + Application.version, Agent_UIStyle.TextMuted, Agent_UIStyle.FontS);
+            version.name = "chrome-version";
             version.style.unityTextAlign = TextAnchor.MiddleRight;
             bottom.Add(version);
         }
 
+        /// <summary>
+        /// One corner row, in NORMAL FLOW - see the note on the safe container
+        /// for why it must not be absolutely positioned. Margins rather than
+        /// offsets, so the safe-area padding and this gutter add up instead of
+        /// one replacing the other.
+        /// </summary>
         static VisualElement Row()
         {
             var row = new VisualElement();
-            row.style.position = Position.Absolute;
-            row.style.left = Agent_UIStyle.Pad;
-            row.style.right = Agent_UIStyle.Pad;
-            row.style.top = Agent_UIStyle.Pad;
+            row.style.marginLeft = Agent_UIStyle.Pad;
+            row.style.marginRight = Agent_UIStyle.Pad;
+            row.style.marginTop = Agent_UIStyle.Pad;
+            row.style.marginBottom = Agent_UIStyle.Pad;
+            row.style.flexShrink = 0;
             row.style.flexDirection = FlexDirection.Row;
             row.style.justifyContent = Justify.SpaceBetween;
             row.style.alignItems = Align.Center;

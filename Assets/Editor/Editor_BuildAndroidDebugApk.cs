@@ -77,9 +77,17 @@ namespace PoSoccer.EditorTools
                 PlayerSettings.Android.bundleVersionCode += 1;
                 int versionCode = PlayerSettings.Android.bundleVersionCode;
 
-                // Portrait is locked project-wide; assert rather than assume, because a
-                // rotated sideload is the kind of thing that gets blamed on the device.
-                PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
+                // Architecture and backend are asserted here as well as in the
+                // release config, because a sideload is the build people actually
+                // look at and it must not be a different app underneath.
+                PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+                PlayerSettings.SetScriptingBackend(
+                    NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
+                PlayerSettings.SetIl2CppCompilerConfiguration(
+                    NamedBuildTarget.Android, Il2CppCompilerConfiguration.Release);
+
+                // Graphics API order, frame pacing, safe area, portrait lock.
+                string runtimeReport = Editor_BuildAndroidAAB.ApplyDeviceRuntimeSettings();
 
                 System.IO.Directory.CreateDirectory(
                     System.IO.Path.GetDirectoryName(OUTPUT_PATH));
@@ -103,6 +111,7 @@ namespace PoSoccer.EditorTools
                               $"versionCode {versionCode}, " +
                               $"appId {Editor_BuildAndroidAAB.APP_ID}, " +
                               $"scenes {scenes.Count}, " +
+                              $"{runtimeReport}, " +
                               $"{summary.totalTime.TotalSeconds:0} s");
                 }
                 else

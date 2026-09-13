@@ -178,7 +178,14 @@ namespace PoSoccer
             }
 
             // Safe area stays in code: a device measurement, not a design token.
-            Agent_UIStyle.BindSafeArea(safe);
+            //
+            // Both chrome bars are reserved here. The top one keeps the menu's
+            // title clear of the product name and the FPS readout; the bottom
+            // one keeps the settings row out from under the DEBUG button, which
+            // was overlapping it on device - two tappable controls in the same
+            // place, one of them drawn on top.
+            Agent_UIStyle.BindSafeArea(
+                safe, Agent_Chrome.BAR_HEIGHT, Agent_Chrome.BAR_HEIGHT);
 
             Click("preset-1v1", () => ApplyPreset(1));
             Click("preset-2v2", () => ApplyPreset(2));
