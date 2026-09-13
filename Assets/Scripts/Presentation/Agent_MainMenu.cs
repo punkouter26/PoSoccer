@@ -83,6 +83,15 @@ namespace PoSoccer
             // owned by the launcher that sets them, one line before it loads.
             Agent_MatchSetup.Clear();
 
+            // Arriving at the menu is a scene entry, and scene entries own the
+            // clock (see Agent_TimeFreeze.ReleaseAll). Agent_HUD used to do this
+            // for the match scene and no longer does - releasing every holder is
+            // not a scoreboard's job - so the two genuine entry points say it
+            // themselves: this, and Agent_MatchFlow.Start. Without it the menu
+            // depends on every exit button having remembered to release, which is
+            // an invariant held by four call sites agreeing.
+            Agent_TimeFreeze.ReleaseAll();
+
             // The menu's own way back out (and its DEBUG toggle) rides on the
             // chrome. Guaranteed here rather than relying on the serialized
             // object in SCN_Menu, for the reason spelled out in

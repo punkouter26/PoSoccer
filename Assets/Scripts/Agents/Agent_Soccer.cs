@@ -1098,7 +1098,10 @@ namespace PoSoccer
             if (env != null && env.Ball != null)
                 env.Ball.angularVelocity += Body.angularVelocity * 0.3f;
 
-            env?.NotifyBallTouch(this);
+            // `env != null`, never `env?.` on a Unity object - see the rule in
+            // .claude/rules/unity-specifics.md. The line above already spells it
+            // correctly two statements earlier; this one did not.
+            if (env != null) env.NotifyBallTouch(this);
             TryWallKick();
         }
 

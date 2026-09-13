@@ -150,7 +150,7 @@ namespace PoSoccer
             e.style.paddingRight = pad;
         }
 
-        /// <summary>Safe-area insets as (top, bottom, left, right) in screen pixels.</summary>
+        /// <summary>Safe-area insets as (top, bottom, left, right) in SCREEN pixels.</summary>
         static Vector4 SafeAreaPadding()
         {
             Rect safe = Screen.safeArea;
@@ -161,14 +161,46 @@ namespace PoSoccer
                 Screen.width - safe.xMax);
         }
 
-        public static void ApplySafeArea(VisualElement element)
+        /// <summary>
+        /// Screen pixels per panel unit, read from the live panel.
+        ///
+        /// THE TWO SPACES ARE NOT THE SAME AND THIS FILE USED TO ASSUME THEY WERE.
+        /// The shared PanelSettings is ScaleWithScreenSize, match-WIDTH, reference
+        /// 1080x1920, so a panel unit is 1080/Screen.width screen pixels - 1.0 on a
+        /// 1080-wide phone, 1.083 at 1170, 1.333 at 1440. Screen.safeArea is in
+        /// screen pixels, and ApplySafeArea was writing those numbers straight into
+        /// `style.padding*`, which UI Toolkit reads as PANEL units: every notch inset
+        /// came out oversized by exactly that factor, up to a third too deep on a
+        /// 1440-wide device. Always over-inset, so nothing ever clipped - it just
+        /// quietly ate screen on the tall phones this game ships to.
+        ///
+        /// Derived from the panel rather than from the PanelSettings asset's
+        /// reference resolution: the panel's own root spans it by definition, so this
+        /// stays correct if the reference or the match mode is ever changed, and
+        /// there is no second copy of 1080 to drift.
+        /// </summary>
+        static float PanelScale(VisualElement element)
         {
-            if (element == null) return;
-            Vector4 padding = SafeAreaPadding();
+            var panel = element?.panel;
+            if (panel == null) return 1f;
+            float panelWidth = panel.visualTree.layout.width;
+            if (float.IsNaN(panelWidth) || panelWidth < 1f) return 1f;
+            return Screen.width / panelWidth;
+        }
+
+        /// <summary>
+        /// Applies the safe-area inset, converted into panel units. Returns what was
+        /// written so the caller can tell whether anything actually changed.
+        /// </summary>
+        public static Vector4 ApplySafeArea(VisualElement element)
+        {
+            if (element == null) return Vector4.zero;
+            Vector4 padding = SafeAreaPadding() / PanelScale(element);
             element.style.paddingTop = padding.x;
             element.style.paddingBottom = padding.y;
             element.style.paddingLeft = padding.z;
             element.style.paddingRight = padding.w;
+            return padding;
         }
 
         /// <summary>
@@ -184,11 +216,17 @@ namespace PoSoccer
         public static void BindSafeArea(VisualElement element)
         {
             if (element == null) return;
-            Vector4 applied = SafeAreaPadding();
-            ApplySafeArea(element);
+            // The first call runs before the element is attached to a panel, so the
+            // scale is not knowable yet and this lands in screen pixels. The
+            // GeometryChanged pass below corrects it on the first layout - which is
+            // also why the change detector compares what was WRITTEN (panel units)
+            // rather than the raw Screen.safeArea: the inset can be unchanged while
+            // the scale that converts it is not, and comparing the input would then
+            // never re-apply.
+            Vector4 applied = ApplySafeArea(element);
             element.RegisterCallback<GeometryChangedEvent>(_ =>
             {
-                Vector4 current = SafeAreaPadding();
+                Vector4 current = SafeAreaPadding() / PanelScale(element);
                 if (current == applied) return;
                 applied = current;
                 ApplySafeArea(element);

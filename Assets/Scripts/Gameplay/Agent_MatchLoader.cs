@@ -199,7 +199,15 @@ namespace PoSoccer
                 Debug.LogWarning($"[Agent_MatchLoader] No profile for {agent.name}; using runtime fallback. " +
                                  "Fix: wire the default* slots on this scene's loader, or visit SCN_Menu first.");
                 profile = ScriptableObject.CreateInstance<Reward_Settings>();
-                profile.playerName = agent.brainName ?? "FALLBACK";
+                // Never blank: Reward_Settings.Initial and three UI call sites take the
+                // first character of this, and `agent.brainName` is an unvalidated
+                // serialized string that an empty scene field makes "".
+                profile.playerName = string.IsNullOrWhiteSpace(agent.brainName)
+                    ? "FALLBACK" : agent.brainName;
+                // A runtime ScriptableObject is not owned by any asset, so it survives
+                // until an explicit unload. DontSave keeps it out of the scene if this
+                // ever runs in the editor, and marks it as the throwaway it is.
+                profile.hideFlags = HideFlags.DontSave;
             }
 
             agent.rewards = profile;

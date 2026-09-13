@@ -53,8 +53,18 @@
        in the game was smaller (presets 74, steppers 86, roster 78, and the HUD
        sound/pause pair measured 80.75 live on 2026-09-06 - about 5.1 mm). One
        token, applied to .btn, so the policy cannot hold in one screen and not the
-       other. Do not shrink these to make a layout fit; take the space from margins. */
-    --touch-min: 120px;
+       other. Do not shrink these to make a layout fit; take the space from margins.
+
+       124, NOT 120, AND THE EXTRA 4 IS NOT DECORATION. The floor is 120; this token
+       is the floor plus rounding headroom. UI Toolkit resolves layout to whole DEVICE
+       pixels and this panel is match-width against a 1080 reference, so a panel unit
+       is rarely a whole pixel: at a 0.889 scale a box declared at exactly 120 units
+       whose top and bottom round in opposite directions measures 106 device px, which
+       is 119.25 units back. Measured 2026-09-13 - eight menu buttons at 119.3 against
+       a 120 assertion, i.e. the project's only touch-target gate was red purely
+       because the requirement had been declared with zero slack. Keep the ASSERTION at
+       120 (that is the ergonomic number) and keep this above it. */
+    --touch-min: 124px;
 
     /* Radii */
     --radius-sm: 8px;

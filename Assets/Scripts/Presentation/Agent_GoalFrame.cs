@@ -56,7 +56,16 @@ namespace PoSoccer
 
         void OnPitchReconfigured(Transform goal)
         {
-            if (goal == transform) ApplyWidth(_env != null ? _env.CurrentGoalWidth : 0f);
+            // Any reconfiguration may have moved the walls, so the cached one is no
+            // longer trustworthy - see OutwardWall.
+            _cachedWall = null;
+            if (goal != transform) return;
+            float width = _env != null ? _env.CurrentGoalWidth : 0f;
+            // The event fires on every SetGoalWidth call whether or not the number
+            // moved. Redrawing a bar into the position it already occupies is pure
+            // cost, and this is the hot path.
+            if (Mathf.Approximately(width, _shownWidth)) return;
+            ApplyWidth(width);
         }
 
         void LateUpdate()
@@ -129,10 +138,34 @@ namespace PoSoccer
         /// <summary>
         /// The boundary wall behind this goal. Found by position rather than by name
         /// so it survives a pitch resize, which moves every wall.
+        ///
+        /// CACHED, BECAUSE THE SEARCH ALLOCATES AND THE CALLER IS HOT. The scan below
+        /// enumerates the pitch root's 17 children - a boxed enumerator, since
+        /// Transform only exposes the non-generic IEnumerator - and reads `child.name`
+        /// on each, which marshals a fresh string out of native code EVERY access.
+        /// ApplyWidth is reached from the PitchReconfigured event, which
+        /// Agent_Overtime was raising 200 times a second, so this was on the order of
+        /// 3,400 string allocations per second for the whole match, against a project
+        /// rule of zero allocations in the per-frame path.
+        ///
+        /// The cache is dropped whenever the pitch is reconfigured rather than held
+        /// forever: ResizePitch moves every wall, and a resize can add or remove them.
+        /// Which wall is the right one is a function of POSITION, so re-running the
+        /// search after a geometry change is the whole point - doing it again when
+        /// nothing moved is the waste.
         /// </summary>
         Transform OutwardWall()
         {
             if (_env == null) return null;
+            if (_cachedWall != null) return _cachedWall;
+            _cachedWall = FindOutwardWall();
+            return _cachedWall;
+        }
+
+        Transform _cachedWall;
+
+        Transform FindOutwardWall()
+        {
             float goalY = transform.localPosition.y;
             Transform best = null;
             float bestDistance = float.MaxValue;

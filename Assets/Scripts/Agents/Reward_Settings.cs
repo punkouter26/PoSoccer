@@ -19,6 +19,21 @@ namespace PoSoccer
         public Color playerColor = Color.white;
 
         /// <summary>
+        /// The single letter that identifies this player on a chip, a badge and the
+        /// body label.
+        ///
+        /// Three call sites each wrote <c>playerName.Substring(0, 1)</c>, which
+        /// throws ArgumentOutOfRangeException on an empty name. That is not a
+        /// hypothetical: Agent_MatchLoader.Apply builds a runtime fallback profile
+        /// when a scene is launched with no menu selection and names it from
+        /// <c>agent.brainName</c>, which is a plain serialized string nobody
+        /// validates. An unhandled exception in Agent_SoccerView.Start or
+        /// Agent_HUD.BuildChips takes out the scoreboard, not just the letter.
+        /// </summary>
+        public char Initial =>
+            string.IsNullOrEmpty(playerName) ? '?' : char.ToUpperInvariant(playerName[0]);
+
+        /// <summary>
         /// Jersey patterns the body shader can draw. Procedural, so a kit costs
         /// no texture memory and no extra draw call - the pattern is a few ALU
         /// inside the material this player already shares with its team.

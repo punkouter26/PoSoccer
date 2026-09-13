@@ -150,6 +150,103 @@ namespace PoSoccer.Tests
             Assert.IsFalse(float.IsInfinity(unset) || float.IsNaN(unset));
         }
 
+        /// <summary>
+        /// THE PLAY AREA IS THE CLEAR BAND, NOT THE VIEWPORT.
+        ///
+        /// Every framing test above asserts the pitch fills the SCREEN, and until
+        /// 2026-09-13 so did the camera. Part of that screen is opaque: Agent_HUD
+        /// paints a scoreboard across the top and a meter / chip row / button row
+        /// across the bottom, over a pitch that now fills the viewport edge to edge.
+        /// Measured at 2v2 (12.6 x 25.3 m, wide ortho 13.15) the bands covered about
+        /// 1.9 m at the top and 3.9 m at the bottom while the goal lines sat at
+        /// +/-12.65 - so both goal mouths, the only two places a goal can happen,
+        /// were behind the UI. "Fills the screen" was true the whole time.
+        ///
+        /// This sweeps the same axes as its sibling with an inset applied, and
+        /// asserts the property that actually matters: the pitch fits in the part of
+        /// the screen you can see through.
+        /// </summary>
+        [Test]
+        public void WideShot_FitsThePitchInsideTheClearBand_AtEveryPlausibleHudInset()
+        {
+            const float EDGE = Agent_CameraFollow.DEFAULT_EDGE_MARGIN;
+            const float MAX_CROP = Agent_CameraFollow.DEFAULT_MAX_WIDTH_CROP;
+
+            // Top + bottom band coverage. 0.22 is what the shipped HUD measures at
+            // 2v2; 0.34 is the pessimistic case (10-a-side chip rows, LARGER type
+            // scale, broadcast strip on).
+            foreach (float covered in new[] { 0f, 0.10f, 0.22f, 0.34f })
+            {
+                float clear = 1f - covered;
+
+                for (int perSide = 1; perSide <= Agent_MatchSetup.MAX_SQUAD; perSide++)
+                {
+                    Vector2 half = Agent_PitchSizing.HalfExtentsFor(perSide, perSide);
+                    Vector2 padded = half + Vector2.one * EDGE;
+
+                    foreach (var (label, aspect) in ShippedAspects)
+                    {
+                        float ortho = Agent_CameraFollow.WideOrthoSize(padded, aspect, MAX_CROP, clear);
+                        float clearHalfHeight = ortho * clear;
+                        string where = $"{perSide}v{perSide} @ {label}, {covered:P0} covered";
+
+                        Assert.GreaterOrEqual(clearHalfHeight, half.y - 0.001f,
+                            $"{where}: the un-occluded strip is {clearHalfHeight:F2} against a " +
+                            $"{half.y:F2} pitch half-length, so {half.y - clearHalfHeight:F2} m " +
+                            "of pitch - including a goal mouth - sits under a HUD band.");
+
+                        // ...and it must not over-correct into a letterbox either. The
+                        // slack allows for the width term winning on the widest pitches
+                        // at the tallest aspects, which is the existing, intended
+                        // behaviour of the crop budget rather than an inset artefact.
+                        Assert.Less(clearHalfHeight, half.y * 1.25f + EDGE,
+                            $"{where}: pulled back to {clearHalfHeight:F2} of visible " +
+                            $"half-height for a {half.y:F2} pitch - that is a letterbox.");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// The live half of the test above: the bands are actually MEASURED (not
+        /// silently reported as zero, which would make the inset a no-op that every
+        /// arithmetic assertion still passes), and the camera's own wide shot clears
+        /// them on the real scene at the real aspect.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator TheCamerasWideShot_ClearsTheMeasuredHudBands()
+        {
+            SceneManager.LoadScene("SCN_Exhibition");
+            yield return Frames(8);   // scene build, HUD template, one layout pass
+
+            var env = Object.FindAnyObjectByType<Agent_EnvController>();
+            var hud = Object.FindAnyObjectByType<Agent_HUD>();
+            Assert.IsNotNull(env, "No env controller in the match scene");
+            Assert.IsNotNull(hud, "No HUD in the match scene");
+
+            var follow = Camera.main != null
+                ? Camera.main.GetComponent<Agent_CameraFollow>() : null;
+            Assert.IsNotNull(follow, "Agent_Bootstrap did not attach the camera rig");
+
+            // Without this the rest of the test is vacuous: a HUD reporting 0/0 makes
+            // ClearFraction 1 and the assertion below degenerates into the old one.
+            float covered = hud.TopBandFraction + hud.BottomBandFraction;
+            Assert.Greater(covered, 0.02f,
+                "The HUD bands measured as covering nothing, so the camera inset is " +
+                "reading zeros and this test would pass against the defect it guards. " +
+                "Check that HUD.uxml still names #top-band / #bottom-band.");
+            Assert.Less(covered, 0.6f,
+                $"The HUD claims to cover {covered:P0} of the screen; that is a layout " +
+                "bug, not an inset the camera should be working around.");
+
+            float clearHalfHeight = follow.CurrentWideOrtho * follow.ClearFraction;
+            Assert.GreaterOrEqual(clearHalfHeight, env.PitchHalfExtents.y,
+                $"The wide shot leaves only {clearHalfHeight:F2} of visible half-height " +
+                $"for a {env.PitchHalfExtents.y:F2} pitch half-length, so the goal mouths " +
+                "are under the bands. Bands cover " +
+                $"{hud.TopBandFraction:P0} top / {hud.BottomBandFraction:P0} bottom.");
+        }
+
         [UnityTest]
         public IEnumerator Pause_HoldsAndReleasesTheClock()
         {
@@ -264,7 +361,13 @@ namespace PoSoccer.Tests
         [UnityTest]
         public IEnumerator EveryTappableButton_MeetsTheTouchTargetMinimum()
         {
-            const float MIN = 120f;      // must equal --touch-min in PoSoccerTheme.uss
+            // The ERGONOMIC floor - Android's 48dp at this reference width. It is
+            // deliberately NOT --touch-min: that token is this number plus rounding
+            // headroom (124), because UI Toolkit resolves to whole device pixels and
+            // a box declared at exactly the floor measures just under it at most
+            // panel scales. Asserting against the token instead would re-import the
+            // same zero-slack problem one level up. See the note on --touch-min.
+            const float MIN = 120f;
 
             foreach (string scene in new[] { "SCN_Menu", "SCN_Exhibition" })
             {

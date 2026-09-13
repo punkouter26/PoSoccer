@@ -334,9 +334,12 @@ namespace PoSoccer.Tests
                 Assert.IsFalse(Agent_TimeFreeze.IsFrozen,
                     "Opening countdown never released the clock, so play never started");
 
-                // The exhibition stepCapOverride is 2500 steps at a 0.01 s fixed
-                // timestep = 25 s of game time, so the watchdog alone guarantees a
-                // termination well inside this window even if nobody ever scores.
+                // Gameplay episodes are NOT step-capped (see Agent_EnvController's
+                // IsBoundedEpisode - the cap is a training/eval device). What
+                // guarantees a termination inside this window without anyone scoring
+                // is the stuck-ball watchdog: 20 s of the ball staying inside a 2.5 m
+                // radius. The old note here cited stepCapOverride 2500, which stopped
+                // bounding gameplay when the reset policy was split by audience.
                 yield return WaitUntilRealtime(() => touches > 0 && endings > 0, 90f);
 
                 Assert.Greater(touches, 0,

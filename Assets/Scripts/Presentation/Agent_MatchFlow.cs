@@ -383,7 +383,7 @@ namespace PoSoccer
             heading.style.color = Agent_UIStyle.TextMuted;
             card.Add(heading);
 
-            var badge = new Label(profile.playerName.Substring(0, 1));
+            var badge = new Label(profile.Initial.ToString());
             badge.style.width = 110; badge.style.height = 110;
             badge.style.marginTop = 12; badge.style.marginBottom = 12;
             badge.style.backgroundColor = profile.playerColor;

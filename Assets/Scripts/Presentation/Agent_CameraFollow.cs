@@ -13,11 +13,14 @@ namespace PoSoccer
     ///  - ball speed, which biases wider so a fast break does not outrun the frame.
     ///
     /// The wide baseline is DERIVED, not authored: it is the smallest orthographic size
-    /// that still shows the whole pitch at the current aspect. On a 9:16 phone the pitch
-    /// is narrower than the screen, so this resolves to "fit the pitch height", filling
-    /// the portrait viewport top to bottom instead of leaving the authored letterbox.
-    /// Recomputed every frame so Agent_PitchSizing resizing the pitch per squad size (and
-    /// any resolution or orientation change) is picked up for free.
+    /// that still shows the whole pitch at the current aspect, INSIDE the part of the
+    /// screen the HUD does not cover. On a 9:16 phone the pitch is narrower than the
+    /// screen, so this resolves to "fit the pitch height into the clear band", filling
+    /// what is visible instead of leaving the authored letterbox - or, as it did before
+    /// 2026-09-13, hiding both goal mouths under the scoreboard and the chip row.
+    /// Recomputed every frame so Agent_PitchSizing resizing the pitch per squad size, the
+    /// HUD bands growing with the squad, and any resolution, safe-area or orientation
+    /// change are all picked up for free. See the block above FitOrthoSize.
     ///
     /// Execution order -50 so the camera is settled before MatchFX samples Camera.main.
     /// </summary>
@@ -47,6 +50,7 @@ namespace PoSoccer
 
         Camera _cam;
         Agent_EnvController _env;
+        Agent_HUD _hud;
         float _wideUntilTime;
         bool _wide;
         Transform _overrideTarget;
@@ -141,6 +145,7 @@ namespace PoSoccer
         {
             _cam = Camera.main;
             _env = FindFirstObjectByType<Agent_EnvController>();
+            _hud = FindFirstObjectByType<Agent_HUD>();
             _wide = true;
             _wideUntilTime = Time.time + _kickoffHoldSeconds;
             if (_env != null) _env.EpisodeEnded += OnEpisodeEnded;
@@ -157,16 +162,79 @@ namespace PoSoccer
             _wideUntilTime = Time.time + _goalHoldSeconds;
         }
 
+        // ── The HUD inset ───────────────────────────────────────────────────
+        //
+        // THE PLAY AREA IS NOT THE VIEWPORT. Agent_HUD's own docstring says its
+        // bands sit "above and below the pitch" so that "nothing ever covers the
+        // play area". That was true of the authored 36 x 54 pitch, which this
+        // camera letterboxed. It stopped being true the day the wide shot was
+        // changed to fill the portrait viewport top to bottom: the bands became an
+        // OVERLAY on a full-screen pitch.
+        //
+        // Measured consequence at 2v2 (12.6 x 25.3 m pitch, wide ortho 13.15): the
+        // top band covers ~1.9 m of the view and the bottom band ~3.9 m, while the
+        // goal lines sit at +/-12.65 against a 13.15 half-height - so BOTH GOAL
+        // MOUTHS, the only two places a goal can happen, were behind the scoreboard
+        // and the chip row. Nothing threw and no test saw it, because the portrait
+        // tests assert the pitch fills the SCREEN, which is exactly the wrong
+        // invariant once part of the screen is opaque.
+        //
+        // So the pitch is framed into the CLEAR BAND between the two HUD bands, and
+        // the camera is offset so that band - not the viewport - is centred on the
+        // pitch. Both numbers are read live every frame: they move with the safe
+        // area, the type scale, the squad size (the chip row grows) and whether the
+        // broadcast strip is up.
+
+        /// <summary>
+        /// Floor on the clear fraction. A HUD that somehow reported covering most of
+        /// the screen would otherwise drive the zoom toward infinity; at 0.4 the worst
+        /// case is a pitch framed 2.5x too wide, which is legible rather than absurd.
+        /// </summary>
+        const float MIN_CLEAR_FRACTION = 0.4f;
+
+        /// <summary>Fraction of the viewport height that no HUD band covers, 0.4..1.</summary>
+        public float ClearFraction => Mathf.Clamp(
+            1f - TopInset01 - BottomInset01, MIN_CLEAR_FRACTION, 1f);
+
+        float TopInset01 => _hud != null ? _hud.TopBandFraction : 0f;
+        float BottomInset01 => _hud != null ? _hud.BottomBandFraction : 0f;
+
+        /// <summary>
+        /// Centre of the clear band in viewport coordinates (0 bottom, 1 top). Equals
+        /// 0.5 when nothing is covered; the bands are asymmetric in practice (the
+        /// bottom one carries the meter, the chips and the buttons) so this normally
+        /// sits ABOVE centre, which pushes the camera down and the pitch up the screen.
+        /// </summary>
+        float ClearCentre01
+        {
+            get
+            {
+                float bottom = BottomInset01;
+                float clear = ClearFraction;
+                // Re-derive the top from the clamped clear fraction so the centre and
+                // the height always describe the same band, even at the floor.
+                return Mathf.Clamp01(bottom + clear * 0.5f);
+            }
+        }
+
+        /// <summary>
+        /// World-space Y offset from the focus point to the camera centre, for the
+        /// given framing. Negative when the bottom band is the taller of the two.
+        /// </summary>
+        float FocusOffsetY(float orthoSize) => -(ClearCentre01 - 0.5f) * 2f * orthoSize;
+
         /// <summary>
         /// Smallest orthographic size showing the whole of <paramref name="half"/> at the
-        /// current aspect. orthographicSize is the HALF height, so the width constraint has
-        /// to be divided by aspect before comparing. Max of the two = nothing gets cropped.
-        /// Used for the action framing, where cropping would hide a player.
+        /// current aspect, INSIDE the clear band. orthographicSize is the HALF height of
+        /// the whole viewport, so the height constraint is divided by the clear fraction
+        /// and the width constraint by the aspect. Max of the two = nothing gets cropped
+        /// and nothing lands under a band. Used for the action framing, where either
+        /// would hide a player.
         /// </summary>
         float FitOrthoSize(Vector2 half)
         {
-            float aspect = _cam.aspect > 0.01f ? _cam.aspect : 0.5625f;   // 9:16 fallback
-            return Mathf.Max(half.y, half.x / aspect);
+            float aspect = _cam.aspect > 0.01f ? _cam.aspect : FALLBACK_ASPECT;
+            return Mathf.Max(half.y / ClearFraction, half.x / aspect);
         }
 
         /// <summary>
@@ -185,7 +253,8 @@ namespace PoSoccer
         /// rather than a letterbox.
         /// </summary>
         float PitchWideOrthoSize(Vector2 half) =>
-            WideOrthoSize(half, _cam.aspect > 0.01f ? _cam.aspect : FALLBACK_ASPECT, _maxWidthCrop);
+            WideOrthoSize(half, _cam.aspect > 0.01f ? _cam.aspect : FALLBACK_ASPECT,
+                _maxWidthCrop, ClearFraction);
 
         /// <summary>9:16, used when the camera reports no usable aspect yet.</summary>
         public const float FALLBACK_ASPECT = 0.5625f;
@@ -212,10 +281,18 @@ namespace PoSoccer
         /// <param name="paddedHalfExtents">Pitch half-extents INCLUDING the edge margin.</param>
         /// <param name="aspect">Viewport width / height.</param>
         /// <param name="maxWidthCrop">Fraction of pitch WIDTH the shot may crop.</param>
-        public static float WideOrthoSize(Vector2 paddedHalfExtents, float aspect, float maxWidthCrop)
+        /// <param name="clearFraction">
+        /// Fraction of the viewport HEIGHT that no HUD band covers. The height fit is
+        /// divided by it, because orthographicSize describes the whole viewport while
+        /// the pitch may only use the clear part of it. Defaults to 1 - the
+        /// no-HUD case, and what the existing three-argument callers mean.
+        /// </param>
+        public static float WideOrthoSize(Vector2 paddedHalfExtents, float aspect,
+            float maxWidthCrop, float clearFraction = 1f)
         {
             if (aspect <= 0.01f) aspect = FALLBACK_ASPECT;
-            float heightFit = paddedHalfExtents.y;
+            clearFraction = Mathf.Clamp(clearFraction, MIN_CLEAR_FRACTION, 1f);
+            float heightFit = paddedHalfExtents.y / clearFraction;
             float widthFit = paddedHalfExtents.x * (1f - maxWidthCrop) / aspect;
             return Mathf.Max(heightFit, widthFit);
         }
@@ -305,14 +382,25 @@ namespace PoSoccer
             // Clamp so the view never pans past the pitch. This previously computed
             // pitchHalf and then clamped against the CAMERA's half-extents instead,
             // leaving the pitch bounds unused and letting the camera drift off the pitch.
+            //
+            // The VERTICAL clamp is against the CLEAR band's half-height, not the
+            // camera's: the part of the view above the top band and below the bottom
+            // one is not play area, so allowing the focus to travel into it would put
+            // the ball back under a band at the ends of the pitch - the exact defect
+            // the inset exists to remove.
             float camHalfH = _cam.orthographicSize;
             float camHalfW = camHalfH * _cam.aspect;
+            float clearHalfH = camHalfH * ClearFraction;
             float panX = Mathf.Max(0f, pitchHalf.x - camHalfW);
-            float panY = Mathf.Max(0f, pitchHalf.y - camHalfH);
+            float panY = Mathf.Max(0f, pitchHalf.y - clearHalfH);
 
             Vector2 target = ballPos;
             target.x = Mathf.Clamp(target.x, -panX, panX);
             target.y = Mathf.Clamp(target.y, -panY, panY);
+            // Shift the camera so the CLEAR band centres on the focus point. Applied
+            // after the clamp, not before it: the clamp is a statement about where the
+            // play area may sit, and the offset is how the rig achieves it.
+            target.y += FocusOffsetY(camHalfH);
 
             Vector3 pos = _cam.transform.position;
             float followSpeed = overriding ? _followSpeed * 2f

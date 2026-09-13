@@ -37,7 +37,9 @@ namespace PoSoccer
                  "1 = full-strength bot, which is what evaluation always faces.")]
         [Range(0f, 1f)]
         public float defaultBotStrength = 1.0f;
-        [Tooltip("Episode step cap override for exhibition scenes (0 = use the reward profile's cap).")]
+        [Tooltip("Episode step cap override (0 = use the reward profile's cap). NOT a pacing " +
+                 "knob: it also normalises the time-remaining observation, so a value that " +
+                 "disagrees with what the brains trained on feeds them a wrong clock.")]
         public int stepCapOverride = 0;
 
         [Header("Ball physics")]
@@ -47,7 +49,9 @@ namespace PoSoccer
         public Vector2 ballDampingRange = new(0.08f, 0.15f);
 
         [Header("Domain randomization")]
-        [Tooltip("Agents respawn anywhere in their own half within these margins instead of fixed spots.")]
+        [Tooltip("TRAINING AND EVAL ONLY: agents respawn anywhere in their own half instead " +
+                 "of the kickoff formation. Ignored during ordinary play, which always uses " +
+                 "the formation Agent_MatchLoader laid out.")]
         public bool randomizeSpawns = true;
 
         public Rigidbody2D Ball => ball;
@@ -58,6 +62,18 @@ namespace PoSoccer
         /// Agents read this in CollectObservations to normalise the
         /// time-remaining scalar so the obs shape doesn't change when the
         /// profile's maxEnvironmentSteps does.
+        ///
+        /// CLEARED IN SCN_EXHIBITION 2026-09-13, AND IT WAS NOT A TIDY-UP.
+        /// That scene carried stepCapOverride 2500 "for exhibition pace", from when
+        /// the cap still ended gameplay episodes. Since the reset policy was split by
+        /// audience (see FixedUpdate) it no longer ends anything during play - but it
+        /// never stopped feeding Agent_Soccer's time-remaining observation, which is
+        /// `1 - elapsed/cap`. Every deployed brain trained against a 9000-step cap, so
+        /// in a real match that input decayed 3.6x too fast and then sat pinned at 0
+        /// for the rest of a match that now has no step bound at all: the policy spent
+        /// almost the whole game being told the clock had already run out. Same shape
+        /// as every other landmine in this project - no tensor changed, nothing
+        /// logged, the number simply meant something else.
         /// </summary>
         public int MaxEnvironmentSteps
         {
@@ -604,9 +620,26 @@ namespace PoSoccer
 
             EnsureSpawnCache();
 
+            // DOMAIN RANDOMIZATION IS A TRAINING DEVICE, AND ONLY TRAINING GETS IT.
+            //
+            // randomizeSpawns is serialized 1 in SCN_Exhibition as well as
+            // SCN_Training, and ResetPitch runs at the end of Start - so the very
+            // first kickoff a player ever saw was a random scatter, and so was every
+            // restart after a goal. That also made Agent_MatchLoader.Place dead code
+            // in the match scene: it builds a two-rank kickoff formation across each
+            // side's half, EnsureSpawnCache records it, and then this loop threw it
+            // away a few milliseconds later. Nothing logged, because both halves
+            // were working exactly as written.
+            //
+            // Gated on the same predicate as the step cap rather than on a second
+            // serialized flag: "is a trainer or an eval driving this pitch" is one
+            // question, and it already has one answer in this class. A scene flag
+            // would be a second one, free to disagree - which is how this got here.
+            bool scatter = randomizeSpawns && IsBoundedEpisode;
+
             foreach (var agent in agents)
             {
-                if (randomizeSpawns)
+                if (scatter)
                 {
                     // Anywhere in the agent's own half, clear of walls and center line.
                     float sign = agent.team == Agent_Soccer.Team.Blue ? -1f : 1f;

@@ -20,6 +20,9 @@ namespace PoSoccer
         public bool enableMatchFlow = true;
         [Tooltip("First team to this many goals ends the match (0 = endless).")]
         public int matchGoals = 5;
+        [Tooltip("Hard match length in seconds; the leader wins, level is a draw. " +
+                 "0 = no limit. A bound, not a pace: it exists so a match always ends.")]
+        public float matchTimeLimit = 480f;
         public string menuScene = "SCN_Menu";
         // 2026-08-11: a single master switch so the user-facing scene can opt
         // out of the scoreboard, ball-control meter, identity chips, MENU
@@ -41,6 +44,7 @@ namespace PoSoccer
 
         VisualElement _root, _endPanel, _blueChips, _redChips;
         VisualElement _ballControlBlue, _ballControlRed;   // halves of the meter
+        VisualElement _topBand, _bottomBand;
         int _blueScore, _redScore;
         float _toastUntil;
         bool _ended;
@@ -104,6 +108,43 @@ namespace PoSoccer
         /// scale factor. Null before OnEnable and when showHud is false.
         /// </summary>
         public VisualElement OverlayRoot => _root;
+
+        /// <summary>
+        /// Fraction of the screen's HEIGHT that the top band covers, 0..1. Zero
+        /// when the HUD is off or the band has not been laid out yet.
+        ///
+        /// THIS EXISTS BECAUSE THE CAMERA HAS TO KNOW. The class docstring above
+        /// claims the bands sit "above and below the pitch" so that "nothing ever
+        /// covers the play area". That was true of the authored 36 x 54 letterboxed
+        /// pitch and has been false since Agent_CameraFollow started filling the
+        /// portrait viewport top to bottom: the bands are an OVERLAY on a full-screen
+        /// pitch, and at 2v2 they cover roughly the top 1.9 m and bottom 3.9 m of the
+        /// view - which is where both goal mouths are. Agent_CameraFollow reads these
+        /// two numbers and frames the pitch into what is left.
+        ///
+        /// Reported as a fraction rather than in pixels on purpose: worldBound is in
+        /// PANEL units, which are screen pixels divided by the panel's scale factor,
+        /// and the ratio of two panel-unit measurements is the one form the caller can
+        /// use without knowing that scale. The same mistake in absolute units is what
+        /// the safe-area inset was making (see Agent_UIStyle.SafeAreaPadding).
+        /// </summary>
+        public float TopBandFraction => BandFraction(_topBand);
+
+        /// <summary>Fraction of the screen's height covered by the bottom band, 0..1.</summary>
+        public float BottomBandFraction => BandFraction(_bottomBand);
+
+        float BandFraction(VisualElement band)
+        {
+            if (!showHud || band == null || _root == null) return 0f;
+            if (band.resolvedStyle.display == DisplayStyle.None) return 0f;
+
+            float panelHeight = _root.worldBound.height;
+            float bandHeight = band.worldBound.height;
+            // NaN until the first layout pass, and a zero panel is a panel that has
+            // not been measured - both mean "no inset yet" rather than "no band".
+            if (float.IsNaN(panelHeight) || float.IsNaN(bandHeight) || panelHeight < 1f) return 0f;
+            return Mathf.Clamp01(bandHeight / panelHeight);
+        }
 
         /// <summary>True once the match-winning goal has landed, panel shown or not.</summary>
         public bool MatchOver => _ended || _pendingEnd;
@@ -179,9 +220,23 @@ namespace PoSoccer
                 return;
             }
 
-            // Statics outlive a scene load in a player build, so a REMATCH taken
-            // from the frozen end panel would resume into a still-frozen clock.
-            Agent_TimeFreeze.ReleaseAll();
+            // NO Agent_TimeFreeze.ReleaseAll() HERE - deliberately removed.
+            //
+            // It used to sit at the end of this method with the note "statics
+            // outlive a scene load, so a REMATCH from the frozen end panel would
+            // resume into a still-frozen clock". The intent was right; the owner
+            // was wrong. ReleaseAll drops EVERY holder, so a scoreboard rebuilding
+            // its own visual tree would silently void Agent_MatchFlow's countdown,
+            // halftime and full-time holds while those phases still believed they
+            // owned the clock - and their later Release would then be a no-op on an
+            // already-empty set. It was harmless only because nothing ever
+            // re-enables this component mid-match, which is a property of today's
+            // scenes rather than of this class.
+            //
+            // The clock is released by the things that actually own scene entry:
+            // Agent_MatchFlow.Start (runs in every match scene, after this) and
+            // every navigation button (REMATCH / MENU / Agent_Chrome.ReturnToMenu)
+            // before it calls LoadScene. The REMATCH path is covered twice over.
         }
 
         /// <summary>
@@ -210,6 +265,8 @@ namespace PoSoccer
             template.CloneTree(_root);
 
             var safe = _root.Q<VisualElement>("safe");
+            _topBand = _root.Q<VisualElement>("top-band");
+            _bottomBand = _root.Q<VisualElement>("bottom-band");
             _score = _root.Q<Label>("score");
             _stepLabel = _root.Q<Label>("clock");
             _ballControlBlue = _root.Q<VisualElement>("meter-blue");
@@ -230,7 +287,8 @@ namespace PoSoccer
             _broadcastTag = _root.Q<Label>("broadcast-tag");
             var controls = _root.Q<VisualElement>("controls");
 
-            if (safe == null || _score == null || _stepLabel == null ||
+            if (safe == null || _topBand == null || _bottomBand == null ||
+                _score == null || _stepLabel == null ||
                 _ballControlBlue == null || _ballControlRed == null ||
                 _blueChips == null || _redChips == null || _toast == null ||
                 _commentary == null || _banner == null || _replayTag == null ||
@@ -324,6 +382,30 @@ namespace PoSoccer
         }
 
         float _matchSeconds;
+        bool _chipsBuilt;
+
+        /// <summary>
+        /// Ends the match when the clock runs out.
+        ///
+        /// WHY A BOUND EXISTS AT ALL. first-to-<see cref="matchGoals"/> was the only
+        /// terminal condition, so a match between two evenly-matched sides that both
+        /// stall - which, per the project's own eval record, is 27% of episodes - had
+        /// no end state to reach. Agent_Overtime forces GOALLESS stretches to resolve,
+        /// but a 4-4 match that keeps trading goals never arms it and never finishes.
+        ///
+        /// SAFE TO RUN UNGUARDED AGAINST THE REPLAY. _matchSeconds accumulates
+        /// Time.deltaTime, which is zero whenever Agent_TimeFreeze holds the clock, so
+        /// the threshold can only be crossed during live play - never underneath a
+        /// goal replay, a countdown or the pause panel. It therefore raises the panel
+        /// directly instead of going through DeferEndPanel: that deferral is answered
+        /// by Agent_MatchFlow's GOAL sequence, and a timeout is not a goal, so a
+        /// deferred timeout would wait for a sequence that is never going to run.
+        /// </summary>
+        void CheckTimeLimit()
+        {
+            if (matchTimeLimit <= 0f || _ended || _matchSeconds < matchTimeLimit) return;
+            ShowEndPanel();
+        }
 
         // Update runs at 60 fps but these labels change a few times a match
         // (score) or once a second (clock). Cache the last rendered values so the
@@ -531,7 +613,7 @@ namespace PoSoccer
                 var chip = new VisualElement();
                 chip.AddToClassList("chip");
 
-                var square = new Label(agent.rewards.playerName.Substring(0, 1));
+                var square = new Label(agent.rewards.Initial.ToString());
                 square.AddToClassList("chip__badge");
                 // Profile colour and team tint are data, so they stay in code.
                 square.style.backgroundColor = agent.rewards.playerColor;
@@ -596,11 +678,17 @@ namespace PoSoccer
             _endPanel = new VisualElement();
             _endPanel.AddToClassList("panel--scrim");
 
-            var headline = new Label(_blueScore > _redScore ? "BLUE WINS" : "RED WINS");
+            // A draw was unreachable while first-to-N was the only terminal
+            // condition, so the headline was a two-way branch that filed every
+            // level scoreline as a RED win. matchTimeLimit makes level scores
+            // reachable, so the third case has to exist.
+            bool drawn = _blueScore == _redScore;
+            var headline = new Label(drawn ? "DRAW" : _blueScore > _redScore ? "BLUE WINS" : "RED WINS");
             headline.style.fontSize = Agent_UIStyle.FontXL;
             headline.style.unityFontStyleAndWeight = FontStyle.Bold;
-            headline.style.color = _blueScore > _redScore
-                ? Agent_UIStyle.BlueTeam : Agent_UIStyle.RedTeam;
+            headline.style.color = drawn
+                ? Agent_UIStyle.TextPrimary
+                : _blueScore > _redScore ? Agent_UIStyle.BlueTeam : Agent_UIStyle.RedTeam;
             _endPanel.Add(headline);
 
             var score = new Label($"{_blueScore}  —  {_redScore}");
@@ -640,11 +728,27 @@ namespace PoSoccer
             HandleBackButton();
 
             if (env == null || _score == null) return;
-            if (_blueChips != null && _blueChips.childCount == 0 && env.agents.Count > 0) BuildChips();
+
+            // Built once per lineup, not "whenever the row happens to be empty".
+            // The old condition was `childCount == 0 && env.agents.Count > 0`, which
+            // is a rebuild request that the rebuild itself cannot satisfy: BuildChips
+            // skips any agent whose rewards are null, so a lineup that produces no
+            // blue chip left the condition true and re-ran the whole builder - with
+            // its VisualElement and Label allocations - EVERY FRAME, for the life of
+            // the match. A flag records that the attempt was made.
+            if (!_chipsBuilt && _blueChips != null && env.agents.Count > 0)
+            {
+                _chipsBuilt = true;
+                BuildChips();
+            }
 
             if (enableMatchFlow)
             {
-                if (!_ended) _matchSeconds += Time.deltaTime;
+                if (!_ended)
+                {
+                    _matchSeconds += Time.deltaTime;
+                    CheckTimeLimit();
+                }
 
                 if (_blueScore != _shownBlue || _redScore != _shownRed)
                 {
@@ -653,7 +757,12 @@ namespace PoSoccer
                     _shownRed = _redScore;
                 }
 
-                int second = (int)_matchSeconds;
+                // Counts DOWN when the match is bounded. A timer that ends the game
+                // has to be the timer on screen - a stopwatch climbing past a limit
+                // the player cannot see is how a match appears to stop for no reason.
+                int second = matchTimeLimit > 0f
+                    ? Mathf.Max(0, Mathf.CeilToInt(matchTimeLimit - _matchSeconds))
+                    : (int)_matchSeconds;
                 if (second != _shownSecond)
                 {
                     _stepLabel.text = $"{second / 60:0}:{second % 60:00}";
@@ -694,6 +803,20 @@ namespace PoSoccer
             if (!enableMatchFlow) return;
             var keyboard = UnityEngine.InputSystem.Keyboard.current;
             if (keyboard == null || !keyboard.escapeKey.wasPressedThisFrame) return;
+
+            // ON THE RESULT SCREEN, BACK MEANS LEAVE. It used to mean nothing:
+            // TogglePause refuses once MatchOver is true (correctly - a pause layered
+            // under the result card is a dead end with two sets of buttons), so the
+            // hardware back button was inert on the ONE screen a player most wants out
+            // of, with the only exits two on-screen buttons. Android's contract is that
+            // back always goes up a level, and from a finished match that is the menu.
+            if (MatchOver)
+            {
+                Agent_TimeFreeze.ReleaseAll();
+                SceneManager.LoadScene(menuScene);
+                return;
+            }
+
             TogglePause();
         }
 

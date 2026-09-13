@@ -80,7 +80,7 @@ namespace PoSoccer
                 labelGo.transform.localPosition = new Vector3(0f, -0.12f, 0f);
 
                 var text = labelGo.AddComponent<TextMesh>();
-                text.text = rewards.playerName.Substring(0, 1);
+                text.text = rewards.Initial.ToString();
                 text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
                 text.fontSize = 96;
                 text.characterSize = 0.085f;

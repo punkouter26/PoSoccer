@@ -121,7 +121,12 @@ namespace PoSoccer
             ClearTrailAfterResetAsync(this.GetCancellationTokenOnDestroy()).Forget();
 
             if (winner == null) return;
-            Agent_Stadium.Instance?.PulseGoal();
+            // A static MonoBehaviour singleton is the worst case for `?.`: the field
+            // still holds a reference after the object is destroyed, Unity's == says
+            // null and C#'s reference equality says not-null, so ?. calls straight
+            // into a destroyed component. The reachable path is a goal landing on the
+            // frame MENU was pressed, which unloads Agent_Stadium mid-celebration.
+            if (Agent_Stadium.Instance != null) Agent_Stadium.Instance.PulseGoal();
             if (_camera != null) ShakeAsync(0.35f, 0.22f, this.GetCancellationTokenOnDestroy()).Forget();
         }
 

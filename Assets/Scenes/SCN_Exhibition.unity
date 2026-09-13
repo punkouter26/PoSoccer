@@ -757,8 +757,8 @@ MonoBehaviour:
     NumStackedVectorObservations: 1
     m_ActionSpec:
       m_NumContinuousActions: 0
-      BranchSizes: 01000000
-    VectorActionSize: 01000000
+      BranchSizes: 01000000i
+    VectorActionSize: 01000000i
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
@@ -1615,10 +1615,12 @@ MonoBehaviour:
   ballSpawnJitter: 1
   defaultGoalWidth: 7.32
   defaultBotStrength: 1
-  stepCapOverride: 2500
+  stepCapOverride: 0
   magnusScale: 0.0005
   ballDampingRange: {x: 0.08, y: 0.15}
   randomizeSpawns: 1
+  stuckSeconds: 20
+  stuckRadius: 2.5
 --- !u!4 &588775818
 Transform:
   m_ObjectHideFlags: 0
@@ -1703,8 +1705,29 @@ MonoBehaviour:
   crowdLoop: {fileID: 8300000, guid: 07661d89f6ff0f142a56d0ba2b477525, type: 3}
   music: {fileID: 0}
   crowdBoo: {fileID: 0}
+  crowdSwell: {fileID: 0}
+  crowdRoar: {fileID: 0}
+  ballRoll: {fileID: 0}
+  breath: {fileID: 0}
+  post: {fileID: 0}
+  musicBed: {fileID: 0}
+  musicTension: {fileID: 0}
+  musicDrive: {fileID: 0}
+  _tensionFullAt: 0.7
+  _driveFullAt: 0.75
+  _tensionMax: 0.8
+  _driveMax: 0.9
   crowdBase: 0.16
   crowdSwellMax: 0.45
+  _swellFullAt: 0.75
+  _swellMaxLevel: 0.55
+  _reverbMix: 0.32
+  _reverbDecay: 1.6
+  _rollFullSpeed: 12
+  _rollVolume: 0.35
+  _postZone: 0.62
+  _breathBelow: 0.55
+  _breathVolume: 0.3
   _masterVolume: 1
   _sfxVolume: 1
   _crowdVolume: 1
@@ -1714,6 +1737,7 @@ MonoBehaviour:
   _minDistance: 6
   _maxDistance: 40
   _stereoSpread: 0.7
+  _farCutoff: 900
   _duckAmount: 0.55
   _duckRelease: 1.4
   _frozenCutoff: 850
@@ -2365,6 +2389,9 @@ MonoBehaviour:
   _visibleOnStart: 0
   _sampleWindow: 240
   _refreshInterval: 0.25
+  _frameBudgetMs: 16.7
+  _writeSessionCsv: 1
+  _maxCsvRows: 10000
 --- !u!4 &1500333644
 Transform:
   m_ObjectHideFlags: 0
@@ -2491,8 +2518,8 @@ MonoBehaviour:
     NumStackedVectorObservations: 1
     m_ActionSpec:
       m_NumContinuousActions: 0
-      BranchSizes: 01000000
-    VectorActionSize: 01000000
+      BranchSizes: 01000000i
+    VectorActionSize: 01000000i
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
@@ -2805,8 +2832,8 @@ MonoBehaviour:
     NumStackedVectorObservations: 1
     m_ActionSpec:
       m_NumContinuousActions: 0
-      BranchSizes: 01000000
-    VectorActionSize: 01000000
+      BranchSizes: 01000000i
+    VectorActionSize: 01000000i
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
@@ -3101,8 +3128,8 @@ MonoBehaviour:
     NumStackedVectorObservations: 1
     m_ActionSpec:
       m_NumContinuousActions: 0
-      BranchSizes: 01000000
-    VectorActionSize: 01000000
+      BranchSizes: 01000000i
+    VectorActionSize: 01000000i
     VectorActionDescriptions: []
     VectorActionSpaceType: 0
     hasUpgradedBrainParametersWithActionSpec: 1
@@ -3440,8 +3467,10 @@ MonoBehaviour:
   env: {fileID: 588775817}
   enableMatchFlow: 1
   matchGoals: 5
+  matchTimeLimit: 480
   menuScene: SCN_Menu
   showHud: 1
+  _showBroadcastStrip: 0
 --- !u!114 &1977980028
 MonoBehaviour:
   m_ObjectHideFlags: 0

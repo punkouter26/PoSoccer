@@ -190,8 +190,31 @@ namespace PoSoccer
                 _env.ResizePitch(_baseHalfExtents * scale);
                 _appliedScale = scale;
             }
-            _env.SetGoalWidth(_baseGoalWidth * Mathf.Lerp(1f, _goalGain, Squeeze01));
+
+            // GUARDED FOR THE SAME REASON THE SCALE ABOVE IS, AND IT WAS NOT.
+            //
+            // This line ran every FixedUpdate - 100 Hz - for the whole match,
+            // including the ~95% of it before overtime arms at all, when the value
+            // it writes has not changed since Start. SetGoalWidth writes two goal
+            // transforms and raises the static PitchReconfigured event, whose one
+            // subscriber (Agent_GoalFrame) then rebuilds its mouth bar. That is 200
+            // event deliveries a second to redraw a line in the position it was
+            // already in. The scale half of this method has had an epsilon since it
+            // was written; the width half simply never got one.
+            float width = _baseGoalWidth * Mathf.Lerp(1f, _goalGain, Squeeze01);
+            if (Mathf.Abs(width - _appliedGoalWidth) < GOAL_WIDTH_EPSILON) return;
+            _appliedGoalWidth = width;
+            _env.SetGoalWidth(width);
         }
+
+        /// <summary>
+        /// Width change small enough to skip, in metres. Well under a pixel at any
+        /// framing this game uses - the squeeze crosses it a few times a second
+        /// rather than a hundred.
+        /// </summary>
+        const float GOAL_WIDTH_EPSILON = 0.01f;
+
+        float _appliedGoalWidth = -1f;
 
         void Restore()
         {
@@ -207,6 +230,12 @@ namespace PoSoccer
                 _appliedScale = 1f;
             }
             _env.SetGoalWidth(_baseGoalWidth);
+            // Invalidate the width cache rather than setting it to _baseGoalWidth:
+            // ResetPitch runs straight after this and re-reads the mouth from the
+            // `goal_width` environment parameter, so what the goals actually carry a
+            // moment from now is not this method's to predict. A sentinel costs one
+            // redundant write on the next tick and cannot go stale.
+            _appliedGoalWidth = -1f;
         }
 
         /// <summary>
