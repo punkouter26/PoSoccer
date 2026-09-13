@@ -6,7 +6,7 @@ param(
     [string]$EnvPath = "",
     [int]$NumEnvs = 4,
     [int]$BasePort = 5005,
-    [string]$Config = "STANDARD_phase1_ppo.yaml",
+    [string]$Config = "TRAIN_STANDARD_p22.yaml",
     [string]$InitFrom = "",
     [switch]$Resume,
     [switch]$Force,
@@ -38,7 +38,17 @@ try {
 # Env players are spawned as children of mlagents-learn, so they inherit it.
 $env:POSOCCER_OPPONENT = if ($SelfPlay) { "" } else { "bot" }
 
-$mlArgs = @("$root\config\$Config",
+# The default used to be STANDARD_phase1_ppo.yaml, which lived in config\_archive
+# and therefore never resolved - the documented default invocation of this script
+# could not start a run. Resolve and verify before handing the path to the trainer,
+# so a missing config fails here, naming the file, rather than inside mlagents-learn.
+$configPath = Join-Path "$root\config" $Config
+if (-not (Test-Path $configPath)) {
+    $available = (Get-ChildItem "$root\config\*.yaml" | ForEach-Object { $_.Name }) -join ", "
+    throw "Config not found: $configPath`nAvailable in config\: $available"
+}
+
+$mlArgs = @($configPath,
           "--run-id=$RunId", "--base-port=$BasePort", "--results-dir=$root\results")
 if ($EnvPath) { $mlArgs += @("--env=$root\$EnvPath", "--no-graphics", "--num-envs=$NumEnvs") }
 if ($InitFrom) { $mlArgs += "--initialize-from=$InitFrom" }
