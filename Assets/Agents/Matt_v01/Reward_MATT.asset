@@ -13,19 +13,18 @@ MonoBehaviour:
   m_Name: Reward_MATT
   m_EditorClassIdentifier: 
   playerName: MATT
-  personalityNotes: 'THE STRIKER. Glory hunter: biggest scoring reward and shoot
-    gradient on the roster, lowest fear of conceding, hates draws, presses with urgency
-    (loose jitter rein, high step cost). Same total incentive budget as everyone
-    (2.2 terminal / 0.0016 dense) - just spent on attack. Weakness by design: last
-    home when defending.'
+  personalityNotes: 'THE STRIKER. Glory hunter: biggest scoring reward and shoot gradient on the roster, lowest fear of conceding, hates draws, presses with urgency (loose jitter rein, high step cost). Same total incentive budget as everyone (2.2 terminal / 0.0016 dense) - just spent on attack. Weakness by design: last home when defending.'
   playerColor: {r: 1, g: 0.5, b: 0.12, a: 1}
-  brainModel: {fileID: 0}
-  trainingSteps: 10000311
-  trainingRunId: soccer_p21_matt
-  trainedOn: 2026-08-29
+  kitPattern: 0
+  kitColor: {r: 1, g: 1, b: 1, a: 0}
+  kitBands: 6
+  brainModel: {fileID: 5022602860645237092, guid: d9ed0854806da8247b8bd4564815f17a, type: 3}
+  trainingSteps: 10001014
+  trainingRunId: soccer_p27gain_matt
+  trainedOn: 2026-09-13
   evalWinRate: -1
   evalEpisodes: 0
-  trainedActionGain: 1.6
+  trainedActionGain: 1
   bodyScale: 1.25
   bodyMass: 117
   goalScorer: 1.4
@@ -43,8 +42,8 @@ MonoBehaviour:
   useDifferentialBallToGoal: 1
   ballToGoalProgressScale: 0.02
   actionJitterScale: 0.0004
-  wallProximityPenalty: 5e-05
-  cornerBallPenalty: 6e-05
+  wallProximityPenalty: 0.00005
+  cornerBallPenalty: 0.00006
   defensivePositionScale: 0
   possessionScale: 0
   ballContact: 0.005
