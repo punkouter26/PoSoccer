@@ -29,7 +29,9 @@
 // Exit codes: 0 success | 1 build failed | 2 scene missing | 3 signing config missing
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using PoSoccer.EditorTools;
 using UnityEditor;
 using UnityEngine;
 
@@ -40,31 +42,27 @@ public static class Agent_BuildAabCommand
     // editor whose enum predates API 36 - the underlying value is just the int.
     private const int TargetApiLevel = 36;
 
-    // Index 0 is what the app boots into, so SCN_Menu MUST come first (UNITY_RULES:
-    // the game always starts from the menu - Agent_MatchLoader reads squad sizes and
-    // per-slot profiles from Agent_MatchSetup statics that only the menu sets).
-    //
-    // SCN_Training is deliberately EXCLUDED from Android builds. It is the headless
-    // training/eval scene, is never reachable from the game's UI, and shipping it only
-    // bloats the download. The "SCN_Training must stay index 0" rule applies to the
-    // Windows player that mlagents-learn and evaluate.ps1 boot - not to the store build.
-    private static readonly string[] Scenes =
-    {
-        "Assets/Scenes/SCN_Menu.unity",
-        "Assets/Scenes/SCN_Exhibition.unity",
-    };
-
     public static void Build()
     {
-        foreach (string scene in Scenes)
+        // THE SHIPPING SCENE LIST HAS ONE OWNER: Editor_BuildAndroidAAB.SHIP_SCENES.
+        // This file and Agent_BuildPlayerCommand each used to carry a private copy,
+        // so three lists had to agree by hand and nothing would have reported it if
+        // they drifted - the bundle would simply have contained a different set of
+        // scenes depending on which entry point ran. ResolveShipScenes performs the
+        // same exists-on-disk check this block used to do and logs the missing path.
+        //
+        // SCN_Training is excluded from Android builds by that list: it is the
+        // headless training/eval scene, is unreachable from the game's UI, and
+        // shipping it only bloats the download. The "SCN_Training must stay index 0"
+        // rule applies to the Windows player that mlagents-learn and evaluate.ps1
+        // boot, not to the store build.
+        List<string> shipScenes = Editor_BuildAndroidAAB.ResolveShipScenes();
+        if (shipScenes == null)
         {
-            if (!File.Exists(scene))
-            {
-                Debug.LogError($"[Agent_BuildAabCommand] Scene missing on disk: {scene}");
-                EditorApplication.Exit(2);
-                return;
-            }
+            EditorApplication.Exit(2);
+            return;
         }
+        string[] scenes = shipScenes.ToArray();
 
         // ---- signing -------------------------------------------------------
         string keystore = Environment.GetEnvironmentVariable("POSOCCER_KEYSTORE");
@@ -116,8 +114,11 @@ public static class Agent_BuildAabCommand
             PlayerSettings.Android.bundleVersionCode += 1;
         }
 
-        EditorBuildSettings.scenes = Array.ConvertAll(
-            Scenes, s => new EditorBuildSettingsScene(s, true));
+        // EditorBuildSettings.scenes is deliberately NOT written. BuildPipeline uses
+        // BuildPlayerOptions.scenes, so assigning the global list bought nothing and
+        // silently rewrote the project's Build Settings as a side effect of running a
+        // build - and SCN_Training has to stay at index 0 there for headless training
+        // and eval to boot.
 
         string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
         string outputPath = Path.Combine(projectRoot, "Builds", "PoSoccer", "PoSoccer.aab");
@@ -125,7 +126,7 @@ public static class Agent_BuildAabCommand
 
         var options = new BuildPlayerOptions
         {
-            scenes = Scenes,
+            scenes = scenes,
             locationPathName = outputPath,
             target = BuildTarget.Android,
             targetGroup = BuildTargetGroup.Android,

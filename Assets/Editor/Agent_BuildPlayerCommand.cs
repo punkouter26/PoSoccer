@@ -7,26 +7,26 @@
 //
 // Output: <projectRoot>/Builds/PoSoccer/PoSoccer.apk
 //
-// This class lives in Assets/Editor/ so it gets compiled into an implicit
-// editor-only assembly and is automatically stripped from runtime builds.
+// This class lives in Assets/Editor/, which carries PoSoccer.Editor.Build.asmdef -
+// so it compiles into THAT assembly, not into an implicit Assembly-CSharp-Editor as
+// this header used to claim. That matters here: it is what lets this file call
+// Editor_BuildAndroidAAB's internal shipping-scene resolver instead of keeping a
+// second copy of the list.
+//
+// WHY THIS FILE STILL EXISTS ALONGSIDE Editor_BuildAndroid. That one is the menu
+// item; this one is the batch-mode entry point, and the difference is
+// EditorApplication.Exit - a CLI build has to report success through a process exit
+// code, which a MenuItem has no way to do. Everything else is now shared.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using PoSoccer.EditorTools;
 using UnityEditor;
 using UnityEngine;
 
 public static class Agent_BuildPlayerCommand
 {
-    // SCN_Menu first: index 0 is what the app boots into, and the game always starts
-    // from the menu (Agent_MatchLoader depends on Agent_MatchSetup statics that only the
-    // menu sets). SCN_Training is excluded - it is the headless training/eval scene and
-    // is unreachable from the game's UI on device.
-    private static readonly string[] Scenes =
-    {
-        "Assets/Scenes/SCN_Menu.unity",
-        "Assets/Scenes/SCN_Exhibition.unity",
-    };
-
     // Exit codes:
     //   0   = success
     //   1   = build completed but BuildResult != Succeeded
@@ -35,21 +35,27 @@ public static class Agent_BuildPlayerCommand
     {
         bool development = HasFlag("-Development") || HasFlag("-development");
 
-        // Sanity: every scene file must exist before we invoke BuildPipeline.
-        foreach (string scene in Scenes)
+        // THE SHIPPING SCENE LIST HAS ONE OWNER. This file used to carry its own
+        // copy, as did Agent_BuildAabCommand, so three lists had to be kept in
+        // agreement by hand and nothing would have reported it if they drifted -
+        // the build would simply have shipped a different set of scenes depending
+        // on which entry point was used. ResolveShipScenes also does the
+        // exists-on-disk check and logs the missing path.
+        List<string> shipScenes = Editor_BuildAndroidAAB.ResolveShipScenes();
+        if (shipScenes == null)
         {
-            if (!File.Exists(scene))
-            {
-                Debug.LogError($"[Agent_BuildPlayerCommand] Scene missing on disk: {scene}");
-                EditorApplication.Exit(2);
-                return;
-            }
+            EditorApplication.Exit(2);
+            return;
         }
+        string[] scenes = shipScenes.ToArray();
 
-        // Register scenes into EditorBuildSettings, then drive BuildPipeline.
-        EditorBuildSettings.scenes = Array.ConvertAll(
-            Scenes,
-            s => new EditorBuildSettingsScene(s, true));
+        // NOTE: EditorBuildSettings.scenes is deliberately NOT written here.
+        // BuildPipeline uses BuildPlayerOptions.scenes, so assigning the global
+        // list bought nothing and cost something real - it silently rewrote the
+        // project's Build Settings as a side effect of running a build, and
+        // SCN_Training has to stay at index 0 there for headless training and eval
+        // to boot. A build command must not reorder the scene list for everything
+        // else in the project.
 
         string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
         string outputPath = Path.Combine(projectRoot, "Builds", "PoSoccer", "PoSoccer.apk");
@@ -84,7 +90,7 @@ public static class Agent_BuildPlayerCommand
         {
             var buildPlayerOptions = new BuildPlayerOptions
             {
-                scenes = Scenes,
+                scenes = scenes,
                 locationPathName = outputPath,
                 target = BuildTarget.Android,
                 targetGroup = BuildTargetGroup.Android,

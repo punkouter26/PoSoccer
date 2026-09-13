@@ -20,7 +20,7 @@ MonoBehaviour:
     incentive budget as everyone (2.2 / 0.0016) - spent on defense. Weakness by design:
     scores rarely.'
   playerColor: {r: 0.16, g: 0.75, b: 0.85, a: 1}
-  brainModel: {fileID: 5022602860645237092, guid: d83ea2dfd74225341a63821e2ebabb77, type: 3}
+  brainModel: {fileID: 0}
   trainingSteps: 1999868
   trainingRunId: soccer_p21_kim
   trainedOn: 2026-08-30
