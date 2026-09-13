@@ -50,6 +50,18 @@ namespace PoSoccer
 
         void Awake()
         {
+            // Headless training/eval builds no stadium. Every light, shadow caster
+            // and post-process volume below exists to be photographed, and the
+            // FindObjectsByType sweep underneath runs across sixteen cloned pitches
+            // to set a material on renderers that are never rendered. Instance is
+            // deliberately left null so anything that reaches for the stadium in a
+            // headless run gets the same "not present" answer it already handles.
+            if (Agent_Presentation.IsHeadless)
+            {
+                enabled = false;
+                return;
+            }
+
             Instance = this;
 
             if (litMaterial != null)

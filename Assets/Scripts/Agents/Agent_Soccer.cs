@@ -386,6 +386,60 @@ namespace PoSoccer
         ///
         /// Leave the variable unset for genuine self-play runs (phase 2 POCA, 3c).
         /// </summary>
+        /// <summary>
+        /// True when an agent on <paramref name="side"/> will be driven by
+        /// <see cref="Agent_HeuristicBot"/> AND nothing will ever read the
+        /// observations it produces - so building them is pure waste.
+        ///
+        /// WHY THIS EXISTS (2026-09-13). ML-Agents does not skip perception for a
+        /// heuristic agent. <c>Agent.SendInfoToBrain</c> calls <c>UpdateSensors()</c>
+        /// unconditionally - which is where <c>RayPerceptionSensor.Update()</c> fires
+        /// every cast - and then <c>HeuristicPolicy.RequestDecision</c> calls
+        /// <c>StepSensors</c>, which writes each sensor into a <c>NullList</c>
+        /// whose <c>Add</c> is an empty method. Verified in the embedded package at
+        /// Runtime/Policies/HeuristicPolicy.cs. So in every phase-1 run the scripted
+        /// RED agent casts its full 40-ray battery and runs CollectObservations at
+        /// 12.5 Hz, and all of it is written to a sink and discarded. Across 4 env
+        /// processes x 16 pitches that is 64 agents' worth of perception - HALF the
+        /// perception in the run - computed for nothing.
+        ///
+        /// <see cref="Agent_HeuristicBot.ComputeActions"/> reads transforms and
+        /// rigidbodies directly and consults no sensor, so skipping them cannot
+        /// change how the opponent plays. That is what makes this safe: the learner
+        /// faces the identical opponent, and only the discard gets cheaper.
+        ///
+        /// THE THREE EXCLUSIONS ARE THE WHOLE CONTRACT, and each one is a case where
+        /// a heuristic agent's observations genuinely are read:
+        ///  - a demo-recording run (POSOCCER_RECORD_DEMO), whose entire product is
+        ///    the bot's observation/action pairs;
+        ///  - self-play (POSOCCER_OPPONENT unset), where RED is on the trainer;
+        ///  - any match or menu scene, where neither env var is set at all and a
+        ///    slot may hold an InferenceOnly brain that needs its rays.
+        /// Get one of those wrong and the symptom is a trainer rejecting the env on
+        /// an observation-shape mismatch, or a demo file full of zeros.
+        /// </summary>
+        public static bool IsSensorlessScriptedSide(Team side)
+        {
+            // A recording run is the one case where the bot's observations ARE the
+            // deliverable. Checked first so it can never be overridden below.
+            string demo = System.Environment.GetEnvironmentVariable("POSOCCER_RECORD_DEMO");
+            if (!string.IsNullOrEmpty(demo) && demo != "0") return false;
+
+            // Eval: ApplyEvalMode puts BLUE on inference (needs rays) unless this is a
+            // bot-vs-bot baseline, where neither side is ever read.
+            if (Agent_EvalStats.EvalMode)
+            {
+                return Agent_EvalStats.BaselineMode || side == Team.Red;
+            }
+
+            // Training: mirrors ApplyTrainingOpponent exactly - RED only, and only
+            // when the run has opted in to the scripted opponent.
+            if (side != Team.Red) return false;
+            string mode = System.Environment.GetEnvironmentVariable("POSOCCER_OPPONENT");
+            return !string.IsNullOrEmpty(mode)
+                && mode.Equals("bot", System.StringComparison.OrdinalIgnoreCase);
+        }
+
         void ApplyTrainingOpponent()
         {
             // Eval owns policy assignment; it forces the opponent to heuristic itself.
@@ -874,11 +928,18 @@ namespace PoSoccer
         /// </summary>
         readonly float[] _rewardAccounting = new float[TermCount];
 
-        internal const int TermCount = 8;
+        // 8 -> 10 on 2026-09-13. `defense` and `possession` are KIM's and NICK's
+        // SIGNATURE terms - the one scale that makes each of them a distinct player -
+        // and they were the only two dense terms paying through AddReward directly
+        // instead of Account. So the reward accounting this array exists to produce
+        // was blind to exactly the two coefficients anyone tuning a personality would
+        // want to read, and a KIM run's TensorBoard showed seven terms summing to less
+        // than her realized dense reward with nothing naming the difference.
+        internal const int TermCount = 10;
         internal static readonly string[] TermNames =
         {
             "step", "proximity", "facing", "ball_to_goal", "crossbar",
-            "jitter", "wall", "corner",
+            "jitter", "wall", "corner", "defense", "possession",
         };
 
         void Account(int term, float value)
@@ -929,8 +990,16 @@ namespace PoSoccer
                 Account(1, rewards.ballProximityScale * (1f / (1f + d)));
             }
 
-            float align = Vector2.Dot(transform.up, toBall.normalized);
-            Account(2, rewards.facingAlignmentScale * align);
+            // facingAlignmentScale is 0 on all five shipped profiles (retired
+            // 2026-09-07 - the signed bearing to the ball became an observation, so
+            // paying for facing was paying for an input). The normalize and dot ran
+            // anyway, every physics step, for every agent. Guarded rather than
+            // deleted because the term is still a legal A/B lever.
+            if (rewards.facingAlignmentScale != 0f)
+            {
+                float align = Vector2.Dot(transform.up, toBall.normalized);
+                Account(2, rewards.facingAlignmentScale * align);
+            }
 
             // The "shoot goalward" gradient.
             //
@@ -974,20 +1043,24 @@ namespace PoSoccer
                 }
             }
 
-            // Retained for the crossbar term below, which keys off closing speed.
-            float progress = Vector2.Dot(
-                env.Ball.linearVelocity,
-                (env.GetGoalPosition(Opponent(team)) - env.Ball.position).normalized);
-
             // Crossbar proximity - close-range shot gradient. Pays per step while the
             // ball sits inside the attacking goal mouth AND is moving toward the net,
             // so a parked-ball exploit can't farm it. The "in the mouth" test is a
             // generous box (~1.5 units around the goal line, half-pitch wide) so the
             // reward lights up from a realistic shooting range, not just the goalmouth.
+            //
+            // `progress` used to be computed unconditionally ABOVE this block, with a
+            // comment saying it was "retained for the crossbar term below" - a
+            // normalize and a dot charged on every agent on every physics step for a
+            // term that is 0 on all five shipped profiles (retired 2026-09-07 as
+            // redundant with ballToGoal + goalScorer). It is now computed inside the
+            // guard, which is the only place it was ever read.
             if (rewards.crossbarProximity > 0f)
             {
                 Vector2 toOpp = env.GetGoalPosition(Opponent(team)) - env.Ball.position;
                 float dist = toOpp.magnitude;
+                float progress = Vector2.Dot(
+                    env.Ball.linearVelocity, toOpp.normalized);
                 if (dist < 1.5f && progress > 0.05f)
                 {
                     // Closer + faster = more reward; clamped to keep one step bounded.
@@ -1036,13 +1109,13 @@ namespace PoSoccer
                 if (ballToOwnGoal.sqrMagnitude > 0.01f && d > 0.01f)
                 {
                     float screen = Vector2.Dot(ballToOwnGoal.normalized, (-toBall).normalized);
-                    AddReward(rewards.defensivePositionScale * Mathf.Max(0f, screen));
+                    Account(8, rewards.defensivePositionScale * Mathf.Max(0f, screen));
                 }
             }
 
             // NICK-style possession - close control of the ball pays continuously.
             if (rewards.possessionScale > 0f && d < 1.2f)
-                AddReward(rewards.possessionScale);
+                Account(9, rewards.possessionScale);
         }
 
         public override void Heuristic(in ActionBuffers actionsOut)

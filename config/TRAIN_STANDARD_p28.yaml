@@ -1,0 +1,169 @@
+# p28 - THROUGHPUT CONTROL. Learning config is byte-identical to p22 below the
+# header; the ONLY trainer change is `threaded: true`. Run this to re-baseline
+# seconds-per-million-steps, NOT to look for a better policy.
+#
+# WHY p22 AND NOT p25. p22 is the last GRADED configuration (26.6%, n=350). A
+# throughput A/B has to hold the learning side fixed against something whose
+# outcome is known, or a wall-clock win and a policy change arrive together and
+# neither can be read.
+#
+# ============================================================================
+# THE MEASUREMENT THIS CONFIG EXISTS TO ACT ON (2026-09-13)
+# ============================================================================
+# Sampled over 20 s against the LIVE `soccer_p27gain_matt` run - 4 env processes
+# plus the trainer, i7-10750H (6 cores / 12 logical), RTX 2060:
+#
+#   process                cores   of 12 logical
+#   trainer (python)        1.00        8.3%     <- pegged, single-threaded
+#   PoSoccer env x4    0.17-0.21    1.4-1.7% each
+#   ----------------------------------------------------
+#   total                  ~2.1        ~17%
+#   system-wide CPU                    40%  (three Unity editors included)
+#   GPU                                27%  (three Unity editors included)
+#
+# THE MACHINE IS ~83% IDLE AND THE BOTTLENECK IS THE TRAINER, NOT UNITY PHYSICS.
+# Each env player sits at a FIFTH of one core, waiting. This reverses the premise
+# the 2026-09-07 audit reasoned from ("cores that are already saturated"), which
+# is why that pass concluded the physics levers were the ones worth measuring -
+# they are the cheap half of a process that is already idle four fifths of the
+# time. Env-side micro-optimisation cannot buy back time nobody is spending.
+#
+# WHAT `threaded: true` DOES ABOUT IT. ml-agents defaults it to False
+# (TrainerSettings.threaded, settings.py:639), which serialises the loop: the
+# trainer steps every environment, THEN runs the gradient update, and during the
+# update all four env processes are blocked. At a 1.00-core trainer against
+# 0.2-core envs that is the shape the numbers above describe. True runs the
+# trainer in its own thread so the update overlaps the next batch of env stepping.
+#
+# THE HONEST COST, stated here because it is easy to present this as free: the
+# overlap means some trajectories are collected under a policy one update behind
+# the one being optimised. PPO is on-policy, so that is a small, real amount of
+# staleness, bounded by one update. It is an accepted trade in ml-agents' own
+# defaults for larger runs; it is NOT nothing, and it is the reason this is a
+# SINGLE-VARIABLE run against a graded baseline rather than a default flipped
+# into every config at once.
+#
+# HOW TO JUDGE IT - and mean reward is not it. Read s/M steps off the checkpoint
+# timestamps the same way the 642.2 s/M p22 baseline was computed (nine 1M
+# intervals, 637-658, very stable). Then confirm the policy did not move: this
+# config must grade inside noise of 26.6% at n=350 (+/-4.7 pp at 2 SD). A
+# throughput change that also moves the win rate has done something else.
+#
+# ALREADY APPLIED IN CODE, so this run measures them too (all behaviour-neutral
+# for the learner; see docs/ml-audit-2026-09-13.md):
+#   - the scripted RED side builds no ray sensors. ML-Agents does not skip
+#     perception for a heuristic agent: Agent.SendInfoToBrain calls UpdateSensors
+#     unconditionally and HeuristicPolicy.StepSensors then writes every sensor
+#     into a NullList. Half the perception in every phase-1 run was computed and
+#     discarded.
+#   - Agent_HUD, Agent_Stadium and Agent_MatchFX no longer build or tick under
+#     -batchmode -nographics.
+#   - the dead facing/crossbar math is behind its own zero-check.
+#
+# NOT APPLIED, DELIBERATELY: the ray-battery cut (120 of 178 model inputs). It
+# changes the observation contract, which obsoletes the deployed STANDARD.onnx
+# and would land while `soccer_p27gain_matt` is still running and has yet to
+# export. It is written up as the next run, with its own single-variable config.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 10000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+    # THE ONE VARIABLE. See the header for the measurement and the staleness cost.
+    threaded: true
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # One flat threshold, applied to every lesson: the policy must be genuinely
+  # winning before the opponent gets stronger. min_lesson_length 1000 makes a
+  # lucky streak far too expensive to fake. Unchanged from p22 on purpose.
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.35
+      # Support positioning and corner craft switch on at 0.5 - the first real step up.
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.65
+      # The boost-shot switches on at 0.8.
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  # STAYS 4. Raising it is the obvious reading of "the envs are only at 0.2 cores",
+  # and it is the wrong one: the envs are idle because the TRAINER is the
+  # bottleneck, so more of them queue behind the same single thread. num_envs is
+  # worth revisiting only AFTER `threaded: true` has been measured - if the trainer
+  # thread stops being the ceiling, the env count becomes the next one.
+  # scripts/train-phase1.ps1 passes --num-envs on the command line and the CLI wins;
+  # this key is what a run launched WITHOUT the script would get.
+  num_envs: 4
+
+engine_settings:
+  # 20 is ASPIRATIONAL, not achieved. Measured from the live p27 run: 700k steps in
+  # 483.5 s, across 4 envs x 16 pitches = 64 trainer-facing agents, is 10,937
+  # decisions/agent, x8 physics ticks at 0.01 s = an effective time scale of ~1.8x.
+  # The player delivers under a TENTH of what is asked for here, so raising this
+  # number buys exactly nothing - it is a ceiling, not a throttle. Recorded so the
+  # next person does not try it.
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

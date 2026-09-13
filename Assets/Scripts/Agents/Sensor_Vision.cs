@@ -176,6 +176,26 @@ namespace PoSoccer
             // Agent_Soccer.team is a serialized field so it is readable from Awake
             // regardless of component order.
             var soccer = GetComponent<Agent_Soccer>();
+
+            // A scripted opponent whose observations are discarded gets NO rays.
+            // See Agent_Soccer.IsSensorlessScriptedSide for why they are discarded
+            // (HeuristicPolicy writes every sensor into a NullList) and for the three
+            // cases where they are not. The predicate is a pure function of the
+            // serialized team plus the launcher's env vars, which is what lets it be
+            // evaluated HERE, at execution order -100, before Agent_Soccer.Awake has
+            // run - the same reason `team` itself is readable this early.
+            //
+            // Any already-serialized sensors are destroyed rather than left enabled:
+            // Agent.OnEnable snapshots whatever is on the GameObject, so a component
+            // that merely has `enabled = false` would still be in that list.
+            if (soccer != null && Agent_Soccer.IsSensorlessScriptedSide(soccer.team))
+            {
+                for (int i = 0; i < existing.Length; i++)
+                {
+                    if (existing[i] != null) DestroyImmediate(existing[i]);
+                }
+                return;
+            }
             string opponentTag = soccer != null
                 ? TeamTag(Agent_Soccer.Opponent(soccer.team))
                 : TeamTag(Agent_Soccer.Team.Red);

@@ -29,6 +29,18 @@ namespace PoSoccer
 
         void Start()
         {
+            // Headless training/eval draws nothing, so the trail, the boost
+            // emitters, the screen shake and the ball squash are all pure cost -
+            // and the shake writes Camera.main.transform while the squash writes a
+            // Transform scale, both of which are perturbations of a run whose
+            // numbers the benchmark depends on. Same exit Agent_Audio has taken
+            // since the crowd bed was found running under -nographics.
+            if (Agent_Presentation.IsHeadless)
+            {
+                enabled = false;
+                return;
+            }
+
             _env = GetComponent<Agent_EnvController>();
             _camera = Camera.main;
             _env.EpisodeEnded += OnEpisodeEnded;

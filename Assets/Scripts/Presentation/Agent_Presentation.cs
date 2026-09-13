@@ -24,6 +24,33 @@ namespace PoSoccer
     public static class Agent_Presentation
     {
         /// <summary>
+        /// True when nobody can possibly see a pixel: a headless player, or no
+        /// graphics device at all. This is the predicate mlagents runs under -
+        /// it launches env players with `-batchmode -nographics`.
+        ///
+        /// WHY IT IS HERE AND NOT WRITTEN OUT AT EACH CALL SITE (2026-09-13).
+        /// The project had this check in exactly two places - Agent_Audio.Start
+        /// and the cosmetics branch of Agent_Soccer.Start - and both of them were
+        /// added after the cost was measured and hurt. The three presentation
+        /// components serialized on the SCN_Training root never got it:
+        /// Agent_HUD (showHud is serialized 1 there), Agent_Stadium and
+        /// Agent_MatchFX all built their full runtime rig and ran an Update every
+        /// frame inside every one of the four headless env processes. Agent_Stadium
+        /// additionally sweeps FindObjectsByType&lt;SpriteRenderer&gt;() across a
+        /// scene that Agent_TrainingGrid has cloned into sixteen pitches, to assign
+        /// a lit material for a renderer that will never be rendered.
+        ///
+        /// It is deliberately SEPARATE from <see cref="IsMatchScene"/>. That gate
+        /// asks "is a human watching this scene"; this one asks "does this process
+        /// have a screen". A component can legitimately want one and not the other,
+        /// and conflating them is how the eval path (which runs headless but is NOT
+        /// a match scene) would have been gated by accident.
+        /// </summary>
+        public static bool IsHeadless =>
+            Application.isBatchMode ||
+            SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null;
+
+        /// <summary>
         /// True only in a scene meant for a human audience. False in training, in
         /// evaluation, and whenever a trainer is connected.
         /// </summary>

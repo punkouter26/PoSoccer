@@ -294,6 +294,10 @@ Four rules this layer establishes:
 
   Keep the PE-machine check itself (`0xAA64` = ARM64, `0x8664` = x64); it is the right tool. The lesson is that it has to actually be *run*: a plausible mechanism plus a real symptom is not a diagnosis, and this one stood unchallenged for nine days and steered work away from a working option.
 
+- **MEASURED 2026-09-13 — the training bottleneck is the TRAINER, not Unity physics, and the machine is 83% idle.** Sampled over 20 s against the live `soccer_p27gain_matt` run (`TotalProcessorTime` deltas / wall): the **trainer python process is pegged at exactly 1.00 core** — single-threaded — while each of the four `PoSoccer.exe` env players sits at **0.17–0.21 of a core**, waiting. Total ~2.1 of 12 logical cores; system-wide CPU 40% and GPU 27%, both including three open Unity editors. Corroborated by the run's own arithmetic: 700k steps in 483.5 s across 64 trainer-facing agents is an **effective time scale of ~1.8×** against a configured `time_scale: 20`, so that number is a ceiling, not a throttle — raising it buys nothing. **This reverses the premise of the 2026-09-07 throughput note**, which rejected `useMultithreading` because the cores "are already saturated". The rejection stands; the reason does not, and the consequence is bigger than one setting: every env-side lever in that pass (`m_VelocityIterations`, `m_QueriesStartInColliders`, CCD) optimises the cheap half of a pipeline that is already idle four fifths of the time. The trainer's one thread carries both the gradient update (GPU only 27% busy for a 256×2 MLP) and the gRPC/protobuf round-trip of **178 floats × 64 agents at 12.5 Hz** — which is what makes the observation payload a throughput term and the ray battery (120 of 178 inputs) the leading candidate. Levers that actually aim at this: `threaded: true` (ml-agents defaults it False; staged as `config/TRAIN_STANDARD_p28.yaml`) and shrinking the payload. Full record: `docs/ml-audit-2026-09-13.md`.
+
+- **LANDMINE — ML-Agents computes the scripted opponent's observations and then throws them away (found and fixed 2026-09-13).** `Agent.SendInfoToBrain` calls `UpdateSensors()` unconditionally — which is where `RayPerceptionSensor.Update()` fires every cast — and `HeuristicPolicy.RequestDecision` then calls `StepSensors`, which writes each sensor into a `NullList` whose `Add` is an empty method (`Runtime/Policies/HeuristicPolicy.cs:35`, `Agent.cs:1150`). So every phase-1 run had the scripted RED agent casting its full **40-ray battery** and running `CollectObservations` at 12.5 Hz, discarded — across 4 processes × 16 pitches that is 64 agents, **half the perception in the run**. `Sensor_Vision.Awake` now skips the battery for that side via `Agent_Soccer.IsSensorlessScriptedSide`, which is behaviour-neutral because `Agent_HeuristicBot.ComputeActions` reads transforms directly and consults no sensor. **The three exclusions in that predicate are the whole contract** — demo-recording runs (the bot's observations *are* the deliverable), self-play (RED is on the trainer), and any match scene — and getting one wrong surfaces as a trainer rejecting the env on an observation-shape mismatch, or a `.demo` full of zeros.
+
 - **Training runs on the GPU (verified 2026-08-29).** `mlagents.torch_utils.default_device()` returns `cuda` - ml-agents defaults to CUDA whenever `torch.cuda.is_available()`, and nothing here overrides it. torch is `2.5.1+cu121` against an **NVIDIA RTX 2060 (6 GB)**, and the trainer process appears in `nvidia-smi` with a `C` (compute) context. **But the GPU is not the bottleneck**: utilisation sits at ~18-21% (much of that Unity's own `C+G` contexts) because the policy is a 256x2 MLP. Wall-clock is set by the four headless `PoSoccer.exe` processes stepping physics on the CPU - measured **667 s per million steps** at `-NumEnvs 4`. Scale env count/CPU to go faster; a better GPU buys nothing here.
 
 - **Protobuf**: ML-Agents + com.unity.ai.inference both shipped `Google.Protobuf_Packed.dll`; player builds resolved the editor-only twin (CS0400). Fixed by embedding the package with stock NuGet `Google.Protobuf.dll` 3.21.12 + asmdef refs updated. Never reintroduce the packed dll; file-renaming breaks the linker (assembly identity).
@@ -322,6 +326,16 @@ therefore inoperable.
 This is the same structural failure the Architecture section already documents about the
 brain table: **these paragraphs describe mutable state that scripts and machines change
 without touching this file.** Check the filesystem, never this line.
+
+**STALE AGAIN, THE OTHER WAY, LATER THE SAME DAY (2026-09-13 19:50).** Everything the
+block below calls missing now **exists and works**: `.venv` (mlagents + torch),
+`.tooling/ml-agents`, `Builds/PoSoccer/`, `results/`. A training run
+(`soccer_p27gain_matt`) was mid-flight at 700k/10M when this was checked, using all of
+them. Note the shape of the error rather than just the correction: this paragraph has
+now been wrong in **both** directions within a single day, because it describes state
+that scripts and runs change without touching this file. **`Test-Path` it. Do not read
+it here.** The interpreter trap below is the one durable thing in this block and is
+still true.
 
 **PARTIALLY STALE AGAIN 2026-09-13 — and note the trap, because I fell in it first.**
 The **interpreter is fine**: Python **3.10.11**, x64, at

@@ -287,8 +287,10 @@ namespace PoSoccer
             // 4 env processes x 16 pitches at time_scale 20 turned the looping
             // crowd bed into a constant drone on the training machine. Bail out
             // before subscribing so no handler can wake the desk back up.
-            if (Application.isBatchMode ||
-                SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+            // The condition itself now lives in Agent_Presentation.IsHeadless, so
+            // the three components that were missing it read the same predicate
+            // rather than each growing a copy that can drift.
+            if (Agent_Presentation.IsHeadless)
             {
                 enabled = false;
                 return;

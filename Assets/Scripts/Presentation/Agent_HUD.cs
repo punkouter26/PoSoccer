@@ -205,7 +205,18 @@ namespace PoSoccer
             // showHud = false: skip every visual element (top + bottom bands +
             // toast) so the pitch reads clean. We still build a small invisible
             // root so anything trying to log in Update doesn't NRE.
-            if (!showHud)
+            //
+            // IsHeadless takes the same exit, and that is the point of routing it
+            // here rather than disabling the component (2026-09-13). SCN_Training
+            // serializes showHud: 1, so every headless env process was building the
+            // full scoreboard - bands, chips, clock, toast, win-probability strip -
+            // and then running the Update below on it every frame, in all four
+            // processes, for a screen that does not exist. Taking the existing
+            // no-visuals path leaves _score null, which Update already treats as
+            // "nothing to draw", and leaves the component ENABLED so the serialized
+            // enableMatchFlow / showHud fields that Agent_Presentation.IsMatchScene
+            // and Agent_CameraFollow read stay reachable exactly as before.
+            if (!showHud || Agent_Presentation.IsHeadless)
             {
                 _root.Clear();
                 return;
