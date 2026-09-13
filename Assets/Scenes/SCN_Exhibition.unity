@@ -1586,6 +1586,15 @@ GameObject:
   - component: {fileID: 588775820}
   - component: {fileID: 588775822}
   - component: {fileID: 588775821}
+  - component: {fileID: 588775831}
+  - component: {fileID: 588775830}
+  - component: {fileID: 588775829}
+  - component: {fileID: 588775828}
+  - component: {fileID: 588775827}
+  - component: {fileID: 588775826}
+  - component: {fileID: 588775825}
+  - component: {fileID: 588775824}
+  - component: {fileID: 588775823}
   m_Layer: 0
   m_Name: Pitch
   m_TagString: Untagged
@@ -1754,6 +1763,189 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_MatchFX
   particleSprite: {fileID: -3603556060819865620, guid: bce568d8b568ee048b7f4b898e374e53, type: 3}
+--- !u!114 &588775823
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 588775816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a4ea54dfedaaeaf46b4b6919c4059683, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_ShotTracer
+  _minShotSpeed: 4.5
+  _horizonSeconds: 1.6
+  _stepMultiple: 4
+  _recomputeInterval: 0.05
+  _thickness: 0.05
+  _sortingOrder: 16
+  _visibleOnStart: 1
+  _enableShotTracer: 1
+--- !u!114 &588775824
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 588775816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 52214e86edd06074fb7267189c8ebbbc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_VisionView
+  _thickness: 0.028
+  _hitAlpha: 0.85
+  _missAlpha: 0.16
+  _markerRadius: 0.16
+  _sortingOrder: 13
+  _startMode: 0
+  _enableVisionView: 1
+--- !u!114 &588775825
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 588775816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dcf553165775e5f4d96cb4a3273d37bc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_Intent
+  _intentLength: 2.4
+  _velocityLength: 2.4
+  _referenceSpeed: 9.54
+  _thickness: 0.055
+  _ringScale: 1.35
+  _bodyRadius: 0.4
+  _intentAlpha: 0.9
+  _velocityAlpha: 0.42
+  _ringAlpha: 0.8
+  _sortingOrder: 15
+  _visibleOnStart: 0
+  _enableIntent: 1
+--- !u!114 &588775826
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 588775816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35b3ad705431e824bb810ee8fa858c5e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_Limbs
+  _legLength: 0.62
+  _legWidth: 0.22
+  _hipWidth: 0.95
+  _stride: 0.3
+  _fullStrideSpeed: 6
+  _cadence: 0.42
+  _boostStretch: 0.35
+  _shade: 0.45
+  _enableLimbs: 1
+--- !u!114 &588775827
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 588775816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a301f993f995bb140be25d4eed1aff3e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_Wear
+  _enableWear: 1
+  _opacity: 0.5
+  _scuffRate: 1.6
+  _ballRate: 0.35
+  _scuffThreshold: 0.35
+  _uploadHz: 8
+  _fadeSeconds: 90
+--- !u!114 &588775828
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 588775816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3be879400956c434f91eba913527382f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_Shadows
+  _bodyScale: 1.35
+  _opacity: 0.42
+  _spread: 0.34
+  _bias: {x: 0.1, y: -0.42}
+  _motionFade: 0.65
+  _sprintSpeed: 9.5
+  _sortingOrder: -2
+  _enableShadows: 1
+--- !u!114 &588775829
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 588775816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b656854a188d61458edb5a53ce44116, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_ImpactFX
+  _contactThreshold: 6
+  _contactSaturation: 45
+  _scuffSaturation: 0.9
+  _scuffMinSpeed: 2
+  _scuffRate: 26
+  _tiredBelow: 0.22
+  _effortRate: 7
+  _enableImpactFX: 1
+--- !u!114 &588775830
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 588775816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cbb89577cf5363340a7c9a2b24624f46, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_ParticleFX
+  _slipThreshold: 2.2
+  _turfRate: 45
+  _impactThreshold: 5
+  _enableParticles: 1
+--- !u!114 &588775831
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 588775816}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d57ba6b4773b774a8327ac6e41f3bdc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PoSoccer.Runtime::PoSoccer.Agent_Surfaces
+  _pitchStripes: 0.075
+  _pitchStripeCount: 9
+  _pitchSheen: 0.045
+  _playerRim: 0.9
+  _ballLight: 1
+  _enableSurfaces: 1
+  _goalNets: 1
+  _netDepth: 1.5
+  _netCords: 15
+  _netOpacity: 0.75
+  _rippleSeconds: 1.1
+  _netSortingOrder: 5
 --- !u!1 &623780765
 GameObject:
   m_ObjectHideFlags: 0

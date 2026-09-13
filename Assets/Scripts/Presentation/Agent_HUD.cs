@@ -379,6 +379,29 @@ namespace PoSoccer
         void OnDestroy()
         {
             if (env != null) env.EpisodeEnded -= OnEpisodeEnded;
+
+            // A PAUSED HUD THAT IS DESTROYED USED TO FREEZE THE CLOCK FOREVER.
+            // Agent_TimeFreeze.Holders is a static HashSet, so _pauseToken outlives
+            // the component that owns it: once this object is gone nothing holds a
+            // reference to that token, nothing can ever call Release with it, and
+            // IsFrozen stays true for the rest of the process. Every subsequent
+            // match then starts with a stopped clock and no visible cause - the
+            // holder is named "HUD.Pause" and belongs to a HUD that no longer exists.
+            //
+            // The two exits from the pause panel (its MENU button and the hardware
+            // back button on the result screen) both call ReleaseAll and so were
+            // safe, which is why this survived: the leak needs the HUD to be
+            // destroyed while paused by any OTHER route - a scene load from
+            // elsewhere, a test fixture tearing down, a rematch. Releasing here
+            // covers all of them, and Release is idempotent so the ordinary
+            // Resume-then-destroy path is unaffected.
+            //
+            // Found 2026-09-13 by Agent_PlayMode_SmokeRun: adding that fixture
+            // reordered the suite so a pausing test ran before
+            // Agent_PlayMode_GameFlow.MatchScene_NeverLeavesTheClockStopped, which
+            // then failed with "Held by: HUD.Pause". The ordering was the trigger,
+            // not the defect.
+            Agent_TimeFreeze.Release(_pauseToken);
         }
 
         float _matchSeconds;
