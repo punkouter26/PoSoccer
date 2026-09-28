@@ -15,7 +15,10 @@ namespace PoSoccer
     ///  - an arc at the body's edge filling with
     ///    <see cref="Agent_Soccer.TractionSaturation"/>, green through red, that
     ///    closes to a full ring when the feet are at the limit of grip;
-    ///  - a short tick on the side the turn torque is pushing.
+    ///  - a short tick on the side the turn torque is pushing;
+    ///  - in a squad, a faded line to the player's team-role post with a diamond on
+    ///    it - gold goalie, cyan defender, orange support attacker - whenever its job
+    ///    is the post rather than the ball (Agent_EnvController.RoleTarget).
     ///
     /// WHY THIS IS THE HEADLINE SPECTATOR FEATURE. The two arrows disagreeing is
     /// this project's whole story rendered live: a policy that wants the right
@@ -83,6 +86,9 @@ namespace PoSoccer
 
         static readonly Color TractionSafe = new(0.35f, 0.95f, 0.45f);
         static readonly Color TractionLimit = new(1f, 0.35f, 0.22f);
+        static readonly Color GoalieTint = new(1f, 0.82f, 0.2f, 0.85f);
+        static readonly Color DefenderTint = new(0.3f, 0.9f, 1f, 0.85f);
+        static readonly Color AttackerTint = new(1f, 0.55f, 0.15f, 0.85f);
 
         void Start()
         {
@@ -175,6 +181,24 @@ namespace PoSoccer
                     0.45f * Mathf.Abs(turn), _thickness * 0.8f,
                     new Color(team.r, team.g, team.b, _intentAlpha * 0.7f));
             }
+
+            // -- Team role: where the role wants this player when its job is a post.
+            // The presser and a lone player have nothing to add - their target is the ball.
+            if (!_env.HasBallDuty(agent))
+            {
+                Color tint = RoleTint(_env.RoleOf(agent));
+                Vector2 post = _env.RoleTarget(agent);
+                _lines.AddFadedSegment(origin, post, _thickness * 0.5f,
+                    new Color(tint.r, tint.g, tint.b, 0.1f), tint);
+                _lines.AddDiamond(post, 0.3f, tint);
+            }
         }
+
+        static Color RoleTint(Agent_TeamRoles.Role role) => role switch
+        {
+            Agent_TeamRoles.Role.Goalie => GoalieTint,
+            Agent_TeamRoles.Role.Defender => DefenderTint,
+            _ => AttackerTint,
+        };
     }
 }

@@ -118,22 +118,16 @@ namespace PoSoccer
         public float CurrentTeamSpacing { get; private set; }
 
         /// <summary>
-        /// When on (`team_roles` environment parameter > 0.5), only the teammate nearest the
-        /// ball is paid for closing on it; the other is paid, at the SAME scale, for closing
-        /// on a cover spot behind the ball. Off by default. Always a no-op in 1v1, where
-        /// the lone player is by definition the nearest.
+        /// When on (`team_roles` environment parameter > 0.5), the ball-approach reward is
+        /// paid toward each player's ROLE target (see <see cref="RoleTarget"/>) instead of
+        /// always toward the ball: the presser still chases, the goalie, defenders and
+        /// support attackers are paid, at the SAME scale, for reaching their posts. Off by
+        /// default. Always a no-op in 1v1, where the lone player has no role.
         /// </summary>
         public bool TeamRolesActive { get; private set; }
 
         /// <summary>Teammates closer than this (metres) pay the spacing penalty.</summary>
         internal const float TEAM_SPACING_RADIUS = 4f;
-
-        /// <summary>
-        /// How far behind the ball, toward its own goal, the supporting player's cover spot
-        /// sits. The same 3 m Agent_HeuristicBot uses for its own support position, so the
-        /// learner is shaped toward the role the opponent it is graded against already plays.
-        /// </summary>
-        internal const float SUPPORT_DEPTH = 3f;
 
         public float CurrentGoalWidth { get; private set; }
         /// <summary>Opponent difficulty applied at the last kickoff (curriculum readout).</summary>
@@ -349,39 +343,219 @@ namespace PoSoccer
             }
         }
 
-        /// <summary>
-        /// True when no teammate of <paramref name="self"/> is nearer the ball - the
-        /// player whose job is to press. Ties go to whoever comes first in
-        /// <see cref="agents"/>, so exactly one player per side holds the role.
-        /// Allocation-free; a squad is 1-3 players in practice.
-        /// </summary>
-        public bool IsNearestToBall(Agent_Soccer self)
+        // ── Team roles (2026-09-28) ─────────────────────────────────────────
+        //
+        // One assignment per pitch per physics tick, shared by everyone who asks: the
+        // scripted bot (Agent_Soccer.Heuristic), the training reward (team_roles) and the
+        // intent overlay. Computed lazily on the first query of a tick rather than in
+        // FixedUpdate, because the Academy may step the agents before or after this
+        // component's FixedUpdate - lazily, every consumer in a tick sees the same answer.
+        // Rules and spot geometry live in Agent_TeamRoles.
+
+        Agent_TeamRoles.Role[] _roles = System.Array.Empty<Agent_TeamRoles.Role>();
+        Vector2[] _roleTargets = System.Array.Empty<Vector2>();
+        bool[] _ballDuty = System.Array.Empty<bool>();
+        Agent_Soccer[] _roleScratch = System.Array.Empty<Agent_Soccer>();
+        Agent_Soccer _bluePresser, _redPresser, _blueGoalie, _redGoalie;
+        int _physicsTick;
+        int _rolesTick = -1;
+
+        /// <summary>This player's role right now. <see cref="Agent_TeamRoles.Role.None"/> when alone on its side.</summary>
+        public Agent_TeamRoles.Role RoleOf(Agent_Soccer self)
         {
-            if (self == null || self.Body == null || ball == null) return true;
-            float mine = (ball.position - self.Body.position).sqrMagnitude;
-            for (int agentIndex = 0; agentIndex < agents.Count; agentIndex++)
-            {
-                var other = agents[agentIndex];
-                if (other == null || other == self || other.team != self.team
-                    || other.Body == null) continue;
-                float theirs = (ball.position - other.Body.position).sqrMagnitude;
-                if (theirs < mine) return false;
-                if (Mathf.Approximately(theirs, mine) && agents.IndexOf(other) < agents.IndexOf(self))
-                    return false;
-            }
-            return true;
+            int index = EnsureRoles(self);
+            return index >= 0 ? _roles[index] : Agent_TeamRoles.Role.None;
         }
 
         /// <summary>
-        /// The supporting player's cover spot: <see cref="SUPPORT_DEPTH"/> metres from the
-        /// ball back toward the goal it defends. Pure so it can be pinned by an EditMode test.
+        /// Where this player's role wants it, in world space: the ball for the presser, a
+        /// solo player and a goalie coming off its line; the post for everyone else.
         /// </summary>
-        internal static Vector2 SupportSpot(Vector2 ballPosition, Vector2 ownGoal)
+        public Vector2 RoleTarget(Agent_Soccer self)
         {
-            Vector2 toOwnGoal = ownGoal - ballPosition;
-            if (toOwnGoal.sqrMagnitude < 0.0001f) return ballPosition;
-            return ballPosition + toOwnGoal.normalized
-                * Mathf.Min(SUPPORT_DEPTH, toOwnGoal.magnitude);
+            int index = EnsureRoles(self);
+            if (index >= 0) return _roleTargets[index];
+            return ball != null ? ball.position : (Vector2)transform.position;
+        }
+
+        /// <summary>
+        /// True when this player's job right now is the ball itself (presser, solo player,
+        /// rushing goalie) rather than holding a post.
+        /// </summary>
+        public bool HasBallDuty(Agent_Soccer self)
+        {
+            int index = EnsureRoles(self);
+            return index < 0 || _ballDuty[index];
+        }
+
+        /// <summary>Forget the keepers and pressers so the next kickoff assigns them afresh.</summary>
+        void ResetRoles()
+        {
+            _bluePresser = _redPresser = _blueGoalie = _redGoalie = null;
+            _rolesTick = -1;
+        }
+
+        int EnsureRoles(Agent_Soccer self)
+        {
+            int index = self != null ? agents.IndexOf(self) : -1;
+            if (index < 0) return -1;
+
+            if (_rolesTick == _physicsTick && _roles.Length == agents.Count) return index;
+            _rolesTick = _physicsTick;
+
+            int n = agents.Count;
+            if (_roles.Length != n)
+            {
+                _roles = new Agent_TeamRoles.Role[n];
+                _roleTargets = new Vector2[n];
+                _ballDuty = new bool[n];
+                _roleScratch = new Agent_Soccer[n];
+            }
+            AssignTeamRoles(Agent_Soccer.Team.Blue);
+            AssignTeamRoles(Agent_Soccer.Team.Red);
+            return index;
+        }
+
+        void AssignTeamRoles(Agent_Soccer.Team team)
+        {
+            Vector2 origin = transform.position;
+            Vector2 ballWorld = ball != null ? ball.position : origin;
+            Vector2 ballLocal = ballWorld - origin;
+            Vector2 ownGoalLocal = GetGoalPosition(team) - origin;
+            Vector2 oppGoalLocal = GetGoalPosition(Agent_Soccer.Opponent(team)) - origin;
+
+            // Defaults for this side: everyone on the ball, no role. A player without a
+            // body keeps these.
+            int size = 0;
+            for (int i = 0; i < agents.Count; i++)
+            {
+                var agent = agents[i];
+                if (agent == null || agent.team != team) continue;
+                _roles[i] = Agent_TeamRoles.Role.None;
+                _roleTargets[i] = ballWorld;
+                _ballDuty[i] = true;
+                if (agent.Body != null) size++;
+            }
+            if (size <= 1)
+            {
+                SetPresser(team, null);
+                SetGoalie(team, null);
+                return;
+            }
+
+            // Goalie: sticky for the episode, first chosen as whoever is deepest.
+            Agent_Soccer goalie = null;
+            if (Agent_TeamRoles.HasGoalie(size))
+            {
+                goalie = team == Agent_Soccer.Team.Blue ? _blueGoalie : _redGoalie;
+                if (goalie == null || goalie.Body == null || agents.IndexOf(goalie) < 0)
+                {
+                    goalie = NearestTo(team, GetGoalPosition(team), null);
+                    SetGoalie(team, goalie);
+                }
+            }
+            else
+            {
+                SetGoalie(team, null);
+            }
+
+            // Presser: nearest outfield player to the ball, with a hand-off margin.
+            Agent_Soccer presser = team == Agent_Soccer.Team.Blue ? _bluePresser : _redPresser;
+            Agent_Soccer nearest = NearestTo(team, ballWorld, goalie);
+            if (presser == null || presser == goalie || presser.Body == null
+                || agents.IndexOf(presser) < 0)
+            {
+                presser = nearest;
+            }
+            else if (nearest != null && nearest != presser)
+            {
+                float current = (ballWorld - presser.Body.position).magnitude;
+                float challenger = (ballWorld - nearest.Body.position).magnitude;
+                if (challenger + Agent_TeamRoles.PRESS_HANDOFF_MARGIN < current) presser = nearest;
+            }
+            SetPresser(team, presser);
+
+            // Everyone else in the outfield, deepest first (nearest their own goal).
+            int others = 0;
+            Vector2 ownGoalWorld = GetGoalPosition(team);
+            for (int i = 0; i < agents.Count; i++)
+            {
+                var agent = agents[i];
+                if (agent == null || agent.team != team || agent.Body == null) continue;
+                if (agent == goalie || agent == presser) continue;
+                float depth = (agent.Body.position - ownGoalWorld).sqrMagnitude;
+                int slot = others++;
+                while (slot > 0 &&
+                       (_roleScratch[slot - 1].Body.position - ownGoalWorld).sqrMagnitude > depth)
+                {
+                    _roleScratch[slot] = _roleScratch[slot - 1];
+                    slot--;
+                }
+                _roleScratch[slot] = agent;
+            }
+
+            int defenders = Mathf.Min(Agent_TeamRoles.DefenderCount(size), others);
+            for (int k = 0; k < others; k++)
+            {
+                int i = agents.IndexOf(_roleScratch[k]);
+                _ballDuty[i] = false;
+                if (k < defenders)
+                {
+                    _roles[i] = Agent_TeamRoles.Role.Defender;
+                    _roleTargets[i] = origin + Agent_TeamRoles.DefenderSpot(
+                        ballLocal, ownGoalLocal, k, defenders, pitchHalfExtents);
+                }
+                else
+                {
+                    _roles[i] = Agent_TeamRoles.Role.Attacker;
+                    _roleTargets[i] = origin + Agent_TeamRoles.SupportSpot(
+                        ballLocal, oppGoalLocal, k - defenders, pitchHalfExtents);
+                }
+                _roleScratch[k] = null;
+            }
+
+            if (presser != null)
+            {
+                int i = agents.IndexOf(presser);
+                _roles[i] = Agent_TeamRoles.Role.Attacker;   // target + duty keep the defaults
+            }
+
+            if (goalie != null)
+            {
+                int i = agents.IndexOf(goalie);
+                _roles[i] = Agent_TeamRoles.Role.Goalie;
+                bool rush = Agent_TeamRoles.GoalieShouldRush(ballLocal, ownGoalLocal);
+                _ballDuty[i] = rush;
+                _roleTargets[i] = rush
+                    ? ballWorld
+                    : origin + Agent_TeamRoles.GoalieSpot(
+                        ballLocal, ownGoalLocal, CurrentGoalWidth, pitchHalfExtents);
+            }
+        }
+
+        /// <summary>Player of <paramref name="team"/> nearest <paramref name="point"/>, skipping <paramref name="exclude"/>.</summary>
+        Agent_Soccer NearestTo(Agent_Soccer.Team team, Vector2 point, Agent_Soccer exclude)
+        {
+            Agent_Soccer best = null;
+            float bestSqr = float.MaxValue;
+            for (int i = 0; i < agents.Count; i++)
+            {
+                var agent = agents[i];
+                if (agent == null || agent == exclude || agent.team != team || agent.Body == null) continue;
+                float sqr = (agent.Body.position - point).sqrMagnitude;
+                if (sqr < bestSqr) { bestSqr = sqr; best = agent; }
+            }
+            return best;
+        }
+
+        void SetPresser(Agent_Soccer.Team team, Agent_Soccer who)
+        {
+            if (team == Agent_Soccer.Team.Blue) _bluePresser = who; else _redPresser = who;
+        }
+
+        void SetGoalie(Agent_Soccer.Team team, Agent_Soccer who)
+        {
+            if (team == Agent_Soccer.Team.Blue) _blueGoalie = who; else _redGoalie = who;
         }
 
         /// <summary>
@@ -491,6 +665,7 @@ namespace PoSoccer
         void FixedUpdate()
         {
             StepCount++;
+            _physicsTick++;
             SampleLocomotion();
 
             // RESET POLICY, SPLIT BY WHO IS WATCHING (2026-09-07, user request).
@@ -836,6 +1011,9 @@ namespace PoSoccer
             _stuckArmed = false;
             _stuckTimer = 0f;
             ResetLocomotionTracking();
+            // Keepers are chosen from the kickoff positions, which are set below; the
+            // assignment is lazy, so clearing it here is enough.
+            ResetRoles();
 
             CurrentGoalWidth = Academy.Instance.EnvironmentParameters
                 .GetWithDefault("goal_width", defaultGoalWidth);

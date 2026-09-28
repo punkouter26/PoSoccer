@@ -131,9 +131,10 @@ namespace PoSoccer
         // Potential for the ball->goal shaping term. Same telescoping trick as
         // _prevBallDist, applied to the BALL's distance to the attacking goal.
         float _prevBallGoalDist = float.PositiveInfinity;
-        // Which role the proximity term was measuring last step (see ApplyDenseRewards).
-        // A role change swaps the distance being differenced, so that step pays nothing.
-        bool _prevWasPresser = true;
+        // Which target the proximity term was measuring last step (see ApplyDenseRewards):
+        // the role, plus whether the job was the ball itself. A change swaps the distance
+        // being differenced, so that step pays nothing.
+        int _prevApproachKey = -1;
 
         /// <summary>Standard gravity, used for the traction budget (mu * m * g).</summary>
         const float Gravity = 9.81f;
@@ -559,7 +560,7 @@ namespace PoSoccer
             System.Array.Clear(_prevActions, 0, _prevActions.Length);
             _prevBallDist = float.PositiveInfinity;
             _prevBallGoalDist = float.PositiveInfinity;
-            _prevWasPresser = true;
+            _prevApproachKey = -1;
             Stamina.ResetForEpisode();
             if (_contact == null) _contact = GetComponent<Agent_Contact>();
             if (_contact != null) _contact.ResetForEpisode();
@@ -979,27 +980,27 @@ namespace PoSoccer
             float d = toBall.magnitude;
 
             // TEAM ROLES (2026-09-28, off unless the trainer sets `team_roles`). Paying
-            // every player for closing on the ball is what makes 2v2 policies swarm it:
-            // both teammates earn the same gradient for the same chase, so nothing in the
+            // every player for closing on the ball is what makes squads swarm it: every
+            // teammate earns the same gradient for the same chase, so nothing in the
             // reward ever says "one of you should be somewhere else". With roles on, the
-            // player nearest the ball keeps the ball-approach term and the other earns the
-            // SAME term, at the SAME scale, for closing on a cover spot behind the ball -
-            // the position Agent_HeuristicBot's own support logic takes. The dense budget
-            // is redirected, not enlarged, and in 1v1 the lone player is always the
-            // presser, so a 1v1 pitch is bit-identical with roles on or off.
-            bool presser = !env.TeamRolesActive || env.IsNearestToBall(this);
-            float approachDist = presser
-                ? d
-                : (Agent_EnvController.SupportSpot(env.Ball.position, env.GetGoalPosition(team))
-                   - Body.position).magnitude;
-            if (presser != _prevWasPresser)
+            // ball-approach term is paid toward this player's ROLE target instead - the
+            // ball for the presser (and a goalie coming off its line), the post for the
+            // goalie, defenders and support attackers (Agent_TeamRoles). Same scale, so
+            // the dense budget is redirected, not enlarged; and these are exactly the
+            // posts Agent_HeuristicBot plays, so the learner is shaped toward the team
+            // shape of the opponent it is graded against. In 1v1 the lone player has no
+            // role and always chases, so a 1v1 pitch is bit-identical with roles on or off.
+            bool ballDuty = !env.TeamRolesActive || env.HasBallDuty(this);
+            float approachDist = ballDuty ? d : (env.RoleTarget(this) - Body.position).magnitude;
+            int approachKey = ballDuty ? 0 : 1 + (int)env.RoleOf(this);
+            if (approachKey != _prevApproachKey)
             {
                 // The target just changed, so last step's distance measured something
                 // else. Differencing across the switch would pay (or charge) the gap
                 // between two unrelated distances - and a policy could farm it by
                 // trading roles. Restart the difference from here instead.
                 _prevBallDist = float.PositiveInfinity;
-                _prevWasPresser = presser;
+                _prevApproachKey = approachKey;
             }
 
             // v2: differential proximity reward. Pure chasing yields ~0 reward (everyone
@@ -1183,8 +1184,12 @@ namespace PoSoccer
                     if (sqr < bestSqr) { bestSqr = sqr; foe = other.Body; }
                 }
 
+                // Team roles: the bot plays its post (goalie / defender / support attacker)
+                // unless its job right now is the ball. Role None (alone on its side) leaves
+                // the bot exactly as it always was.
                 Vector4 a = _bot.ComputeActions(Body, env.Ball,
-                    env.GetGoalTransform(Opponent(team)), mate != null ? mate.Body : null, foe);
+                    env.GetGoalTransform(Opponent(team)), mate != null ? mate.Body : null, foe,
+                    env.RoleOf(this), env.RoleTarget(this), env.HasBallDuty(this));
                 continuous[0] = a.x;   // forward
                 continuous[1] = a.y;   // lateral
                 continuous[2] = a.z;   // turn

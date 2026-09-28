@@ -8,6 +8,10 @@ namespace PoSoccer
     /// Includes a flanking unstick maneuver: when the ball sits still against a
     /// boundary with the bot on top of it (mirror-bot deadlock), swing to a lateral
     /// approach point instead of pressing straight in.
+    ///
+    /// In a squad (2026-09-28) it plays a team role from Agent_TeamRoles: goalie,
+    /// defender or support attacker hold their posts and only the presser chases.
+    /// Alone on its side it has no role and plays exactly as it always did.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class Agent_HeuristicBot : MonoBehaviour
@@ -73,9 +77,23 @@ namespace PoSoccer
                 perceptionRadius = Mathf.Max(0f, radius);
         }
 
-        /// <summary>Compute [forward, lateral, turn, boost] for the given agent state.</summary>
+        [Tooltip("How close (m) to its post a goalie, defender or support attacker has to be " +
+                 "before it stops moving and just turns to watch the ball.")]
+        public float postTolerance = 0.8f;
+
+        /// <summary>
+        /// Compute [forward, lateral, turn, boost] for the given agent state.
+        ///
+        /// <paramref name="role"/>, <paramref name="post"/> and <paramref name="ballDuty"/>
+        /// come from Agent_EnvController's team-role assignment (Agent_TeamRoles). When the
+        /// player has a role and its job is NOT the ball, it holds its post instead of
+        /// chasing. Role None - a player alone on its side, or a caller that passes no role -
+        /// leaves the bot exactly as it was before roles existed.
+        /// </summary>
         public Vector4 ComputeActions(Rigidbody2D self, Rigidbody2D ball, Transform opponentGoal,
-            Rigidbody2D teammate = null, Rigidbody2D nearestOpponent = null)
+            Rigidbody2D teammate = null, Rigidbody2D nearestOpponent = null,
+            Agent_TeamRoles.Role role = Agent_TeamRoles.Role.None, Vector2 post = default,
+            bool ballDuty = true)
         {
             if (ball == null) return Vector4.zero;
 
@@ -92,11 +110,23 @@ namespace PoSoccer
             Vector2 toBall = ball.position - self.position;
             Vector2 target = ball.position;
 
+            // Team roles (2026-09-28): goalie, defender or support attacker whose job right
+            // now is not the ball - hold the post. Same strength gate as the support logic
+            // below: a weak curriculum bot still swarms, so the learner's first lessons
+            // keep the easy opponent they were designed around.
+            if (_strength >= 0.5f && role != Agent_TeamRoles.Role.None && !ballDuty)
+            {
+                return HoldPost(self, post, ball, opponentGoal);
+            }
+
             // Closest man presses: if the teammate is clearly nearer the ball, take a
             // support position between the ball and our own goal instead of piling in.
             // v2: disabled when strength < 0.5 so a weak bot double-teams with its
             // teammate, leaving the brain's chosen attacker one-on-one with the ball.
-            if (_strength >= 0.5f && teammate != null && opponentGoal != null)
+            // Superseded by team roles whenever the caller supplies them; kept for any
+            // caller that does not.
+            if (_strength >= 0.5f && role == Agent_TeamRoles.Role.None
+                && teammate != null && opponentGoal != null)
             {
                 float myDist = toBall.magnitude;
                 float mateDist = Vector2.Distance(teammate.position, ball.position);
@@ -187,6 +217,20 @@ namespace PoSoccer
             if (Time.time < _flankUntil) target = _flankPoint;
 
             return Steer(self, target, opponentGoal, allowBoost: true);
+        }
+
+        /// <summary>
+        /// Walk to the post, then stop there and turn to face the ball. Steer alone would
+        /// keep creeping at its 0.3 minimum approach speed and orbit the spot.
+        /// </summary>
+        Vector4 HoldPost(Rigidbody2D self, Vector2 post, Rigidbody2D ball, Transform opponentGoal)
+        {
+            if ((post - self.position).sqrMagnitude > postTolerance * postTolerance)
+            {
+                return Steer(self, post, opponentGoal, allowBoost: false);
+            }
+            float facingErr = Vector2.SignedAngle(self.transform.up, ball.position - self.position);
+            return new Vector4(0f, 0f, Mathf.Clamp(facingErr / 45f * _strength, -1f, 1f), 0f);
         }
 
         Vector4 Steer(Rigidbody2D self, Vector2 target, Transform opponentGoal, bool allowBoost)

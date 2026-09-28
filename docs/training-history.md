@@ -30,8 +30,9 @@ not disproven.
 
 p29 (`config/TRAIN_STANDARD_p29team.yaml`) is p22's hyperparameters under `poca`, on a
 `-Squad "1,2"` grid (half 1v1, half 2v2), with two new trainer-driven shaping terms:
-`team_roles` (the nearest teammate is paid to approach the ball, the other to approach a
-cover spot behind it, same scale, so the dense budget is redirected rather than grown)
+`team_roles` (the ball-approach reward is paid toward each player's role target from
+`Agent_TeamRoles` - ball for the presser, a post for goalie/defender/support attacker -
+same scale, so the dense budget is redirected rather than grown)
 and `team_spacing` (≤ −0.45 per episode ceiling, under conceding). Four levers at once on
 purpose, because the other three mean nothing without the teammate; the ablation is the
 same file with both team terms at 0. Grade at 1v1 (comparable to p22's 26.6%) **and** at

@@ -34,12 +34,14 @@
 #  2. trainer_type poca: goals now pay the scoring side a SHARED group reward (+1 /
 #     -1, Agent_EnvController.OnGoalScored) on top of the individual table, and
 #     POCA's critic assigns it between teammates. Hyperparameters are p22's.
-#  3. team_roles 1: only the teammate nearest the ball is paid for approaching it;
-#     the other is paid, at the same ballProximityScale, for approaching a cover spot
-#     3 m behind the ball - the role the scripted bot's support logic plays from
-#     bot_strength 0.5 up. This is aimed at the one failure every 2v2 policy shows
-#     first: both teammates chasing the same ball. Budget is redirected, not added,
-#     and 1v1 pitches are bit-identical with it on.
+#  3. team_roles 1: the ball-approach reward is paid toward each player's ROLE
+#     target (Agent_TeamRoles): the presser toward the ball; the goalie (squads of
+#     3+), defenders and support attackers toward their posts, at the same
+#     ballProximityScale. These are the posts the scripted bots hold from
+#     bot_strength 0.5 up, so the learner is shaped toward the shape of the team it
+#     plays. Aimed at the failure every squad policy shows first: everyone chasing
+#     one ball. Budget is redirected, not added; 1v1 pitches are bit-identical.
+#     At -Squad "1,2" the roles are attacker + defender - a goalie needs 3+.
 #  4. team_spacing 0.00005: per-step charge for standing within 4 m of a teammate.
 #     Ceiling = 0.00005 x 9000 steps = -0.45 for a pair glued together all episode,
 #     under half of conceding (-1.0), so it cannot outrank the result. 0 on 1v1.

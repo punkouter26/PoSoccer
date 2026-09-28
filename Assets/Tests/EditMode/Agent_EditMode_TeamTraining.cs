@@ -17,8 +17,9 @@ namespace PoSoccer.Tests
     ///
     /// What is pinned here is what can silently go wrong without a player build:
     /// the squad pattern parser (a typo must be REJECTED, never read as a different
-    /// lineup), the cover-spot geometry, the spacing penalty's shape, and that the
-    /// spacing budget any shipped config asks for cannot outrank conceding.
+    /// lineup), the team-role split and post geometry (Agent_TeamRoles), the spacing
+    /// penalty's shape, and that the spacing budget any shipped config asks for
+    /// cannot outrank conceding.
     /// </summary>
     public sealed class Agent_EditMode_TeamTraining
     {
@@ -56,20 +57,92 @@ namespace PoSoccer.Tests
                 "No pattern means the authored 1v1.");
         }
 
-        [Test]
-        public void SupportSpot_SitsBehindTheBall_TowardOwnGoal()
+        // ── Team roles ──────────────────────────────────────────────────────
+        // Pitch-local frame used below: the authored 36 x 54 training pitch, BLUE
+        // defending the goal at y = -27 and attacking the one at y = +27.
+        static readonly Vector2 Half = new(18f, 27f);
+        static readonly Vector2 OwnGoal = new(0f, -27f);
+        static readonly Vector2 OppGoal = new(0f, 27f);
+
+        [TestCase(1, false, 0)]
+        [TestCase(2, false, 1)]   // attacker + defender: no keeper with only two
+        [TestCase(3, true, 1)]    // goalie + defender + attacker
+        [TestCase(4, true, 1)]    // goalie + defender + 2 attackers
+        [TestCase(5, true, 2)]    // goalie + 2 defenders + 2 attackers
+        public void SquadSize_DecidesGoalieAndDefenderCount(int size, bool goalie, int defenders)
         {
-            var ball = new Vector2(0f, 5f);
-            var ownGoal = new Vector2(0f, -27f);
-            Vector2 spot = Agent_EnvController.SupportSpot(ball, ownGoal);
+            Assert.AreEqual(goalie, Agent_TeamRoles.HasGoalie(size));
+            Assert.AreEqual(defenders, Agent_TeamRoles.DefenderCount(size));
+        }
 
-            Assert.AreEqual(0f, spot.x, 1e-4f);
-            Assert.AreEqual(5f - Agent_EnvController.SUPPORT_DEPTH, spot.y, 1e-4f,
-                "The cover spot is SUPPORT_DEPTH back from the ball on the line to our own goal.");
+        [Test]
+        public void GoalieSpot_StaysInFrontOfTheLine_AndInsideTheMouth()
+        {
+            const float goalWidth = 6f;
+            // Ball far out on the right wing: the goalie shades right, but never past the post.
+            Vector2 spot = Agent_TeamRoles.GoalieSpot(new Vector2(17f, -20f), OwnGoal, goalWidth, Half);
+            Assert.Greater(spot.x, 0f, "The goalie should shade toward the ball's side.");
+            Assert.LessOrEqual(spot.x, goalWidth * 0.5f, "The goalie must not leave the goal mouth.");
+            Assert.Greater(spot.y, OwnGoal.y, "The goalie stands in front of its line, not behind it.");
+            Assert.Less(spot.y, OwnGoal.y + 2f, "The goalie stays near its line until it rushes.");
 
-            // Ball almost on our own goal line: the spot must not overshoot past the goal.
-            Vector2 close = Agent_EnvController.SupportSpot(new Vector2(0f, -26f), ownGoal);
-            Assert.AreEqual(-27f, close.y, 1e-4f);
+            // Ball dead level with the goal line: still in front of it.
+            Vector2 flat = Agent_TeamRoles.GoalieSpot(new Vector2(10f, -27f), OwnGoal, goalWidth, Half);
+            Assert.Greater(flat.y, OwnGoal.y);
+        }
+
+        [Test]
+        public void Goalie_RushesOnlyForABallNearItsGoal()
+        {
+            Assert.IsTrue(Agent_TeamRoles.GoalieShouldRush(new Vector2(0f, -24f), OwnGoal));
+            Assert.IsFalse(Agent_TeamRoles.GoalieShouldRush(new Vector2(0f, 0f), OwnGoal));
+        }
+
+        [Test]
+        public void DefenderSpot_SitsBetweenOwnGoalAndBall()
+        {
+            var ball = new Vector2(0f, 10f);
+            Vector2 spot = Agent_TeamRoles.DefenderSpot(ball, OwnGoal, 0, 1, Half);
+            Assert.AreEqual(0f, spot.x, 1e-4f, "A lone defender sits on the goal-ball line.");
+            Assert.Greater(spot.y, OwnGoal.y + Agent_TeamRoles.DEFENDER_MIN_DEPTH - 0.01f,
+                "The defender leaves the goal line to the goalie.");
+            Assert.Less(spot.y, ball.y - Agent_TeamRoles.DEFENDER_BALL_GAP + 0.01f,
+                "The defender leaves the ball to the presser.");
+
+            // Two defenders split across the line rather than stacking.
+            Vector2 left = Agent_TeamRoles.DefenderSpot(ball, OwnGoal, 0, 2, Half);
+            Vector2 right = Agent_TeamRoles.DefenderSpot(ball, OwnGoal, 1, 2, Half);
+            Assert.AreEqual(Agent_TeamRoles.DEFENDER_SPREAD, Vector2.Distance(left, right), 1e-3f);
+        }
+
+        [Test]
+        public void SupportSpot_IsAheadOfTheBall_OnTheOpenFlank()
+        {
+            var ball = new Vector2(6f, 0f);   // ball on the right
+            Vector2 spot = Agent_TeamRoles.SupportSpot(ball, OppGoal, 0, Half);
+            Assert.Greater(spot.y, ball.y, "Support attackers go ahead of the ball, toward goal.");
+            Assert.Less(spot.x, ball.x, "The first support attacker takes the open (left) flank.");
+
+            Vector2 second = Agent_TeamRoles.SupportSpot(ball, OppGoal, 1, Half);
+            Assert.Greater(second.x, ball.x, "A second support attacker takes the other flank.");
+        }
+
+        [Test]
+        public void EverySpot_StaysInsideThePitch()
+        {
+            var corner = new Vector2(17.5f, 26.5f);
+            foreach (Vector2 spot in new[]
+            {
+                Agent_TeamRoles.DefenderSpot(corner, OwnGoal, 0, 3, Half),
+                Agent_TeamRoles.DefenderSpot(corner, OwnGoal, 2, 3, Half),
+                Agent_TeamRoles.SupportSpot(corner, OppGoal, 0, Half),
+                Agent_TeamRoles.SupportSpot(corner, OppGoal, 3, Half),
+                Agent_TeamRoles.GoalieSpot(corner, OwnGoal, 6f, Half),
+            })
+            {
+                Assert.LessOrEqual(Mathf.Abs(spot.x), Half.x, $"{spot} is outside the pitch.");
+                Assert.LessOrEqual(Mathf.Abs(spot.y), Half.y, $"{spot} is outside the pitch.");
+            }
         }
 
         [Test]
