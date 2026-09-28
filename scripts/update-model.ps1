@@ -106,3 +106,22 @@ if ($gain) {
 }
 
 Write-Host "  provenance: $steps steps from $RunId, ActionGain $gain (eval rating cleared)"
+
+# Re-link a profile whose brainModel was CLEARED (not missing) - the state an
+# observation-contract change leaves it in (2026-09-28: 178 -> 188 inputs cleared
+# STANDARD and MATT). The .onnx is overwritten in place, so its GUID is the one the
+# profile pointed at before, but a cleared reference stays cleared: without this
+# the new brain is deployed and silently never played. 5022602860645237092 is the
+# ONNX importer's main-object fileID - every brainModel reference in this project
+# carries it. A brand-new slot has no .meta until Unity imports it, and gets the
+# one-time drag instructions printed above instead.
+$metaPath = "$target.meta"
+if ((Test-Path $profileAsset) -and (Test-Path $metaPath) -and
+    (Select-String -Path $profileAsset -Pattern '^  brainModel: \{fileID: 0\}' -Quiet)) {
+    $guidLine = Select-String -Path $metaPath -Pattern '^guid: ([0-9a-f]{32})' | Select-Object -First 1
+    if ($guidLine) {
+        $guid = $guidLine.Matches[0].Groups[1].Value
+        Set-ProfileField $profileAsset 'brainModel' "{fileID: 5022602860645237092, guid: $guid, type: 3}"
+        Write-Host "  re-linked: Reward_$Profile.asset brainModel -> $Profile.onnx (was cleared)"
+    }
+}

@@ -3,7 +3,7 @@
 # Launch (the -Squad flag is what makes this a team run - the YAML alone cannot):
 #   .\scripts\tensorboard.ps1
 #   .\scripts\train-phase1.ps1 -RunId soccer_p29team_standard -Config TRAIN_STANDARD_p29team.yaml `
-#       -Squad "1,2" -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4 [-InitFrom soccer_p22gain_standard]
+#       -Squad "1,2" -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
 #
 # REQUIRES A REBUILT PLAYER. POSOCCER_SQUAD, team_roles and team_spacing are read by
 # code added 2026-09-28 (Agent_EnvController.ApplyTrainingSquad / ResetPitch); every
@@ -27,10 +27,12 @@
 # WHAT CHANGES vs p22 (the best graded config, 26.6% at n=350)
 # ============================================================================
 #  1. SQUAD "1,2": half the 16-pitch grid plays 2v2, half stays 1v1. The 1v1 half
-#     keeps the brain on the benchmark it is graded at; the 2v2 half is new. The
-#     observation contract is unchanged (178 inputs), so --initialize-from a 1v1
-#     checkpoint works: the policy loads, the POCA critic starts fresh (ml-agents
-#     loads with strict=False and re-initialises modules it cannot match).
+#     keeps the brain on the benchmark it is graded at; the 2v2 half is new.
+#     The brain now OBSERVES its role (2026-09-28: +5 vector floats, 178 -> 188
+#     inputs), so NO earlier checkpoint can warm-start this run: --initialize-from
+#     would hit a shape mismatch on the input layer and ml-agents re-initialises the
+#     whole module. Train from scratch. p22 reached the full-strength lesson from
+#     scratch in 10M, so that is a known-feasible budget.
 #  2. trainer_type poca: goals now pay the scoring side a SHARED group reward (+1 /
 #     -1, Agent_EnvController.OnGoalScored) on top of the individual table, and
 #     POCA's critic assigns it between teammates. Hyperparameters are p22's.
@@ -66,9 +68,9 @@
 #  - GRADE TWICE, never mix the numbers:
 #      .\scripts\evaluate.ps1 -RunId <run> -Episodes 350              (1v1 benchmark)
 #      .\scripts\evaluate.ps1 -RunId <run> -Episodes 350 -Squad 2     (2v2, new baseline)
-#    The 1v1 grade is comparable to p22's 26.6%. The 2v2 grade has NO baseline yet:
-#    grade the deployed p25 STANDARD brain at -Squad 2 first, and the bot-vs-bot
-#    parity with -Baseline -Squad 2, so the team number has something to beat.
+#    The 1v1 grade is comparable to p22's 26.6%. The 2v2 grade has NO baseline yet,
+#    and no earlier brain can run on the 188-input contract to provide one: grade
+#    bot-vs-bot parity with -Baseline -Squad 2 so the team number has something to beat.
 #  - Run Agent_PlayMode_MovementProbe before believing any of it.
 behaviors:
   STANDARD:

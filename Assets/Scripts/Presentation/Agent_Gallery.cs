@@ -267,6 +267,16 @@ namespace PoSoccer
         void ApplyExhibit(Agent_EnvController pitch, Agent_Checkpoint checkpoint)
         {
             var model = checkpoint.ResolvedModel;
+            // An archived brain from an older observation contract cannot run here, and
+            // this is a LIVE swap, so Agent_Soccer's Awake-time guard never sees it. Play
+            // that pitch's blue side as the bot instead of feeding ML-Agents a shape it
+            // rejects. The caption still names the checkpoint.
+            if (model != null && !Agent_Soccer.ModelFitsContract(model))
+            {
+                Debug.LogWarning($"[Agent_Gallery] '{checkpoint.label}' was trained on an older " +
+                                 "observation contract and cannot run - its pitch fields the bot.");
+                model = null;
+            }
             var profile = checkpoint.baseProfile;
             var opponent = Agent_MatchSetup.GalleryOpponent;
 

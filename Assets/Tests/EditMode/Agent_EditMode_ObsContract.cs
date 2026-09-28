@@ -38,8 +38,11 @@ namespace PoSoccer.Tests
                 "Ray observations changed. Sensor_Vision.Battery is the source of truth - " +
                 "update the tables in Sensor_Vision, Agent_Soccer and CLAUDE.md together.");
             Assert.That(Agent_Soccer.BaseObservationSize * Agent_Soccer.StackedObservations,
-                Is.EqualTo(58), "Vector observations changed (BaseObservationSize x StackedObservations).");
-            Assert.That(ExpectedModelInputSize, Is.EqualTo(178));
+                Is.EqualTo(68), "Vector observations changed (BaseObservationSize x StackedObservations).");
+            Assert.That(ExpectedModelInputSize, Is.EqualTo(188));
+            Assert.That(Agent_Soccer.ExpectedModelInputSize, Is.EqualTo(ExpectedModelInputSize),
+                "The runtime's own model guard (Agent_Soccer.DropIncompatibleModel) must agree " +
+                "with this test about what a compatible brain looks like.");
         }
 
         [Test]

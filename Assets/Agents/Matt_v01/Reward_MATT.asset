@@ -18,7 +18,7 @@ MonoBehaviour:
   kitPattern: 0
   kitColor: {r: 1, g: 1, b: 1, a: 0}
   kitBands: 6
-  brainModel: {fileID: 5022602860645237092, guid: d9ed0854806da8247b8bd4564815f17a, type: 3}
+  brainModel: {fileID: 0}
   trainingSteps: 10001014
   trainingRunId: soccer_p27gain_matt
   trainedOn: 2026-09-13

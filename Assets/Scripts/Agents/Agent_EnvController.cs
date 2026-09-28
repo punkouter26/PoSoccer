@@ -215,8 +215,9 @@ namespace PoSoccer
         // so the same build trains 1v1 or 2v2. It takes a comma-separated pattern that
         // is cycled across the pitch grid: "2" makes every pitch 2v2, "1,2" alternates,
         // which keeps half the experience on the 1v1 benchmark the brain is graded on.
-        // The observation contract is unchanged (29 x 2 vector, 178 inputs), so every
-        // existing .onnx still loads and a 1v1 checkpoint can warm-start a team run.
+        // Squad size itself changes no tensor shape. (The team-ROLE observation added
+        // alongside it did: 29 -> 34 vector, 178 -> 188 inputs - see
+        // Agent_Soccer.BaseObservationSize.)
 
         static int s_pitchOrdinal;
 

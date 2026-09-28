@@ -33,7 +33,9 @@ p29 (`config/TRAIN_STANDARD_p29team.yaml`) is p22's hyperparameters under `poca`
 `team_roles` (the ball-approach reward is paid toward each player's role target from
 `Agent_TeamRoles` - ball for the presser, a post for goalie/defender/support attacker -
 same scale, so the dense budget is redirected rather than grown)
-and `team_spacing` (≤ −0.45 per episode ceiling, under conceding). Four levers at once on
+and `team_spacing` (≤ −0.45 per episode ceiling, under conceding). **Amended the same day:** the brain now observes its role (+5 floats, 178 → 188 inputs),
+so p29 must train from scratch - no earlier checkpoint fits - and there is no deployed brain
+to grade a 2v2 baseline with. Four levers at once on
 purpose, because the other three mean nothing without the teammate; the ablation is the
 same file with both team terms at 0. Grade at 1v1 (comparable to p22's 26.6%) **and** at
 `-Squad 2`, which needs its own baselines first (the deployed brain and bot-vs-bot at

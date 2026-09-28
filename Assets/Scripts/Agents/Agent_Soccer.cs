@@ -190,8 +190,16 @@ namespace PoSoccer
         /// failure as a sensor-arc change. Treat this as a full retrain of all four
         /// personalities; a pre-2026-08-28 checkpoint is not comparable to a later one
         /// no matter what its eval JSON says.
+        ///
+        /// 2026-09-28: 29 -> 34. The TEAM ROLE (Agent_TeamRoles) became observable: a
+        /// goalie / defender / attacker one-hot (all zero when alone on the side) and the
+        /// role's target in the body frame - the ball for the presser, the post for
+        /// everyone else. Until then a brain in a squad was shaped toward a role it could
+        /// not see and had to infer it from teammate geometry, which it cannot do for the
+        /// episode-long goalie assignment at all. Model inputs 178 -> 188: every .onnx
+        /// trained before this date no longer loads (see DropIncompatibleModel).
         /// </summary>
-        public const int BaseObservationSize = 29;
+        public const int BaseObservationSize = 34;
 
         /// <summary>
         /// Stacked vector frames. 2 gives the policy velocity/trend context at the
@@ -282,6 +290,7 @@ namespace PoSoccer
                 _behavior.BrainParameters.NumStackedVectorObservations = StackedObservations;
                 _behavior.BrainParameters.ActionSpec =
                     ActionSpec.MakeContinuous(ContinuousActionCount);
+                DropIncompatibleModel();
                 ApplyEvalMode();
                 ApplyTrainingOpponent();
                 ApplyDemoRecording();
@@ -743,6 +752,84 @@ namespace PoSoccer
                 }
                 _opponentBuffer[slot] = null;   // drop refs so resets cannot leak stale agents
             }
+
+            // Team role (5) - 2026-09-28. One-hot goalie / defender / attacker, all zero
+            // when alone on the side (Role.None, i.e. every 1v1). Then the role's target,
+            // body frame: the ball for the presser and a lone player, the post for a
+            // goalie, defender or support attacker - the same point the team_roles reward
+            // pays toward and the scripted bot steers to, so a brain can read "where my
+            // job is" directly instead of reconstructing the assignment rules.
+            Agent_TeamRoles.Role role = env != null ? env.RoleOf(this) : Agent_TeamRoles.Role.None;
+            sensor.AddObservation(role == Agent_TeamRoles.Role.Goalie ? 1f : 0f);
+            sensor.AddObservation(role == Agent_TeamRoles.Role.Defender ? 1f : 0f);
+            sensor.AddObservation(role == Agent_TeamRoles.Role.Attacker ? 1f : 0f);
+            Vector2 toRoleTarget = env != null ? env.RoleTarget(this) - Body.position : toBall;
+            sensor.AddObservation(ToBodyFrame(toRoleTarget, rightAxis, forwardAxis) * invMax);
+        }
+
+        // ── Model compatibility ────────────────────────────────────────────
+
+        static readonly System.Collections.Generic.Dictionary<Unity.InferenceEngine.ModelAsset, int>
+            ModelInputCache = new();
+
+        /// <summary>Model inputs this runtime produces: every ray sensor plus the stacked vector.</summary>
+        internal static int ExpectedModelInputSize =>
+            Sensor_Vision.TotalRayObservationSize + BaseObservationSize * StackedObservations;
+
+        /// <summary>
+        /// True when <paramref name="model"/> declares exactly the inputs this runtime
+        /// produces. Loads each model once per process and caches the answer.
+        /// </summary>
+        public static bool ModelFitsContract(Unity.InferenceEngine.ModelAsset model)
+        {
+            if (model == null) return false;
+            if (!ModelInputCache.TryGetValue(model, out int total))
+            {
+                var loaded = Unity.InferenceEngine.ModelLoader.Load(model);
+                total = 0;
+                for (int inputIndex = 0; inputIndex < loaded.inputs.Count; inputIndex++)
+                {
+                    // Axis -1 is the feature count; axis 0 is the dynamic batch dim.
+                    total += loaded.inputs[inputIndex].shape.Get(-1);
+                }
+                ModelInputCache[model] = total;
+            }
+            return total == ExpectedModelInputSize;
+        }
+
+        /// <summary>
+        /// Refuse a brain whose input shape disagrees with this runtime, BEFORE ML-Agents
+        /// builds a policy from it.
+        ///
+        /// WHY (2026-09-28). The team-role observation took the contract from 178 to 188
+        /// inputs, which obsoletes every .onnx on disk until it is retrained. Left alone,
+        /// ML-Agents rejects the shape when the policy is built: the agent does nothing,
+        /// an Error lands in the log, and the match plays on around a statue. Dropping the
+        /// model here instead fields the rule-based bot, which is what an untrained slot
+        /// does anyway, and says so once. Training is unaffected (a trainer-driven agent
+        /// never runs the model), and eval still fails loudly: ApplyEvalMode, which runs
+        /// after this, finds no model and marks the run invalid.
+        /// </summary>
+        void DropIncompatibleModel()
+        {
+            var model = _behavior.Model;
+            if (model == null || ModelFitsContract(model)) return;
+
+            ModelInputCache.TryGetValue(model, out int declared);
+            Debug.LogWarning(
+                $"[Agent_Soccer] {name}: brain '{model.name}' declares {declared} inputs but this " +
+                $"runtime produces {ExpectedModelInputSize}. It was trained on an older observation " +
+                "contract and cannot run - fielding the rule-based bot instead. Retrain, then " +
+                "scripts/update-model.ps1.");
+
+            // Type first, then model: building an InferenceOnly policy with no model throws.
+            if (_behavior.BehaviorType == BehaviorType.InferenceOnly)
+            {
+                _behavior.BehaviorType = BehaviorType.HeuristicOnly;
+                var bot = GetComponent<Agent_HeuristicBot>();
+                if (bot != null) bot.enabled = true;
+            }
+            _behavior.Model = null;
         }
 
         /// <summary>

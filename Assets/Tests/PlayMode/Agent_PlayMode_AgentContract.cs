@@ -144,7 +144,7 @@ namespace PoSoccer.Tests
 
             // Two extra floats were added specifically so the scripted wall-kick
             // impulse stops being unmodellable dynamics.
-            Assert.AreEqual(29, Agent_Soccer.BaseObservationSize,
+            Assert.AreEqual(34, Agent_Soccer.BaseObservationSize,
                 "Observation count changed without updating this contract");
 
             var agent = Object.FindAnyObjectByType<Agent_Soccer>();
