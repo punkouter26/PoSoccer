@@ -115,6 +115,11 @@ namespace PoSoccer
                 // player's own half of the record honest too.
                 modelFile = ResolveModelName(),
                 baseline = BaselineMode,
+                // The lineup the grade was played at. A 2v2 grade and a 1v1 grade of the
+                // same brain are different measurements; without this field the JSON
+                // could not tell them apart. Empty POSOCCER_SQUAD = the authored 1v1.
+                squad = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("POSOCCER_SQUAD"))
+                    ? "1" : Environment.GetEnvironmentVariable("POSOCCER_SQUAD"),
                 invalid = _invalid,
                 timestampUtc = DateTime.UtcNow.ToString("o"),
             };
@@ -162,6 +167,7 @@ namespace PoSoccer
             public float meanBlueReward;
             public string modelFile;
             public bool baseline;
+            public string squad;
             public bool invalid;
             public string timestampUtc;
         }

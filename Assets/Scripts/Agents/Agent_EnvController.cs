@@ -109,6 +109,32 @@ namespace PoSoccer
         /// the reward profile.
         /// </summary>
         public int CurrentEpisodeSteps { get; private set; }
+
+        /// <summary>
+        /// Per-step penalty scale for standing within <see cref="TEAM_SPACING_RADIUS"/> of a
+        /// teammate, from the `team_spacing` environment parameter. 0 (the default, and the
+        /// value in every run that does not ask for it) switches the term off entirely.
+        /// </summary>
+        public float CurrentTeamSpacing { get; private set; }
+
+        /// <summary>
+        /// When on (`team_roles` environment parameter > 0.5), only the teammate nearest the
+        /// ball is paid for closing on it; the other is paid, at the SAME scale, for closing
+        /// on a cover spot behind the ball. Off by default. Always a no-op in 1v1, where
+        /// the lone player is by definition the nearest.
+        /// </summary>
+        public bool TeamRolesActive { get; private set; }
+
+        /// <summary>Teammates closer than this (metres) pay the spacing penalty.</summary>
+        internal const float TEAM_SPACING_RADIUS = 4f;
+
+        /// <summary>
+        /// How far behind the ball, toward its own goal, the supporting player's cover spot
+        /// sits. The same 3 m Agent_HeuristicBot uses for its own support position, so the
+        /// learner is shaped toward the role the opponent it is graded against already plays.
+        /// </summary>
+        internal const float SUPPORT_DEPTH = 3f;
+
         public float CurrentGoalWidth { get; private set; }
         /// <summary>Opponent difficulty applied at the last kickoff (curriculum readout).</summary>
         public float CurrentBotStrength { get; private set; }
@@ -165,12 +191,214 @@ namespace PoSoccer
         float[] _speedSum;
         int[] _speedSamples;
         Vector2[] _lastPosition;
+        // Distance to the nearest teammate, summed per agent. Only ever non-zero on a
+        // pitch with more than one player per side; that is the curve that shows
+        // whether a 2v2 policy spreads out or swarms the ball.
+        float[] _mateGapSum;
+        int[] _mateGapSamples;
 
         // Execution order (-50) puts this before Agent_Soccer.Awake, which is where
         // the brain contract is frozen - the profile swap must land before that.
         void Awake()
         {
+            // Squad first, so the players it clones are on the pitch when the profile
+            // override below walks the children.
+            ApplyTrainingSquad();
             ApplyProfileOverride();
+        }
+
+        // ── Team training (2026-09-28) ──────────────────────────────────────
+        //
+        // EVERY RUN IN THIS PROJECT'S HISTORY TRAINED 1v1. SCN_Training holds one agent
+        // per side, so the teammate block (4 floats) and the second opponent slot (4
+        // floats) of the observation have been zero on every step any brain has ever
+        // seen - while the game the menu launches is 2v2. "MA-POCA group credit" is on
+        // the disproven list, but it was only ever tested with a group of ONE, where
+        // POCA's centralised critic has nobody to assign credit between. Team play is
+        // untested, not disproven.
+        //
+        // POSOCCER_SQUAD brings the training pitches to N-a-side WITHOUT a scene edit,
+        // so the same build trains 1v1 or 2v2. It takes a comma-separated pattern that
+        // is cycled across the pitch grid: "2" makes every pitch 2v2, "1,2" alternates,
+        // which keeps half the experience on the 1v1 benchmark the brain is graded on.
+        // The observation contract is unchanged (29 x 2 vector, 178 inputs), so every
+        // existing .onnx still loads and a 1v1 checkpoint can warm-start a team run.
+
+        static int s_pitchOrdinal;
+
+        // Player builds keep statics for the process lifetime anyway; this is for the
+        // editor, where play sessions share a domain whenever reload is skipped.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetPitchOrdinal() => s_pitchOrdinal = 0;
+
+        void ApplyTrainingSquad()
+        {
+            string raw = System.Environment.GetEnvironmentVariable("POSOCCER_SQUAD");
+            if (string.IsNullOrEmpty(raw)) return;
+            // A match scene's lineup belongs to the menu (Agent_MatchLoader), never to a
+            // training variable that happens to be set in the shell.
+            if (GetComponent<Agent_MatchLoader>() != null) return;
+            // Only a trainer or an eval run may reshape the pitch.
+            if (!IsBoundedEpisode) return;
+
+            int[] pattern = ParseSquadPattern(raw);
+            if (pattern == null)
+            {
+                Debug.LogError($"[Env] POSOCCER_SQUAD='{raw}' is not a comma-separated list of " +
+                               $"squad sizes in 1..{Agent_MatchSetup.MAX_SQUAD}. Ignored - this " +
+                               "pitch keeps the squad authored in the scene.");
+                return;
+            }
+
+            // The original pitch wakes first (-50 runs before Agent_TrainingGrid clones it),
+            // so ordinal 0 is always the authored pitch. Grid clones copy whatever it became
+            // and then resize themselves, which is why ResizeTrainingSide shrinks as well
+            // as grows.
+            int ordinal = s_pitchOrdinal++;
+            int size = SquadForPitch(pattern, ordinal);
+            ResizeTrainingSide(Agent_Soccer.Team.Blue, size);
+            ResizeTrainingSide(Agent_Soccer.Team.Red, size);
+
+            // Discovery happens once here, from the resized hierarchy, so Start never
+            // sees a doomed player or misses a clone. Inactive children are skipped.
+            agents.Clear();
+            agents.AddRange(GetComponentsInChildren<Agent_Soccer>());
+
+            if (ordinal == 0)
+            {
+                Debug.Log($"[Env] POSOCCER_SQUAD={raw} -> squad sizes cycle over the pitch grid; " +
+                          $"pitch 0 is {size}v{size}.");
+            }
+        }
+
+        /// <summary>
+        /// Parse a POSOCCER_SQUAD pattern ("2", "1,2", " 1 , 2 "). Returns null for
+        /// anything malformed or out of range, so a typo fails loudly instead of
+        /// silently training a lineup nobody asked for.
+        /// </summary>
+        internal static int[] ParseSquadPattern(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            string[] parts = raw.Split(',');
+            var sizes = new int[parts.Length];
+            for (int partIndex = 0; partIndex < parts.Length; partIndex++)
+            {
+                if (!int.TryParse(parts[partIndex].Trim(), out int size)) return null;
+                if (size < 1 || size > Agent_MatchSetup.MAX_SQUAD) return null;
+                sizes[partIndex] = size;
+            }
+            return sizes;
+        }
+
+        /// <summary>Squad size for the pitch at <paramref name="ordinal"/>: the pattern, cycled.</summary>
+        internal static int SquadForPitch(int[] pattern, int ordinal)
+        {
+            if (pattern == null || pattern.Length == 0) return 1;
+            return pattern[Mathf.Abs(ordinal) % pattern.Length];
+        }
+
+        /// <summary>
+        /// Bring one side of a TRAINING pitch to <paramref name="size"/> players. Reuses
+        /// the players already present, clones the first for any deficit and removes the
+        /// surplus, so it is correct on the authored pitch and on a grid clone of an
+        /// already-resized one. Same clone-while-inactive discipline as
+        /// Agent_MatchLoader.CloneFrom: the clone's Awake - which freezes its behaviour
+        /// name and policy - must not run before it is in place.
+        /// </summary>
+        void ResizeTrainingSide(Agent_Soccer.Team team, int size)
+        {
+            var present = GetComponentsInChildren<Agent_Soccer>();
+            var squad = new List<Agent_Soccer>();
+            for (int agentIndex = 0; agentIndex < present.Length; agentIndex++)
+            {
+                if (present[agentIndex].team == team) squad.Add(present[agentIndex]);
+            }
+            if (squad.Count == 0) return;
+
+            // Deactivate BEFORE Destroy: the destroy is deferred to the end of the frame,
+            // and an inactive object is already invisible to GetComponentsInChildren.
+            for (int slot = squad.Count - 1; slot >= size; slot--)
+            {
+                squad[slot].gameObject.SetActive(false);
+                Destroy(squad[slot].gameObject);
+                squad.RemoveAt(slot);
+            }
+
+            var template = squad[0];
+            while (squad.Count < size)
+            {
+                int slot = squad.Count;
+                bool wasActive = template.gameObject.activeSelf;
+                template.gameObject.SetActive(false);
+                var go = Instantiate(template.gameObject, template.transform.parent);
+                template.gameObject.SetActive(wasActive);
+
+                go.name = $"Agent{team}{slot + 1}";
+                // Fan out across the width so a scene with randomizeSpawns off does not
+                // stack teammates on one spot: +3 m, -3 m, +6 m, ...
+                Vector3 p = template.transform.localPosition;
+                float lane = (slot % 2 == 1 ? 1f : -1f) * 3f * ((slot + 1) / 2);
+                float x = Mathf.Clamp(p.x + lane,
+                    -pitchHalfExtents.x + 1.5f, pitchHalfExtents.x - 1.5f);
+                go.transform.localPosition = new Vector3(x, p.y, p.z);
+
+                var clone = go.GetComponent<Agent_Soccer>();
+                clone.team = team;
+                go.SetActive(true);
+                squad.Add(clone);
+            }
+        }
+
+        /// <summary>
+        /// True when no teammate of <paramref name="self"/> is nearer the ball - the
+        /// player whose job is to press. Ties go to whoever comes first in
+        /// <see cref="agents"/>, so exactly one player per side holds the role.
+        /// Allocation-free; a squad is 1-3 players in practice.
+        /// </summary>
+        public bool IsNearestToBall(Agent_Soccer self)
+        {
+            if (self == null || self.Body == null || ball == null) return true;
+            float mine = (ball.position - self.Body.position).sqrMagnitude;
+            for (int agentIndex = 0; agentIndex < agents.Count; agentIndex++)
+            {
+                var other = agents[agentIndex];
+                if (other == null || other == self || other.team != self.team
+                    || other.Body == null) continue;
+                float theirs = (ball.position - other.Body.position).sqrMagnitude;
+                if (theirs < mine) return false;
+                if (Mathf.Approximately(theirs, mine) && agents.IndexOf(other) < agents.IndexOf(self))
+                    return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// The supporting player's cover spot: <see cref="SUPPORT_DEPTH"/> metres from the
+        /// ball back toward the goal it defends. Pure so it can be pinned by an EditMode test.
+        /// </summary>
+        internal static Vector2 SupportSpot(Vector2 ballPosition, Vector2 ownGoal)
+        {
+            Vector2 toOwnGoal = ownGoal - ballPosition;
+            if (toOwnGoal.sqrMagnitude < 0.0001f) return ballPosition;
+            return ballPosition + toOwnGoal.normalized
+                * Mathf.Min(SUPPORT_DEPTH, toOwnGoal.magnitude);
+        }
+
+        /// <summary>
+        /// Per-step spacing penalty (a non-positive number) for a teammate
+        /// <paramref name="gap"/> metres away: linear from -scale at contact to 0 at
+        /// <see cref="TEAM_SPACING_RADIUS"/>.
+        ///
+        /// BUDGET. Charged every physics step, so its ceiling is scale x the step cap.
+        /// At the 0.00005 the team config uses and a 9000-step cap that is -0.45 for a
+        /// pair glued together all episode - under half of conceding (-1.0), so it can
+        /// never outrank the outcome it shapes toward (the rule Agent_EditMode_RewardBudget
+        /// enforces for the profile terms).
+        /// </summary>
+        internal static float SpacingPenalty(float gap, float scale)
+        {
+            if (scale <= 0f || gap >= TEAM_SPACING_RADIUS) return 0f;
+            return -scale * (1f - Mathf.Max(0f, gap) / TEAM_SPACING_RADIUS);
         }
 
         bool _profileOverridden;
@@ -491,6 +719,13 @@ namespace PoSoccer
                     _speedSum[i] += agent.Body.linearVelocity.magnitude;
                     _speedSamples[i]++;
                 }
+
+                var mate = GetTeammate(agent);
+                if (mate != null && mate.Body != null && agent.Body != null)
+                {
+                    _mateGapSum[i] += (mate.Body.position - agent.Body.position).magnitude;
+                    _mateGapSamples[i]++;
+                }
             }
         }
 
@@ -503,6 +738,8 @@ namespace PoSoccer
                 _speedSum = new float[n];
                 _speedSamples = new int[n];
                 _lastPosition = new Vector2[n];
+                _mateGapSum = new float[n];
+                _mateGapSamples = new int[n];
             }
 
             for (int i = 0; i < n; i++)
@@ -510,6 +747,8 @@ namespace PoSoccer
                 _distanceTravelled[i] = 0f;
                 _speedSum[i] = 0f;
                 _speedSamples[i] = 0;
+                _mateGapSum[i] = 0f;
+                _mateGapSamples[i] = 0;
                 _lastPosition[i] = agents[i] != null
                     ? (Vector2)agents[i].transform.position
                     : Vector2.zero;
@@ -526,6 +765,13 @@ namespace PoSoccer
             if (_lastPosition == null) return;
 
             var stats = Academy.Instance.StatsRecorder;
+
+            // The squad this episode actually ran with. A team run whose POSOCCER_SQUAD
+            // never reached the player would otherwise look exactly like a 1v1 run - the
+            // failure shape this project has hit with POSOCCER_OPPONENT and stale builds.
+            // A "1,2" pattern should read ~1.5 here.
+            stats.Add("PoSoccer/blue_squad", TeamSize(Agent_Soccer.Team.Blue));
+
             for (int i = 0; i < agents.Count; i++)
             {
                 var agent = agents[i];
@@ -535,6 +781,11 @@ namespace PoSoccer
                 if (_speedSamples[i] > 0)
                 {
                     stats.Add("PoSoccer/blue_mean_speed", _speedSum[i] / _speedSamples[i]);
+                }
+                // Swarming vs spreading. Absent on 1v1 pitches, so it averages 2v2 only.
+                if (_mateGapSamples[i] > 0)
+                {
+                    stats.Add("PoSoccer/blue_teammate_gap_m", _mateGapSum[i] / _mateGapSamples[i]);
                 }
 
                 // What each dense reward term ACTUALLY paid this episode, blue side only
@@ -603,6 +854,14 @@ namespace PoSoccer
             // at kickoff like the others so a lesson change never lands mid-play.
             CurrentEpisodeSteps = Mathf.RoundToInt(
                 Academy.Instance.EnvironmentParameters.GetWithDefault("episode_steps", 0f));
+
+            // Team shaping (2026-09-28). Both default to OFF, so every existing config,
+            // every eval and every match is unchanged; only a trainer config that names
+            // them turns them on. Read at kickoff like the rest of the curriculum.
+            CurrentTeamSpacing = Mathf.Max(0f, Academy.Instance.EnvironmentParameters
+                .GetWithDefault("team_spacing", 0f));
+            TeamRolesActive = Academy.Instance.EnvironmentParameters
+                .GetWithDefault("team_roles", 0f) > 0.5f;
             for (int botIndex = 0; botIndex < _bots.Count; botIndex++)
             {
                 if (_bots[botIndex] != null) _bots[botIndex].SetStrength(CurrentBotStrength);

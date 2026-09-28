@@ -1,6 +1,7 @@
 # Phase 1 PPO bootstrap training vs the heuristic bot.
 # In-editor:  .\scripts\train-phase1.ps1 -RunId soccer_p1_00      (press Play when prompted)
 # Headless:   .\scripts\train-phase1.ps1 -RunId soccer_p1_00 -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
+# Team (2v2): .\scripts\train-phase1.ps1 -RunId soccer_p29team_standard -Config TRAIN_STANDARD_p29team.yaml -Squad "1,2" -EnvPath ...
 param(
     [string]$RunId = "soccer_p1_00",
     [string]$EnvPath = "",
@@ -11,7 +12,9 @@ param(
     [switch]$Resume,
     [switch]$Force,
     [Parameter(HelpMessage = "Leave both teams on the trainer (symmetric self-play) instead of facing the bot.")]
-    [switch]$SelfPlay
+    [switch]$SelfPlay,
+    [Parameter(HelpMessage = "Players per side on each training pitch, cycled over the grid: '2' = all 2v2, '1,2' = alternate. Empty = the authored 1v1.")]
+    [string]$Squad = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,6 +41,14 @@ try {
 # Env players are spawned as children of mlagents-learn, so they inherit it.
 $env:POSOCCER_OPPONENT = if ($SelfPlay) { "" } else { "bot" }
 
+# Squad size per pitch (Agent_EnvController.ApplyTrainingSquad). Validated here so a
+# typo fails before a multi-hour run rather than as one LogError in a player log.
+# Confirm it reached the player on TensorBoard: PoSoccer/blue_squad (1.5 for "1,2").
+if ($Squad -and $Squad -notmatch '^\s*\d+\s*(,\s*\d+\s*)*$') {
+    throw "-Squad '$Squad' must be a comma-separated list of squad sizes, e.g. '2' or '1,2'."
+}
+$env:POSOCCER_SQUAD = $Squad
+
 # The default used to be STANDARD_phase1_ppo.yaml, which lived in config\_archive
 # and therefore never resolved - the documented default invocation of this script
 # could not start a run. Resolve and verify before handing the path to the trainer,
@@ -60,6 +71,7 @@ try {
 }
 finally {
     $env:POSOCCER_OPPONENT = ""
+    $env:POSOCCER_SQUAD = ""
     # Lifecycle guardrail: no orphaned trainer/env processes after a run.
     & "$root\scripts\cleanup-training.ps1"
     # Auto-assign the freshest checkpoint into the agent prefab slot (GUID preserved).

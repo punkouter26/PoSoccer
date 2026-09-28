@@ -1,0 +1,163 @@
+# p29 - TEAM TRAINING. The first run in this project where a brain ever has a teammate.
+#
+# Launch (the -Squad flag is what makes this a team run - the YAML alone cannot):
+#   .\scripts\tensorboard.ps1
+#   .\scripts\train-phase1.ps1 -RunId soccer_p29team_standard -Config TRAIN_STANDARD_p29team.yaml `
+#       -Squad "1,2" -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4 [-InitFrom soccer_p22gain_standard]
+#
+# REQUIRES A REBUILT PLAYER. POSOCCER_SQUAD, team_roles and team_spacing are read by
+# code added 2026-09-28 (Agent_EnvController.ApplyTrainingSquad / ResetPitch); every
+# build made before that ignores all three and trains plain 1v1 without a warning.
+# First thing to check on TensorBoard: PoSoccer/blue_squad must read ~1.5 for "1,2".
+# If it reads 1.0 the squad never reached the player - kill the run.
+#
+# ============================================================================
+# WHY THIS IS NOT A REPEAT OF THE DISPROVEN MA-POCA RUNS (p10, p15, p16)
+# ============================================================================
+# SCN_Training holds one agent per side, so EVERY run in this project's history was
+# 1v1. The teammate block (4 of 29 vector obs) and the second opponent slot (4 more)
+# have been zero on every step any brain has ever seen, while the game the menu
+# launches is 2v2. The POCA runs on the disproven list used a group of ONE - POCA's
+# centralised critic had nobody to assign credit between, so it reduced to PPO with
+# a different value head. They were also all BEFORE the 2026-08-28 body-frame fix,
+# on a policy that could not reach the ball. Credit assignment between teammates has
+# never been tested here.
+#
+# ============================================================================
+# WHAT CHANGES vs p22 (the best graded config, 26.6% at n=350)
+# ============================================================================
+#  1. SQUAD "1,2": half the 16-pitch grid plays 2v2, half stays 1v1. The 1v1 half
+#     keeps the brain on the benchmark it is graded at; the 2v2 half is new. The
+#     observation contract is unchanged (178 inputs), so --initialize-from a 1v1
+#     checkpoint works: the policy loads, the POCA critic starts fresh (ml-agents
+#     loads with strict=False and re-initialises modules it cannot match).
+#  2. trainer_type poca: goals now pay the scoring side a SHARED group reward (+1 /
+#     -1, Agent_EnvController.OnGoalScored) on top of the individual table, and
+#     POCA's critic assigns it between teammates. Hyperparameters are p22's.
+#  3. team_roles 1: only the teammate nearest the ball is paid for approaching it;
+#     the other is paid, at the same ballProximityScale, for approaching a cover spot
+#     3 m behind the ball - the role the scripted bot's support logic plays from
+#     bot_strength 0.5 up. This is aimed at the one failure every 2v2 policy shows
+#     first: both teammates chasing the same ball. Budget is redirected, not added,
+#     and 1v1 pitches are bit-identical with it on.
+#  4. team_spacing 0.00005: per-step charge for standing within 4 m of a teammate.
+#     Ceiling = 0.00005 x 9000 steps = -0.45 for a pair glued together all episode,
+#     under half of conceding (-1.0), so it cannot outrank the result. 0 on 1v1.
+#
+# That is FOUR levers, which breaks this project's single-variable rule on purpose:
+# none of them means anything without (1), and (2) without a teammate is exactly the
+# run already on the disproven list. To attribute the result afterwards, the
+# ablation is this same file with team_roles: 0 and team_spacing: 0.
+#
+# ============================================================================
+# HOW TO JUDGE IT - mean reward is not it (see CLAUDE.md, METHOD)
+# ============================================================================
+#  - The curriculum's `reward` measure reads INDIVIDUAL rewards only; POCA's group
+#    reward is excluded (ml-agents rl_trainer.reward_buffer). In 2v2 the non-scoring
+#    teammate earns assist 0.3 / baseline 0.2 instead of goalScorer 1.2, so the same
+#    win rate produces a LOWER mean than in 1v1 and promotion will be slower than
+#    p22's. Deliberately left at p22's 0.21: a ladder that promotes on noise is the
+#    p5 failure. If the run sits in Lesson0 past ~4M steps, lower it and say so.
+#  - Watch PoSoccer/blue_teammate_gap_m: rising = the pair is spreading out,
+#    stuck near 1-2 m = swarming. Reward/spacing and Reward/proximity show what the
+#    two team terms actually paid.
+#  - GRADE TWICE, never mix the numbers:
+#      .\scripts\evaluate.ps1 -RunId <run> -Episodes 350              (1v1 benchmark)
+#      .\scripts\evaluate.ps1 -RunId <run> -Episodes 350 -Squad 2     (2v2, new baseline)
+#    The 1v1 grade is comparable to p22's 26.6%. The 2v2 grade has NO baseline yet:
+#    grade the deployed p25 STANDARD brain at -Squad 2 first, and the bot-vs-bot
+#    parity with -Baseline -Squad 2, so the team number has something to beat.
+#  - Run Agent_PlayMode_MovementProbe before believing any of it.
+behaviors:
+  STANDARD:
+    trainer_type: poca
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      # Kept at 256 so a p22/p25 checkpoint can warm-start the policy.
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 10000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+    # p22's value. p28 is the pending throughput A/B for `threaded: true`; not mixed in here.
+    threaded: false
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # Team shaping. Both are read by Agent_EnvController.ResetPitch and default to 0
+  # (off) when absent, which is why no earlier config is affected.
+  team_roles: 1.0
+  team_spacing: 0.00005
+
+  # Unchanged from p22. From Lesson2_Half (0.5) up the scripted bots also play
+  # support positions, so the 2v2 opponent starts playing as a team there.
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.35
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.65
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  num_envs: 4
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

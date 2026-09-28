@@ -131,6 +131,9 @@ namespace PoSoccer
         // Potential for the ball->goal shaping term. Same telescoping trick as
         // _prevBallDist, applied to the BALL's distance to the attacking goal.
         float _prevBallGoalDist = float.PositiveInfinity;
+        // Which role the proximity term was measuring last step (see ApplyDenseRewards).
+        // A role change swaps the distance being differenced, so that step pays nothing.
+        bool _prevWasPresser = true;
 
         /// <summary>Standard gravity, used for the traction budget (mu * m * g).</summary>
         const float Gravity = 9.81f;
@@ -556,6 +559,7 @@ namespace PoSoccer
             System.Array.Clear(_prevActions, 0, _prevActions.Length);
             _prevBallDist = float.PositiveInfinity;
             _prevBallGoalDist = float.PositiveInfinity;
+            _prevWasPresser = true;
             Stamina.ResetForEpisode();
             if (_contact == null) _contact = GetComponent<Agent_Contact>();
             if (_contact != null) _contact.ResetForEpisode();
@@ -935,11 +939,13 @@ namespace PoSoccer
         // was blind to exactly the two coefficients anyone tuning a personality would
         // want to read, and a KIM run's TensorBoard showed seven terms summing to less
         // than her realized dense reward with nothing naming the difference.
-        internal const int TermCount = 10;
+        // 10 -> 11 on 2026-09-28: `spacing`, the team term. Zero unless the trainer
+        // config sets `team_spacing`, and always zero on a 1v1 pitch.
+        internal const int TermCount = 11;
         internal static readonly string[] TermNames =
         {
             "step", "proximity", "facing", "ball_to_goal", "crossbar",
-            "jitter", "wall", "corner", "defense", "possession",
+            "jitter", "wall", "corner", "defense", "possession", "spacing",
         };
 
         void Account(int term, float value)
@@ -972,6 +978,30 @@ namespace PoSoccer
             Vector2 toBall = env.Ball.position - Body.position;
             float d = toBall.magnitude;
 
+            // TEAM ROLES (2026-09-28, off unless the trainer sets `team_roles`). Paying
+            // every player for closing on the ball is what makes 2v2 policies swarm it:
+            // both teammates earn the same gradient for the same chase, so nothing in the
+            // reward ever says "one of you should be somewhere else". With roles on, the
+            // player nearest the ball keeps the ball-approach term and the other earns the
+            // SAME term, at the SAME scale, for closing on a cover spot behind the ball -
+            // the position Agent_HeuristicBot's own support logic takes. The dense budget
+            // is redirected, not enlarged, and in 1v1 the lone player is always the
+            // presser, so a 1v1 pitch is bit-identical with roles on or off.
+            bool presser = !env.TeamRolesActive || env.IsNearestToBall(this);
+            float approachDist = presser
+                ? d
+                : (Agent_EnvController.SupportSpot(env.Ball.position, env.GetGoalPosition(team))
+                   - Body.position).magnitude;
+            if (presser != _prevWasPresser)
+            {
+                // The target just changed, so last step's distance measured something
+                // else. Differencing across the switch would pay (or charge) the gap
+                // between two unrelated distances - and a policy could farm it by
+                // trading roles. Restart the difference from here instead.
+                _prevBallDist = float.PositiveInfinity;
+                _prevWasPresser = presser;
+            }
+
             // v2: differential proximity reward. Pure chasing yields ~0 reward (everyone
             // closes on the ball at similar rates). Approaching *faster than the previous
             // step* yields positive reward. Cures double-team crowding in 2v2 self-play.
@@ -980,14 +1010,14 @@ namespace PoSoccer
             {
                 if (!float.IsPositiveInfinity(_prevBallDist))
                 {
-                    float delta = _prevBallDist - d;   // positive = closer this step
+                    float delta = _prevBallDist - approachDist;   // positive = closer this step
                     Account(1, rewards.ballProximityScale * delta);
                 }
-                _prevBallDist = d;
+                _prevBallDist = approachDist;
             }
             else
             {
-                Account(1, rewards.ballProximityScale * (1f / (1f + d)));
+                Account(1, rewards.ballProximityScale * (1f / (1f + approachDist)));
             }
 
             // facingAlignmentScale is 0 on all five shipped profiles (retired
@@ -1116,6 +1146,20 @@ namespace PoSoccer
             // NICK-style possession - close control of the ball pays continuously.
             if (rewards.possessionScale > 0f && d < 1.2f)
                 Account(9, rewards.possessionScale);
+
+            // Team spacing (2026-09-28, off unless the trainer sets `team_spacing`):
+            // a small per-step charge for crowding a teammate. Budget arithmetic lives on
+            // Agent_EnvController.SpacingPenalty. No teammate (1v1) means no charge.
+            if (env.CurrentTeamSpacing > 0f)
+            {
+                Agent_Soccer mate = env.GetTeammate(this);
+                if (mate != null && mate.Body != null)
+                {
+                    float gap = (mate.Body.position - Body.position).magnitude;
+                    float penalty = Agent_EnvController.SpacingPenalty(gap, env.CurrentTeamSpacing);
+                    if (penalty < 0f) Account(10, penalty);
+                }
+            }
         }
 
         public override void Heuristic(in ActionBuffers actionsOut)

@@ -25,7 +25,12 @@ param(
     [switch]$Rebuild,
     # Escape hatch for the staleness gate below. Deliberately awkward to reach:
     # every wrong phase-10 number came from grading a stale player.
-    [switch]$AllowStale
+    [switch]$AllowStale,
+    # Players per side, as POSOCCER_SQUAD ('2' = grade at 2v2). Empty = the authored
+    # 1v1, which is the benchmark every historical grade was taken at. A 2v2 grade is a
+    # DIFFERENT measurement, so it gets its own JSON (suffix _squad2) rather than
+    # overwriting the 1v1 one, and the player stamps `squad` into the report.
+    [string]$Squad = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -78,6 +83,12 @@ if (-not $Baseline -and (Test-Path $exe)) {
 }
 
 $tag = if ($Baseline) { "baseline" } else { $RunId }
+if ($Squad) {
+    if ($Squad -notmatch '^\s*\d+\s*(,\s*\d+\s*)*$') {
+        throw "-Squad '$Squad' must be a comma-separated list of squad sizes, e.g. '2'."
+    }
+    $tag = "${tag}_squad" + (($Squad -replace '\s', '') -replace ',', '-')
+}
 $out = Join-Path $root "results\eval\$tag.json"
 New-Item -ItemType Directory -Force (Split-Path $out) | Out-Null
 if (Test-Path $out) { Remove-Item $out -Force -Confirm:$false }
@@ -87,6 +98,7 @@ $env:POSOCCER_BASELINE = if ($Baseline) { "1" } else { "" }
 $env:POSOCCER_EPISODES = "$Episodes"
 $env:POSOCCER_RUNID = $tag
 $env:POSOCCER_OUT = $out
+$env:POSOCCER_SQUAD = $Squad
 
 try {
     $p = Start-Process -FilePath $exe -ArgumentList "-batchmode", "-nographics", `
@@ -121,6 +133,7 @@ try {
                 $red = [int]$m[4].Value; $stale = [int]$m[5].Value
                 $partial = [ordered]@{
                     runId       = $RunId
+                    squad       = if ($Squad) { $Squad } else { "1" }
                     partial     = $true
                     reason      = "timed out after $effectiveTimeout min"
                     episodes    = $done
@@ -151,6 +164,7 @@ try {
 finally {
     $env:POSOCCER_EVAL = ""; $env:POSOCCER_BASELINE = ""
     $env:POSOCCER_EPISODES = ""; $env:POSOCCER_RUNID = ""; $env:POSOCCER_OUT = ""
+    $env:POSOCCER_SQUAD = ""
 }
 
 if (-not (Test-Path $out)) {

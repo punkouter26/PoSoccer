@@ -19,6 +19,27 @@ Every landmine and method rule that still governs day-to-day work stayed in `CLA
 
 ---
 
+## STAGED 2026-09-28 — p29, team training (ungraded, never run)
+
+Every run above was **1v1**: `SCN_Training` has one agent per side, so the teammate
+observation block and the second opponent slot were zero on every step any brain has
+seen. The MA-POCA runs on the disproven list (p10, p15, p16) used a group of **one**,
+where POCA's centralised critic has no teammate to split credit with, and all of them
+predate the 2026-08-28 body-frame fix. Team credit assignment is therefore untested,
+not disproven.
+
+p29 (`config/TRAIN_STANDARD_p29team.yaml`) is p22's hyperparameters under `poca`, on a
+`-Squad "1,2"` grid (half 1v1, half 2v2), with two new trainer-driven shaping terms:
+`team_roles` (the nearest teammate is paid to approach the ball, the other to approach a
+cover spot behind it, same scale, so the dense budget is redirected rather than grown)
+and `team_spacing` (≤ −0.45 per episode ceiling, under conceding). Four levers at once on
+purpose, because the other three mean nothing without the teammate; the ablation is the
+same file with both team terms at 0. Grade at 1v1 (comparable to p22's 26.6%) **and** at
+`-Squad 2`, which needs its own baselines first (the deployed brain and bot-vs-bot at
+`-Squad 2`). Full reasoning is in the config header.
+
+---
+
 ## State (2026-08-04)
 
 **ROOT CAUSE FOUND 2026-08-28 — observations were world-frame while actions were body-frame, and that is why nine phases of training could not reach the ball.**
