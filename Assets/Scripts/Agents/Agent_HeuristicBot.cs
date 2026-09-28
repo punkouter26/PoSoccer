@@ -116,6 +116,10 @@ namespace PoSoccer
             // keep the easy opponent they were designed around.
             if (_strength >= 0.5f && role != Agent_TeamRoles.Role.None && !ballDuty)
             {
+                // Off the ball, so any jam timer is about a contact that has ended. Left
+                // running, a bot handed the ball back while still next to it would flank
+                // on the very first tick.
+                _jamSince = float.PositiveInfinity;
                 return HoldPost(self, post, ball, opponentGoal);
             }
 

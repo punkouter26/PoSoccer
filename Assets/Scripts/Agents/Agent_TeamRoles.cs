@@ -150,7 +150,7 @@ namespace PoSoccer
             return Clamp(spot, halfExtents);
         }
 
-        static Vector2 Clamp(Vector2 spot, Vector2 halfExtents)
+        private static Vector2 Clamp(Vector2 spot, Vector2 halfExtents)
         {
             float x = Mathf.Max(0f, halfExtents.x - WALL_MARGIN);
             float y = Mathf.Max(0f, halfExtents.y - WALL_MARGIN);

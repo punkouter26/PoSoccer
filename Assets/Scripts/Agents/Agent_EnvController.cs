@@ -421,19 +421,20 @@ namespace PoSoccer
             Vector2 origin = transform.position;
             Vector2 ballWorld = ball != null ? ball.position : origin;
             Vector2 ballLocal = ballWorld - origin;
-            Vector2 ownGoalLocal = GetGoalPosition(team) - origin;
+            Vector2 ownGoalWorld = GetGoalPosition(team);
+            Vector2 ownGoalLocal = ownGoalWorld - origin;
             Vector2 oppGoalLocal = GetGoalPosition(Agent_Soccer.Opponent(team)) - origin;
 
             // Defaults for this side: everyone on the ball, no role. A player without a
             // body keeps these.
             int size = 0;
-            for (int i = 0; i < agents.Count; i++)
+            for (int agentIndex = 0; agentIndex < agents.Count; agentIndex++)
             {
-                var agent = agents[i];
+                var agent = agents[agentIndex];
                 if (agent == null || agent.team != team) continue;
-                _roles[i] = Agent_TeamRoles.Role.None;
-                _roleTargets[i] = ballWorld;
-                _ballDuty[i] = true;
+                _roles[agentIndex] = Agent_TeamRoles.Role.None;
+                _roleTargets[agentIndex] = ballWorld;
+                _ballDuty[agentIndex] = true;
                 if (agent.Body != null) size++;
             }
             if (size <= 1)
@@ -444,13 +445,21 @@ namespace PoSoccer
             }
 
             // Goalie: sticky for the episode, first chosen as whoever is deepest.
+            //
+            // Measured from the TRANSFORM, not the rigidbody. ResetPitch moves players by
+            // writing transform.position, and Physics2D auto-sync is off
+            // (m_AutoSyncTransforms: 0), so Rigidbody2D.position still holds the pre-reset
+            // pose until the next simulation step - which is when this first runs. Picking
+            // from the body chose the keeper by where everyone stood when the LAST goal went
+            // in, and kept that choice all episode. Agents do not interpolate, so between
+            // steps the transform and the body agree and this is the kickoff position.
             Agent_Soccer goalie = null;
             if (Agent_TeamRoles.HasGoalie(size))
             {
                 goalie = team == Agent_Soccer.Team.Blue ? _blueGoalie : _redGoalie;
                 if (goalie == null || goalie.Body == null || agents.IndexOf(goalie) < 0)
                 {
-                    goalie = NearestTo(team, GetGoalPosition(team), null);
+                    goalie = NearestTo(team, ownGoalWorld, null, byTransform: true);
                     SetGoalie(team, goalie);
                 }
             }
@@ -459,9 +468,11 @@ namespace PoSoccer
                 SetGoalie(team, null);
             }
 
-            // Presser: nearest outfield player to the ball, with a hand-off margin.
+            // Presser: nearest outfield player to the ball, with a hand-off margin. Read
+            // from the bodies, so on the first tick after a reset it can lag one step; it
+            // is re-decided every tick, so that corrects itself immediately.
             Agent_Soccer presser = team == Agent_Soccer.Team.Blue ? _bluePresser : _redPresser;
-            Agent_Soccer nearest = NearestTo(team, ballWorld, goalie);
+            Agent_Soccer nearest = NearestTo(team, ballWorld, goalie, byTransform: false);
             if (presser == null || presser == goalie || presser.Body == null
                 || agents.IndexOf(presser) < 0)
             {
@@ -477,10 +488,9 @@ namespace PoSoccer
 
             // Everyone else in the outfield, deepest first (nearest their own goal).
             int others = 0;
-            Vector2 ownGoalWorld = GetGoalPosition(team);
-            for (int i = 0; i < agents.Count; i++)
+            for (int agentIndex = 0; agentIndex < agents.Count; agentIndex++)
             {
-                var agent = agents[i];
+                var agent = agents[agentIndex];
                 if (agent == null || agent.team != team || agent.Body == null) continue;
                 if (agent == goalie || agent == presser) continue;
                 float depth = (agent.Body.position - ownGoalWorld).sqrMagnitude;
@@ -495,54 +505,82 @@ namespace PoSoccer
             }
 
             int defenders = Mathf.Min(Agent_TeamRoles.DefenderCount(size), others);
-            for (int k = 0; k < others; k++)
+
+            // The deepest players are the defenders, but WHICH defender post each takes
+            // goes by where they already stand across the goal-ball line. Numbering them by
+            // depth instead swapped their posts - and sent them crossing through each other -
+            // every time two of them traded places front to back.
+            Vector2 lineDir = ballLocal - ownGoalLocal;
+            Vector2 across = lineDir.sqrMagnitude > 0.0001f
+                ? Vector2.Perpendicular(lineDir.normalized) : Vector2.right;
+            for (int slot = 1; slot < defenders; slot++)
             {
-                int i = agents.IndexOf(_roleScratch[k]);
-                _ballDuty[i] = false;
-                if (k < defenders)
+                var agent = _roleScratch[slot];
+                float lateral = Vector2.Dot(agent.Body.position - ownGoalWorld, across);
+                int insert = slot;
+                while (insert > 0 && Vector2.Dot(
+                           _roleScratch[insert - 1].Body.position - ownGoalWorld, across) > lateral)
                 {
-                    _roles[i] = Agent_TeamRoles.Role.Defender;
-                    _roleTargets[i] = origin + Agent_TeamRoles.DefenderSpot(
-                        ballLocal, ownGoalLocal, k, defenders, pitchHalfExtents);
+                    _roleScratch[insert] = _roleScratch[insert - 1];
+                    insert--;
+                }
+                _roleScratch[insert] = agent;
+            }
+
+            for (int rank = 0; rank < others; rank++)
+            {
+                int agentIndex = agents.IndexOf(_roleScratch[rank]);
+                _ballDuty[agentIndex] = false;
+                if (rank < defenders)
+                {
+                    _roles[agentIndex] = Agent_TeamRoles.Role.Defender;
+                    _roleTargets[agentIndex] = origin + Agent_TeamRoles.DefenderSpot(
+                        ballLocal, ownGoalLocal, rank, defenders, pitchHalfExtents);
                 }
                 else
                 {
-                    _roles[i] = Agent_TeamRoles.Role.Attacker;
-                    _roleTargets[i] = origin + Agent_TeamRoles.SupportSpot(
-                        ballLocal, oppGoalLocal, k - defenders, pitchHalfExtents);
+                    _roles[agentIndex] = Agent_TeamRoles.Role.Attacker;
+                    _roleTargets[agentIndex] = origin + Agent_TeamRoles.SupportSpot(
+                        ballLocal, oppGoalLocal, rank - defenders, pitchHalfExtents);
                 }
-                _roleScratch[k] = null;
+                _roleScratch[rank] = null;
             }
 
             if (presser != null)
             {
-                int i = agents.IndexOf(presser);
-                _roles[i] = Agent_TeamRoles.Role.Attacker;   // target + duty keep the defaults
+                // Target and ball duty keep the defaults set above: the ball.
+                _roles[agents.IndexOf(presser)] = Agent_TeamRoles.Role.Attacker;
             }
 
             if (goalie != null)
             {
-                int i = agents.IndexOf(goalie);
-                _roles[i] = Agent_TeamRoles.Role.Goalie;
+                int goalieIndex = agents.IndexOf(goalie);
+                _roles[goalieIndex] = Agent_TeamRoles.Role.Goalie;
                 bool rush = Agent_TeamRoles.GoalieShouldRush(ballLocal, ownGoalLocal);
-                _ballDuty[i] = rush;
-                _roleTargets[i] = rush
+                _ballDuty[goalieIndex] = rush;
+                _roleTargets[goalieIndex] = rush
                     ? ballWorld
                     : origin + Agent_TeamRoles.GoalieSpot(
                         ballLocal, ownGoalLocal, CurrentGoalWidth, pitchHalfExtents);
             }
         }
 
-        /// <summary>Player of <paramref name="team"/> nearest <paramref name="point"/>, skipping <paramref name="exclude"/>.</summary>
-        Agent_Soccer NearestTo(Agent_Soccer.Team team, Vector2 point, Agent_Soccer exclude)
+        /// <summary>
+        /// Player of <paramref name="team"/> nearest <paramref name="point"/>, skipping
+        /// <paramref name="exclude"/>. <paramref name="byTransform"/> measures from the
+        /// transform instead of the rigidbody - see the goalie pick for why that matters.
+        /// </summary>
+        Agent_Soccer NearestTo(Agent_Soccer.Team team, Vector2 point, Agent_Soccer exclude,
+            bool byTransform)
         {
             Agent_Soccer best = null;
             float bestSqr = float.MaxValue;
-            for (int i = 0; i < agents.Count; i++)
+            for (int agentIndex = 0; agentIndex < agents.Count; agentIndex++)
             {
-                var agent = agents[i];
+                var agent = agents[agentIndex];
                 if (agent == null || agent == exclude || agent.team != team || agent.Body == null) continue;
-                float sqr = (agent.Body.position - point).sqrMagnitude;
+                Vector2 position = byTransform ? (Vector2)agent.transform.position : agent.Body.position;
+                float sqr = (position - point).sqrMagnitude;
                 if (sqr < bestSqr) { bestSqr = sqr; best = agent; }
             }
             return best;
