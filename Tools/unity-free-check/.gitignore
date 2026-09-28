@@ -1,0 +1,6 @@
+bin/
+obj/
+gen/
+TestResults/
+.dotnet/
+.dotnet-install.sh
