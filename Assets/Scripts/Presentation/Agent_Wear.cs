@@ -72,9 +72,9 @@ namespace PoSoccer
 
         void Start()
         {
-            var hud = FindFirstObjectByType<Agent_HUD>();
+            var hud = FindAnyObjectByType<Agent_HUD>();
             var env = GetComponent<Agent_EnvController>();
-            if (env == null) env = FindFirstObjectByType<Agent_EnvController>();
+            if (env == null) env = FindAnyObjectByType<Agent_EnvController>();
 
             // IsVisualScene, not IsMatchScene: this draws only its OWN pitch and
             // holds no global state, so the gallery's cloned pitches each keep

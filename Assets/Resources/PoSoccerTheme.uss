@@ -66,10 +66,16 @@
        120 (that is the ergonomic number) and keep this above it. */
     --touch-min: 124px;
 
-    /* Radii */
-    --radius-sm: 8px;
-    --radius-md: 16px;
-    --radius-lg: 24px;
+    /* Radii. Three steps, named s/m/l to match the spacing and type scales
+       (they were --radius-sm/md/lg until 2026-10-10). Agent_UIStyle carries
+       RadiusS / RadiusM / RadiusL for the few inline styles that need one -
+       USS variables cannot be read from C#, so the two are kept equal by hand
+       exactly as the font scale is. Pill ends (a radius of half the element's
+       height: meters, bars, the slider dragger) stay literal on purpose - they
+       are geometry, not a design step. */
+    --radius-s: 8px;
+    --radius-m: 16px;
+    --radius-l: 24px;
 
     /* Type scale */
     /* Sizes are grounded in Android's type scale, not taste. PanelSettings is
@@ -153,10 +159,10 @@
  */
 .panel {
     background-color: var(--color-panel);
-    border-top-left-radius: var(--radius-md);
-    border-top-right-radius: var(--radius-md);
-    border-bottom-left-radius: var(--radius-md);
-    border-bottom-right-radius: var(--radius-md);
+    border-top-left-radius: var(--radius-m);
+    border-top-right-radius: var(--radius-m);
+    border-bottom-left-radius: var(--radius-m);
+    border-bottom-right-radius: var(--radius-m);
     border-top-width: 1;
     border-bottom-width: 2;
     border-top-color: var(--color-edge-light);
@@ -205,10 +211,10 @@
     justify-content: center;
     color: var(--color-text);
     background-color: var(--color-panel);
-    border-top-left-radius: var(--radius-md);
-    border-top-right-radius: var(--radius-md);
-    border-bottom-left-radius: var(--radius-md);
-    border-bottom-right-radius: var(--radius-md);
+    border-top-left-radius: var(--radius-m);
+    border-top-right-radius: var(--radius-m);
+    border-bottom-left-radius: var(--radius-m);
+    border-bottom-right-radius: var(--radius-m);
     border-top-width: 1;
     border-bottom-width: 2;
     border-left-width: 0;
@@ -300,10 +306,10 @@
     font-size: var(--font-m);
     -unity-font-style: bold;
     color: rgb(0, 0, 0);
-    border-top-left-radius: var(--radius-sm);
-    border-top-right-radius: var(--radius-sm);
-    border-bottom-left-radius: var(--radius-sm);
-    border-bottom-right-radius: var(--radius-sm);
+    border-top-left-radius: var(--radius-s);
+    border-top-right-radius: var(--radius-s);
+    border-bottom-left-radius: var(--radius-s);
+    border-bottom-right-radius: var(--radius-s);
     border-bottom-width: 6;
 }
 
@@ -555,27 +561,102 @@
 
 /* ------------------------------------------------------------ telemetry - */
 
+/* The health panel (Agent_Telemetry). It used to be one absolutely positioned
+   Label; it is now a normal-flow column of short rows inside a safe-area
+   container. NORMAL FLOW IS LOAD-BEARING: an absolute child resolves against its
+   parent's padding box, so the old `top: 140` skipped the safe-area inset
+   entirely - the trap Agent_Chrome documents at length. */
 .telemetry {
-    position: absolute;
-    top: 140;
-    left: 20;
-    padding-top: 14;
-    padding-bottom: 14;
-    padding-left: 18;
-    padding-right: 18;
-    background-color: rgba(0, 0, 0, 0.72);
-    color: rgb(166, 255, 179);
-    /* 26 was a desktop-only size. Agent_Chrome's DEBUG button makes this panel
-       reachable on a phone, so it has to clear the same 12sp floor as the rest.
-       ~15 rows at 34 px is ~630 px of a 1920 px screen - height is not a
-       constraint here. */
-    font-size: 34;
+    margin-left: var(--space-5);
+    margin-right: var(--space-5);
+    padding-top: var(--space-3);
+    padding-bottom: var(--space-3);
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+    background-color: rgba(0, 0, 0, 0.86);
+    border-top-left-radius: var(--radius-m);
+    border-top-right-radius: var(--radius-m);
+    border-bottom-left-radius: var(--radius-m);
+    border-bottom-right-radius: var(--radius-m);
+}
+
+.health__title {
+    font-size: var(--font-s);
     -unity-font-style: bold;
-    white-space: normal;
-    border-top-left-radius: var(--radius-sm);
-    border-top-right-radius: var(--radius-sm);
-    border-bottom-left-radius: var(--radius-sm);
-    border-bottom-right-radius: var(--radius-sm);
+    color: var(--color-text);
+    margin-bottom: var(--space-1);
+}
+
+.health__section {
+    font-size: var(--font-xs);
+    -unity-font-style: bold;
+    color: var(--color-text-muted);
+    letter-spacing: 2;
+    margin-top: var(--space-2);
+}
+
+.health__row {
+    flex-direction: row;
+    align-items: center;
+}
+
+.health__dot {
+    width: 16px;
+    height: 16px;
+    margin-right: var(--space-3);
+    flex-shrink: 0;
+    background-color: var(--color-text-muted);
+    border-top-left-radius: var(--radius-s);
+    border-top-right-radius: var(--radius-s);
+    border-bottom-left-radius: var(--radius-s);
+    border-bottom-right-radius: var(--radius-s);
+}
+
+.health__label {
+    flex-shrink: 0;
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    margin-right: var(--space-4);
+}
+
+/* The value takes whatever the label leaves and ELLIPSISES rather than wraps:
+   a wrapped row changes the panel's height, and the panel has to fit one
+   portrait screen with no scroll container. */
+.health__value {
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    font-size: var(--font-xs);
+    -unity-font-style: bold;
+    -unity-text-align: middle-right;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.health--ok .health__dot { background-color: rgb(107, 255, 143); }
+.health--warn .health__dot { background-color: var(--color-gold); }
+.health--bad .health__dot { background-color: rgb(255, 107, 107); }
+.health--warn .health__value { color: var(--color-gold); }
+.health--bad .health__value { color: rgb(255, 107, 107); }
+
+.health__buttons {
+    flex-direction: row;
+    margin-top: var(--space-1);
+}
+
+/* Still a .btn, so still --touch-min tall. Only the horizontal padding gives:
+   four or five of these share one 1000-unit row. */
+.health__btn {
+    flex-grow: 1;
+    flex-basis: 0;
+    margin-left: var(--space-1);
+    margin-right: var(--space-1);
+    padding-left: var(--space-1);
+    padding-right: var(--space-1);
+    font-size: var(--font-xs);
+    -unity-font-style: bold;
 }
 
 /* --------------------------------------------------------------- motion - */
@@ -609,10 +690,10 @@
 .card {
     width: 980;
     background-color: var(--color-panel-solid);
-    border-top-left-radius: var(--radius-lg);
-    border-top-right-radius: var(--radius-lg);
-    border-bottom-left-radius: var(--radius-lg);
-    border-bottom-right-radius: var(--radius-lg);
+    border-top-left-radius: var(--radius-l);
+    border-top-right-radius: var(--radius-l);
+    border-bottom-left-radius: var(--radius-l);
+    border-bottom-right-radius: var(--radius-l);
     border-top-width: 1;
     border-bottom-width: 2;
     border-top-color: var(--color-edge-light);
@@ -656,10 +737,10 @@
 .card__tile {
     width: 300;
     background-color: var(--color-panel);
-    border-top-left-radius: var(--radius-sm);
-    border-top-right-radius: var(--radius-sm);
-    border-bottom-left-radius: var(--radius-sm);
-    border-bottom-right-radius: var(--radius-sm);
+    border-top-left-radius: var(--radius-s);
+    border-top-right-radius: var(--radius-s);
+    border-bottom-left-radius: var(--radius-s);
+    border-bottom-right-radius: var(--radius-s);
     padding-top: var(--space-3);
     padding-bottom: var(--space-3);
     padding-left: var(--space-3);
@@ -933,10 +1014,10 @@
     padding-right: 30;
     margin-left: 5;
     margin-right: 5;
-    border-top-left-radius: var(--radius-sm);
-    border-top-right-radius: var(--radius-sm);
-    border-bottom-left-radius: var(--radius-sm);
-    border-bottom-right-radius: var(--radius-sm);
+    border-top-left-radius: var(--radius-s);
+    border-top-right-radius: var(--radius-s);
+    border-bottom-left-radius: var(--radius-s);
+    border-bottom-right-radius: var(--radius-s);
 }
 
 .menu__section {
@@ -982,10 +1063,10 @@
     -unity-font-style: bold;
     padding-left: 0;
     padding-right: 0;
-    border-top-left-radius: 14;
-    border-top-right-radius: 14;
-    border-bottom-left-radius: 14;
-    border-bottom-right-radius: 14;
+    border-top-left-radius: var(--radius-m);
+    border-top-right-radius: var(--radius-m);
+    border-bottom-left-radius: var(--radius-m);
+    border-bottom-right-radius: var(--radius-m);
 }
 
 .menu__count {
@@ -1017,7 +1098,7 @@
 }
 
 .menu__options {
-    margin-top: 18;
+    margin-top: var(--space-4);
 }
 
 .menu__settings {
@@ -1129,10 +1210,10 @@
     border-bottom-width: 2;
     border-left-width: 2;
     border-right-width: 2;
-    border-top-left-radius: 12;
-    border-top-right-radius: 12;
-    border-bottom-left-radius: 12;
-    border-bottom-right-radius: 12;
+    border-top-left-radius: var(--radius-m);
+    border-top-right-radius: var(--radius-m);
+    border-bottom-left-radius: var(--radius-m);
+    border-bottom-right-radius: var(--radius-m);
 }
 
 .menu__pick--blue {
@@ -1214,4 +1295,261 @@
     border-bottom-width: 0;
     border-left-width: 0;
     border-right-width: 0;
+}
+
+/* ============================================================== shared UI = */
+
+/*
+ * State and layout shared by the end panel, the settings sheet and the health
+ * panel. Declared LAST on purpose: `.btn.is-on` and `.btn:hover` have equal
+ * specificity, so the later rule wins, and a selected tab must not lose its
+ * fill to a hover.
+ */
+.btn.is-on {
+    background-color: var(--color-accent);
+}
+
+/* A row of equal-width tabs. Each is a .btn, so each is --touch-min tall. */
+.tabs {
+    flex-direction: row;
+    flex-shrink: 0;
+    margin-top: var(--space-3);
+    margin-bottom: var(--space-3);
+}
+
+.tab {
+    flex-grow: 1;
+    flex-basis: 0;
+    margin-left: var(--space-1);
+    margin-right: var(--space-1);
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+    -unity-font-style: bold;
+}
+
+/* Buttons that sit side by side in a fixed bottom row and share its width. */
+.btn--dock {
+    flex-grow: 1;
+    flex-basis: 0;
+    margin-top: 0;
+    margin-left: var(--space-2);
+    margin-right: var(--space-2);
+    padding-left: var(--space-3);
+    padding-right: var(--space-3);
+}
+
+/* HUD controls sit in one row; this is the gap between them. */
+.hud__control {
+    margin-left: var(--space-2);
+    margin-right: var(--space-2);
+}
+
+/* ------------------------------------------------------------- end panel - */
+
+/*
+ * One docked view, top to bottom: result, tab strip, ONE content pane, and a
+ * fixed action row inside thumb reach. Nothing scrolls. The pane is the only
+ * flexible child and it clips, so a 10-a-side stats table can lose its last
+ * rows but can never push REMATCH and MENU off the screen.
+ *
+ * Applied together with .panel--scrim, whose centred layout it overrides.
+ */
+.endpanel {
+    justify-content: flex-start;
+    align-items: stretch;
+}
+
+.endpanel__head {
+    align-items: center;
+    flex-shrink: 0;
+    margin-top: var(--space-4);
+}
+
+.endpanel__headline {
+    font-size: var(--font-xl);
+    -unity-font-style: bold;
+    -unity-font-definition: resource("Fonts/Oswald");
+}
+
+.endpanel__score {
+    font-size: var(--font-l);
+    color: var(--color-text);
+}
+
+.endpanel__body {
+    flex-grow: 1;
+    flex-shrink: 1;
+    flex-basis: 0;
+    overflow: hidden;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: var(--space-2);
+}
+
+.endpanel__note {
+    font-size: var(--font-s);
+    color: var(--color-text-muted);
+    -unity-text-align: middle-center;
+    white-space: normal;
+    margin-top: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.endpanel__actions {
+    flex-direction: row;
+    flex-shrink: 0;
+    margin-top: var(--space-3);
+    margin-bottom: var(--space-4);
+    margin-left: var(--space-4);
+    margin-right: var(--space-4);
+}
+
+/* The HUD-built roster list on the Players tab. */
+.endpanel__player {
+    flex-direction: row;
+    align-items: center;
+    width: 980px;
+    padding-top: var(--space-2);
+    padding-bottom: var(--space-2);
+}
+
+.endpanel__player-name {
+    width: 300px;
+    font-size: var(--font-s);
+    -unity-font-style: bold;
+}
+
+.endpanel__player-driver {
+    width: 110px;
+    font-size: var(--font-xs);
+    -unity-font-style: bold;
+    color: var(--color-text-muted);
+}
+
+.endpanel__player-run {
+    flex-grow: 1;
+    flex-basis: 0;
+    font-size: var(--font-xs);
+    color: var(--color-text-muted);
+    -unity-text-align: middle-right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Pause panel buttons share one width so the column reads as a list. */
+.pause__btn {
+    width: 620px;
+}
+
+/* -------------------------------------------------------- settings sheet - */
+
+/*
+ * One bottom sheet for every setting in the game (Agent_SettingsSheet). The
+ * scrim dims and takes the dismiss tap; the sheet slides up from the bottom
+ * edge. Fails VISIBLE for the same reason .panel--scrim does: the resting state
+ * is on screen, and .is-entering supplies the motion.
+ */
+.sheet-scrim {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    justify-content: flex-end;
+    background-color: var(--color-scrim);
+    opacity: 1;
+    transition-property: opacity;
+    transition-duration: 0.2s;
+    transition-timing-function: ease-out;
+}
+
+.sheet-scrim.is-entering {
+    opacity: 0;
+}
+
+.sheet {
+    background-color: var(--color-panel-solid);
+    border-top-left-radius: var(--radius-l);
+    border-top-right-radius: var(--radius-l);
+    border-bottom-left-radius: var(--radius-l);
+    border-bottom-right-radius: var(--radius-l);
+    border-top-width: 1;
+    border-top-color: var(--color-edge-light);
+    margin-left: var(--space-3);
+    margin-right: var(--space-3);
+    padding-top: var(--space-4);
+    padding-bottom: var(--space-4);
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+    translate: 0 0;
+    transition-property: translate;
+    transition-duration: 0.22s;
+    transition-timing-function: ease-out-cubic;
+}
+
+.sheet-scrim.is-entering .sheet {
+    translate: 0 100%;
+}
+
+.sheet__head {
+    flex-direction: row;
+    align-items: center;
+}
+
+.sheet__title {
+    flex-grow: 1;
+    font-size: var(--font-m);
+    -unity-font-style: bold;
+    color: var(--color-text);
+}
+
+/* Fixed height = the tallest tab (Audio: mute + four sliders), so switching
+   tabs never moves the tab strip under the player's thumb. */
+.sheet__body {
+    height: 640px;
+    overflow: hidden;
+}
+
+.sheet__row {
+    flex-direction: row;
+    align-items: center;
+    height: var(--touch-min);
+}
+
+.sheet__label {
+    flex-grow: 1;
+    flex-basis: 0;
+    font-size: var(--font-s);
+    color: var(--color-text-muted);
+    -unity-text-align: middle-left;
+}
+
+.sheet__value {
+    min-width: 360px;
+    -unity-font-style: bold;
+}
+
+/* Inside the sheet the slider rows span the sheet, not a fixed 900. */
+.sheet .volumes {
+    width: auto;
+    margin-bottom: 0;
+}
+
+/* -------------------------------------------------------- menu brain note - */
+
+/* The single line that replaces a "(bot)" badge on every card when the roster
+   carries no usable brain at all. Hidden by default; .is-shown reveals it. */
+.menu__brain-note {
+    display: none;
+    max-width: 1000px;
+    font-size: var(--font-xs);
+    color: var(--color-gold);
+    -unity-text-align: middle-center;
+    white-space: normal;
+    margin-top: var(--space-1);
+}
+
+.menu__brain-note.is-shown {
+    display: flex;
 }

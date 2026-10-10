@@ -94,7 +94,7 @@ namespace PoSoccer
         {
             if (!enabled || _exhibits.Count == 0) return;
 
-            _hud = FindFirstObjectByType<Agent_HUD>();
+            _hud = FindAnyObjectByType<Agent_HUD>();
             _camera = Camera.main;
 
             BuildGrid();
@@ -157,7 +157,7 @@ namespace PoSoccer
             AddProfiles(_env.profileRoster);
             if (_exhibits.Count > 0) return;
 
-            var loader = FindFirstObjectByType<Agent_MatchLoader>();
+            var loader = FindAnyObjectByType<Agent_MatchLoader>();
             if (loader == null) return;
             AddProfiles(loader.defaultBlue, loader.defaultBlue2,
                         loader.defaultRed, loader.defaultRed2);

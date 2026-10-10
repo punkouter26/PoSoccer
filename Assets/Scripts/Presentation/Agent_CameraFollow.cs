@@ -22,6 +22,11 @@ namespace PoSoccer
     /// HUD bands growing with the squad, and any resolution, safe-area or orientation
     /// change are all picked up for free. See the block above FitOrthoSize.
     ///
+    /// Who owns the frame, strongest first: the replay override, a spectator's
+    /// focus lock, a director shot, and finally plain ball follow - which leads the
+    /// ball by its velocity. The viewer's pinch / scroll zoom multiplies whichever
+    /// of the last three is active.
+    ///
     /// Execution order -50 so the camera is settled before MatchFX samples Camera.main.
     /// </summary>
     [DefaultExecutionOrder(-50)]
@@ -48,6 +53,27 @@ namespace PoSoccer
                  "horizontally to cover whatever is cropped.")]
         [Range(0f, 0.35f)] [SerializeField] private float _maxWidthCrop = DEFAULT_MAX_WIDTH_CROP;
 
+        [Header("Speed look-ahead (ball follow only)")]
+        [Tooltip("Lead the ball by its own velocity, so a moving ball sits behind centre " +
+                 "with the space it is travelling into ahead of it. Off = centre the ball.")]
+        [SerializeField] private bool _enableLookAhead = true;
+        [Tooltip("Seconds of ball travel the follow target leads by.")]
+        [SerializeField] private float _lookAheadSeconds = 0.35f;
+        [Tooltip("Hard cap on the lead, world metres.")]
+        [SerializeField] private float _lookAheadMax = 3f;
+        [Tooltip("How fast the lead chases its target (per second). Low enough that a " +
+                 "ball bouncing off a wall - velocity reversed in one tick - swings the " +
+                 "frame over a few hundred milliseconds instead of snapping it.")]
+        [Range(1f, 12f)] [SerializeField] private float _lookAheadSmoothing = 4f;
+        [Tooltip("Largest share of the visible half-frame the lead may use on each axis. " +
+                 "The metre cap alone is not enough: at the tightest framing 3 m is nearly " +
+                 "the whole half-width, and a lead that large frames the space and loses the ball.")]
+        [Range(0f, 0.5f)] [SerializeField] private float _lookAheadFrameShare = 0.35f;
+
+        [Header("Focus lock")]
+        [Tooltip("Framing held on a focused player, as a fraction of the wide shot.")]
+        [Range(0.25f, 1f)] [SerializeField] private float _focusFraction = 0.5f;
+
         Camera _cam;
         Agent_EnvController _env;
         Agent_HUD _hud;
@@ -55,6 +81,9 @@ namespace PoSoccer
         bool _wide;
         Transform _overrideTarget;
         float _overrideOrtho;
+        Transform _focus;
+        Vector2 _lookAhead;
+        float _spectatorZoom = 1f;
 
         /// <summary>
         /// Point the camera at something other than the live ball, at a fixed
@@ -76,6 +105,59 @@ namespace PoSoccer
 
         /// <summary>True while a replay (or anything else) owns the framing outright.</summary>
         public bool HasOverrideTarget => _overrideTarget != null;
+
+        // ── Spectator focus lock ────────────────────────────────────────────
+        //
+        // PRIORITY: replay override > FOCUS > director shot > ball follow.
+        //
+        // Below the override because a goal replay is the one thing a viewer who
+        // asked to watch a player still wants to see; the focus is not cleared by
+        // it and resumes when the replay hands the camera back. Above the director
+        // because a human choosing a subject is a stronger statement than a shot
+        // grammar inferring one - Agent_Director reads Focus and stands down
+        // rather than requesting shots that would be ignored.
+        //
+        // The pan clamp, the HUD inset and the smoothing all still apply, exactly
+        // as they do for a shot: this retargets the rig, it does not bypass it.
+
+        /// <summary>
+        /// Hold an iso-style shot on <paramref name="target"/> until
+        /// <see cref="ClearFocus"/> is called or the target is destroyed. Passing
+        /// null clears.
+        /// </summary>
+        public void SetFocus(Transform target) => _focus = target;
+
+        /// <summary>Hand the camera back to the director / ball follow.</summary>
+        public void ClearFocus() => _focus = null;
+
+        /// <summary>
+        /// The transform currently focused, or null. Reports a real null for a
+        /// target that has been destroyed - a destroyed Unity object still
+        /// compares equal to null but is not reference-null, and a caller doing
+        /// anything other than <c>== null</c> with it would otherwise be handed a
+        /// dead object.
+        /// </summary>
+        public Transform Focus => _focus != null ? _focus : null;
+
+        /// <summary>Tightest the spectator zoom may go, as a multiplier on the current shot.</summary>
+        public const float MIN_SPECTATOR_ZOOM = 0.6f;
+
+        /// <summary>
+        /// Extra zoom the viewer has dialled in (pinch / scroll), 0.6 .. 1,
+        /// multiplied onto whatever framing the rig would otherwise have chosen -
+        /// wide hold, ball follow, director shot or focus alike. 1 = untouched.
+        /// Never applied to a replay override: that framing is authored.
+        ///
+        /// It does NOT change <see cref="CurrentWideOrtho"/>. That number is the
+        /// zoom REFERENCE every shot fraction is taken against and the one the
+        /// portrait tests assert the HUD inset on; scaling it would make every
+        /// director shot shrink twice.
+        /// </summary>
+        public float SpectatorZoom
+        {
+            get => _spectatorZoom;
+            set => _spectatorZoom = Mathf.Clamp(value, MIN_SPECTATOR_ZOOM, 1f);
+        }
 
         // ── Director shot channel ───────────────────────────────────────────
         //
@@ -144,8 +226,8 @@ namespace PoSoccer
         void Awake()
         {
             _cam = Camera.main;
-            _env = FindFirstObjectByType<Agent_EnvController>();
-            _hud = FindFirstObjectByType<Agent_HUD>();
+            _env = FindAnyObjectByType<Agent_EnvController>();
+            _hud = FindAnyObjectByType<Agent_HUD>();
             _wide = true;
             _wideUntilTime = Time.time + _kickoffHoldSeconds;
             if (_env != null) _env.EpisodeEnded += OnEpisodeEnded;
@@ -160,6 +242,10 @@ namespace PoSoccer
         {
             _wide = true;
             _wideUntilTime = Time.time + _goalHoldSeconds;
+            // The ball is about to be teleported to the centre spot. A lead built
+            // from the shot that scored would otherwise be carried onto a
+            // stationary ball and decay there as a visible drift.
+            _lookAhead = Vector2.zero;
         }
 
         // ── The HUD inset ───────────────────────────────────────────────────
@@ -310,11 +396,21 @@ namespace PoSoccer
             // The replay override retargets the camera; everything downstream
             // (smoothing, pan clamp) is shared with the live shot.
             bool overriding = _overrideTarget != null;
+            // A focused player that has been destroyed (scene teardown, a squad
+            // rebuilt under the camera) releases the lock by itself. Unity's ==
+            // is what detects it; the assignment drops the dead reference.
+            if (_focus == null) _focus = null;
+            bool focused = !overriding && _focus != null;
             // Override outranks a director shot outright, so a replay taking the
             // camera mid-cut is never a tug of war. A stale shot is dropped.
-            bool directed = !overriding && ShotActive;
+            bool directed = !overriding && !focused && ShotActive;
+            // Plain ball follow: the only mode the speed look-ahead applies to.
+            // A shot already carries its own lead (Agent_Director adds one), a
+            // focus is on a body rather than the ball, and an override is authored.
+            bool following = !overriding && !focused && !directed;
             Vector2 ballPos = overriding
                 ? (Vector2)_overrideTarget.position
+                : focused ? (Vector2)_focus.position
                 : directed ? _shotFocus
                 : _env.Ball.position;
             float targetOrtho;
@@ -322,6 +418,10 @@ namespace PoSoccer
             if (overriding)
             {
                 targetOrtho = Mathf.Clamp(_overrideOrtho, wideOrtho * 0.18f, wideOrtho);
+            }
+            else if (focused)
+            {
+                targetOrtho = Mathf.Clamp(wideOrtho * _focusFraction, tightestOrtho, wideOrtho);
             }
             else if (directed)
             {
@@ -365,6 +465,16 @@ namespace PoSoccer
                 targetOrtho = Mathf.Clamp(targetOrtho, tightestOrtho, wideOrtho);
             }
 
+            // The viewer's own zoom, on top of whichever framing won above. After
+            // the per-mode clamps on purpose: those bound what the RIG may choose,
+            // and this is a person overriding the rig. Floored at the same 18% of
+            // wide the replay override uses, so no combination reaches a size the
+            // pan clamp has never been run at.
+            if (!overriding)
+            {
+                targetOrtho = Mathf.Max(wideOrtho * 0.18f, targetOrtho * _spectatorZoom);
+            }
+
             // Frame-rate independent smoothing; easing out of the wide shot is a shade
             // slower than easing into it so goal replays do not snap.
             // A cut is the whole point of a shot grammar: an edit reads as an
@@ -373,7 +483,7 @@ namespace PoSoccer
             bool cutting = directed && _shotCut;
             _shotCut = false;
 
-            float zoomK = overriding ? 7f : (directed ? 5f : (_wide ? 4f : 3f));
+            float zoomK = overriding ? 7f : ((directed || focused) ? 5f : (_wide ? 4f : 3f));
             _cam.orthographicSize = cutting
                 ? targetOrtho
                 : Mathf.Lerp(_cam.orthographicSize, targetOrtho,
@@ -394,7 +504,31 @@ namespace PoSoccer
             float panX = Mathf.Max(0f, pitchHalf.x - camHalfW);
             float panY = Mathf.Max(0f, pitchHalf.y - clearHalfH);
 
+            // Speed look-ahead. Smoothed every frame whether or not it is applied,
+            // so it decays to zero under a shot or a focus and eases back in
+            // afterwards instead of resuming at whatever it was when it lost the
+            // camera. Zero during the wide hold: the establishing shot is centred
+            // by definition and there is no pan room to spend a lead on anyway.
+            Vector2 wantedLead = following && _enableLookAhead && !_wide
+                ? Vector2.ClampMagnitude(_env.Ball.linearVelocity * _lookAheadSeconds, _lookAheadMax)
+                : Vector2.zero;
+            _lookAhead = Vector2.Lerp(_lookAhead, wantedLead,
+                1f - Mathf.Exp(-_lookAheadSmoothing * Time.unscaledDeltaTime));
+
             Vector2 target = ballPos;
+            if (following)
+            {
+                // Capped per axis against the VISIBLE half-frame - the clear band
+                // vertically, not the viewport - so the lead can never push the
+                // ball itself under a HUD band or off the side of the screen.
+                float leadX = camHalfW * _lookAheadFrameShare;
+                float leadY = clearHalfH * _lookAheadFrameShare;
+                target.x += Mathf.Clamp(_lookAhead.x, -leadX, leadX);
+                target.y += Mathf.Clamp(_lookAhead.y, -leadY, leadY);
+            }
+            // The lead is added BEFORE the pan clamp, never after: the clamp is
+            // what keeps the goal mouths out from under the bands, and a lead
+            // applied on the far side of it would slide them straight back.
             target.x = Mathf.Clamp(target.x, -panX, panX);
             target.y = Mathf.Clamp(target.y, -panY, panY);
             // Shift the camera so the CLEAR band centres on the focus point. Applied
@@ -404,7 +538,7 @@ namespace PoSoccer
 
             Vector3 pos = _cam.transform.position;
             float followSpeed = overriding ? _followSpeed * 2f
-                : directed ? _followSpeed * 1.5f
+                : (directed || focused) ? _followSpeed * 1.5f
                 : _followSpeed;
             float t = cutting ? 1f : 1f - Mathf.Exp(-followSpeed * Time.unscaledDeltaTime);
             pos.x = Mathf.Lerp(pos.x, target.x, t);

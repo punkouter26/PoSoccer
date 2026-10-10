@@ -82,7 +82,7 @@ namespace PoSoccer
 
         void Start()
         {
-            var hud = FindFirstObjectByType<Agent_HUD>();
+            var hud = FindAnyObjectByType<Agent_HUD>();
             // IsMatchScene, not IsVisualScene: the flash covers the CAMERA, and
             // the gallery's six pitches share one.
             if (!Agent_Presentation.IsMatchScene(hud))
@@ -92,7 +92,7 @@ namespace PoSoccer
             }
 
             _env = GetComponent<Agent_EnvController>();
-            if (_env == null) _env = FindFirstObjectByType<Agent_EnvController>();
+            if (_env == null) _env = FindAnyObjectByType<Agent_EnvController>();
             _camera = Camera.main;
 
             if (_env != null) _env.EpisodeEnded += OnEpisodeEnded;

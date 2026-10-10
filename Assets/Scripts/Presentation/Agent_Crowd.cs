@@ -81,7 +81,7 @@ namespace PoSoccer
         void Start()
         {
             _env = GetComponent<Agent_EnvController>();
-            var hud = FindFirstObjectByType<Agent_HUD>();
+            var hud = FindAnyObjectByType<Agent_HUD>();
 
             if (!_enableCrowd || !Agent_Presentation.IsMatchScene(hud))
             {

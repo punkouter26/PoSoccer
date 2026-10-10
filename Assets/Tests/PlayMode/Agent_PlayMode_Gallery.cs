@@ -108,7 +108,7 @@ namespace PoSoccer.Tests
 
             yield return LoadGallery(roster);
 
-            var pitches = Object.FindObjectsByType<Agent_EnvController>(FindObjectsSortMode.None);
+            var pitches = Object.FindObjectsByType<Agent_EnvController>();
             Assert.AreEqual(roster.Count, pitches.Length,
                 $"Expected one pitch per trained brain ({roster.Count}), found {pitches.Length}. " +
                 "More than that means a clone re-ran the cloning component.");
@@ -116,7 +116,7 @@ namespace PoSoccer.Tests
             // Exactly one live Agent_Gallery: the original. Every clone's copy is
             // disabled and destroyed the moment it is made, because a clone that
             // clones is a fork bomb of full physics environments.
-            var galleries = Object.FindObjectsByType<Agent_Gallery>(FindObjectsSortMode.None);
+            var galleries = Object.FindObjectsByType<Agent_Gallery>();
             Assert.LessOrEqual(galleries.Length, 1,
                 "A cloned pitch kept a live Agent_Gallery.");
         }
@@ -133,7 +133,7 @@ namespace PoSoccer.Tests
 
             yield return LoadGallery(roster);
 
-            var pitches = Object.FindObjectsByType<Agent_EnvController>(FindObjectsSortMode.None);
+            var pitches = Object.FindObjectsByType<Agent_EnvController>();
             var seen = new HashSet<Unity.InferenceEngine.ModelAsset>();
 
             for (int p = 0; p < pitches.Length; p++)
@@ -200,8 +200,8 @@ namespace PoSoccer.Tests
 
             // Per-pitch visuals SHOULD be there, one set per pitch, or the gallery
             // looks like a debug scene rather than the game.
-            var intents = Object.FindObjectsByType<Agent_Intent>(FindObjectsSortMode.None);
-            var pitches = Object.FindObjectsByType<Agent_EnvController>(FindObjectsSortMode.None);
+            var intents = Object.FindObjectsByType<Agent_Intent>();
+            var pitches = Object.FindObjectsByType<Agent_EnvController>();
             Assert.AreEqual(pitches.Length, intents.Length,
                 "Every gallery pitch should carry its own intent overlay.");
             for (int i = 0; i < intents.Length; i++)

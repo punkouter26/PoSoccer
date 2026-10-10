@@ -15,6 +15,15 @@ namespace PoSoccer
     ///
     /// Holders are tracked by identity, so the clock only runs again once the
     /// last holder releases. Acquire/Release are idempotent per holder.
+    ///
+    /// THREE INPUTS, ONE WRITER. Freeze holders, the hit-stop dip
+    /// (<see cref="SlowMotion"/>) and the spectator's playback rate
+    /// (<see cref="SpectatorSpeed"/>) all resolve in <c>Apply</c>, which is the
+    /// only place in the match-facing code that assigns Time.timeScale. The two
+    /// remaining direct writers are Agent_EvalStats (headless evaluation) and
+    /// Agent_DemoClock (demonstration recording); both run only in SCN_Training,
+    /// where nothing calls into this class, and Agent_DemoClock's docstring
+    /// records why it was left alone.
     /// </summary>
     public static class Agent_TimeFreeze
     {
@@ -87,16 +96,68 @@ namespace PoSoccer
 
         static float _slowMotion = 1f;
 
+        /// <summary>Slowest playback a spectator may pick.</summary>
+        public const float MIN_SPECTATOR_SPEED = 0.25f;
+
+        /// <summary>Fastest playback a spectator may pick.</summary>
+        public const float MAX_SPECTATOR_SPEED = 4f;
+
         /// <summary>
-        /// True when the game is running at ordinary speed: no freeze holder and
-        /// no hit-stop. The flow tests assert on Time.timeScale directly, which
-        /// this keeps meaningful.
+        /// The spectator's playback rate, 0.25x .. 4x, default 1.
+        ///
+        /// A THIRD CHANNEL, COMPOSED RATHER THAN COMPETING. The clock already had
+        /// two inputs - the freeze holders and the hit-stop dip - and the reason
+        /// they live in one class is that a second writer of
+        /// <see cref="Time.timeScale"/> is how the clock ends up owned by
+        /// whichever one finished last. A speed control written straight to
+        /// timeScale would be exactly that writer: the first hit-stop to end
+        /// would "restore" 1x over a viewer's 2x, and the first freeze to release
+        /// would do the same. So it multiplies instead:
+        ///
+        ///   frozen               -> 0
+        ///   otherwise            -> SlowMotion * SpectatorSpeed
+        ///
+        /// A freeze always wins, so 4x can never un-pause an end panel, and a
+        /// hit-stop still reads as a dip at any speed because it scales the rate
+        /// the viewer chose rather than replacing it.
+        ///
+        /// Reset to 1 by <see cref="ReleaseAll"/>, i.e. on every scene entry (the
+        /// menu, a match start, a rematch). It is a static and statics survive a
+        /// scene load in a player build, so without that a viewer who left a match
+        /// at 0.25x would find the next one in slow motion with no control on
+        /// screen yet to explain why.
+        ///
+        /// NEVER SET FROM TRAINING OR EVAL. Nothing there calls it - the only
+        /// writers are the match-scene spectator controls - and Agent_EvalStats
+        /// sets its own time scale directly, by design, in a process where this
+        /// class is never asked to Apply.
         /// </summary>
-        public static bool IsNormalSpeed => Holders.Count == 0 && _slowMotion >= 0.999f;
+        public static float SpectatorSpeed
+        {
+            get => _spectatorSpeed;
+            set
+            {
+                // NaN compares false against everything and would sail through a
+                // Clamp into Time.timeScale, which throws on it.
+                if (float.IsNaN(value)) return;
+                _spectatorSpeed = Mathf.Clamp(value, MIN_SPECTATOR_SPEED, MAX_SPECTATOR_SPEED);
+                Apply();
+            }
+        }
+
+        static float _spectatorSpeed = 1f;
+
+        /// <summary>
+        /// True when the game is running at ordinary speed: no freeze holder, no
+        /// hit-stop and no spectator speed change. The flow tests assert on
+        /// Time.timeScale directly, which this keeps meaningful.
+        /// </summary>
+        public static bool IsNormalSpeed =>
+            Holders.Count == 0 && _slowMotion >= 0.999f && Mathf.Abs(_spectatorSpeed - 1f) < 0.001f;
 
         static void Apply()
         {
-            Time.timeScale = Holders.Count > 0 ? 0f : _slowMotion;
+            Time.timeScale = Holders.Count > 0 ? 0f : _slowMotion * _spectatorSpeed;
         }
 
         public static void Acquire(object holder)
@@ -120,12 +181,18 @@ namespace PoSoccer
         /// Clears the hit-stop too: a scene load in the middle of a dip would
         /// otherwise start the next match at 0.35x with nothing left running to
         /// restore it.
+        ///
+        /// Clears the spectator speed for the same reason - see
+        /// <see cref="SpectatorSpeed"/>. Goes through <see cref="Apply"/> rather
+        /// than writing 1 directly so there is exactly one line in the project's
+        /// match-facing code that assigns Time.timeScale.
         /// </summary>
         public static void ReleaseAll()
         {
             Holders.Clear();
             _slowMotion = 1f;
-            Time.timeScale = 1f;
+            _spectatorSpeed = 1f;
+            Apply();
         }
     }
 }

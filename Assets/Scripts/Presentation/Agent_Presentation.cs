@@ -124,6 +124,13 @@ namespace PoSoccer
             if (go.GetComponent<Agent_BrainCam>() == null) go.AddComponent<Agent_BrainCam>();
             if (go.GetComponent<Agent_Dossier>() == null) go.AddComponent<Agent_Dossier>();
 
+            // Spectator controls and the per-decision match log. Agent_SpectatorInput
+            // steers the one camera and the one clock (through Agent_CameraFollow and
+            // Agent_TimeFreeze), and Agent_MatchLog writes one file per match, so
+            // both are singular and belong on this side of the line.
+            if (go.GetComponent<Agent_SpectatorInput>() == null) go.AddComponent<Agent_SpectatorInput>();
+            if (go.GetComponent<Agent_MatchLog>() == null) go.AddComponent<Agent_MatchLog>();
+
             // Screen-space and device-wide owners. All three are singular by
             // nature - one framebuffer, one vibrator, one frame budget - so they
             // belong here rather than in InstallVisuals, whatever the gallery
@@ -180,7 +187,7 @@ namespace PoSoccer
         {
             if (Agent_EvalStats.EvalMode) return;
             if (Unity.MLAgents.Academy.Instance.IsCommunicatorOn) return;
-            if (Object.FindFirstObjectByType<Agent_Chrome>(FindObjectsInactive.Include) != null) return;
+            if (Object.FindAnyObjectByType<Agent_Chrome>(FindObjectsInactive.Include) != null) return;
 
             var go = new GameObject("Chrome");
             go.AddComponent<Agent_Chrome>();

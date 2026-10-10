@@ -65,8 +65,36 @@ namespace PoSoccer
         /// </summary>
         public const int BAR_HEIGHT = Agent_UIStyle.Pad + BUTTON_HEIGHT + Agent_UIStyle.Pad;
 
+        const string FPS_KEY = "posoccer_show_fps";
+        static int _fpsPreference = -1;
+
+        /// <summary>
+        /// The player's choice for the frame-rate readout, persisted. Set from the
+        /// settings sheet (Display tab) and applied live by <see cref="Update"/>.
+        ///
+        /// It can only switch the readout OFF relative to the serialized
+        /// <see cref="_showFps"/>: a scene authored without the counter stays
+        /// without it. Cached in a static after the first read so the per-frame
+        /// check in Update is a field compare, not a PlayerPrefs lookup.
+        /// </summary>
+        public static bool ShowFps
+        {
+            get
+            {
+                if (_fpsPreference < 0) _fpsPreference = PlayerPrefs.GetInt(FPS_KEY, 1) != 0 ? 1 : 0;
+                return _fpsPreference == 1;
+            }
+            set
+            {
+                _fpsPreference = value ? 1 : 0;
+                PlayerPrefs.SetInt(FPS_KEY, _fpsPreference);
+                PlayerPrefs.Save();
+            }
+        }
+
         UIDocument _doc;
         Label _fpsLabel;
+        bool _fpsShown;
         Button _menuButton;
         Agent_Telemetry _telemetry;
 
@@ -104,7 +132,7 @@ namespace PoSoccer
                 // Scan every document rather than FindFirstObjectByType, which can
                 // return the one just added to this GameObject - see the same
                 // trap documented in Agent_Telemetry.BuildOverlay.
-                var documents = FindObjectsByType<UIDocument>(FindObjectsSortMode.None);
+                var documents = FindObjectsByType<UIDocument>();
                 for (int i = 0; i < documents.Length; i++)
                 {
                     if (documents[i] == _doc || documents[i].panelSettings == null) continue;
@@ -248,7 +276,8 @@ namespace PoSoccer
             _fpsLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
             _fpsLabel.style.flexGrow = 0;
             _fpsLabel.style.flexBasis = StyleKeyword.Auto;
-            _fpsLabel.style.display = _showFps ? DisplayStyle.Flex : DisplayStyle.None;
+            _fpsShown = _showFps && ShowFps;
+            _fpsLabel.style.display = _fpsShown ? DisplayStyle.Flex : DisplayStyle.None;
             // Behind the two buttons in the same row, and never picking, so a tap
             // meant for MENU is never swallowed by a full-width diagnostic label.
             _fpsLabel.pickingMode = PickingMode.Ignore;
@@ -268,9 +297,13 @@ namespace PoSoccer
             spacer.pickingMode = PickingMode.Ignore;
             bottom.Add(spacer);
 
-            var version = CornerLabel("v" + Application.version, Agent_UIStyle.TextMuted, Agent_UIStyle.FontS);
+            // Small, low-contrast and never tappable: it is there to be read off a
+            // screenshot in a bug report, not to compete with anything on screen.
+            var version = CornerLabel("v" + Application.version, Agent_UIStyle.TextMuted, Agent_UIStyle.FontXS);
             version.name = "chrome-version";
             version.style.unityTextAlign = TextAnchor.MiddleRight;
+            version.style.unityFontStyleAndWeight = FontStyle.Normal;
+            version.style.opacity = 0.7f;
             bottom.Add(version);
         }
 
@@ -338,7 +371,7 @@ namespace PoSoccer
 
         void ToggleTelemetry()
         {
-            if (_telemetry == null) _telemetry = FindFirstObjectByType<Agent_Telemetry>();
+            if (_telemetry == null) _telemetry = FindAnyObjectByType<Agent_Telemetry>();
             if (_telemetry == null)
             {
                 Debug.LogWarning("Agent_Chrome: no Agent_Telemetry in this scene; DEBUG has nothing to show.");
@@ -350,6 +383,15 @@ namespace PoSoccer
         void Update()
         {
             if (!_showFps || _fpsLabel == null) return;
+
+            // The settings sheet can switch the readout while this scene is up.
+            bool wanted = ShowFps;
+            if (wanted != _fpsShown)
+            {
+                _fpsShown = wanted;
+                _fpsLabel.style.display = wanted ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+            if (!wanted) return;
 
             float dt = Time.unscaledDeltaTime;
             if (dt > 0f)

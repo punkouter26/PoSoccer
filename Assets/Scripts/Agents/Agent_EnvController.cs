@@ -126,6 +126,15 @@ namespace PoSoccer
         /// </summary>
         public bool TeamRolesActive { get; private set; }
 
+        /// <summary>
+        /// Turn-churn penalty scale from the `turn_churn` environment parameter, or -1
+        /// when no trainer config names it - in which case each agent uses its own
+        /// profile's <see cref="Reward_Settings.turnChurnScale"/>. A config value of 0
+        /// therefore switches the term OFF even on a profile that sets it. Applied in
+        /// Agent_Soccer.ApplyDenseRewards; logged as Reward/turn_churn.
+        /// </summary>
+        public float TurnChurnOverride { get; private set; } = -1f;
+
         /// <summary>Teammates closer than this (metres) pay the spacing penalty.</summary>
         internal const float TEAM_SPACING_RADIUS = 4f;
 
@@ -199,6 +208,9 @@ namespace PoSoccer
             // override below walks the children.
             ApplyTrainingSquad();
             ApplyProfileOverride();
+            // Ball and pitch colliders onto their physics layers before any sensor
+            // casts. Players stamp their own (team-dependent) layer in their Awake.
+            Agent_Layers.StampPitch(this);
         }
 
         // ── Team training (2026-09-28) ──────────────────────────────────────
@@ -228,7 +240,7 @@ namespace PoSoccer
 
         void ApplyTrainingSquad()
         {
-            string raw = System.Environment.GetEnvironmentVariable("POSOCCER_SQUAD");
+            string raw = Agent_RunConfig.GetString(Agent_RunConfig.SQUAD);
             if (string.IsNullOrEmpty(raw)) return;
             // A match scene's lineup belongs to the menu (Agent_MatchLoader), never to a
             // training variable that happens to be set in the shell.
@@ -618,7 +630,7 @@ namespace PoSoccer
 
         void ApplyProfileOverride()
         {
-            string wanted = System.Environment.GetEnvironmentVariable("POSOCCER_PROFILE");
+            string wanted = Agent_RunConfig.GetString(Agent_RunConfig.PROFILE);
             if (string.IsNullOrEmpty(wanted) || profileRoster == null) return;
 
             for (int i = 0; i < profileRoster.Length; i++)
@@ -651,6 +663,9 @@ namespace PoSoccer
 
             // Rounded slick corners + bouncy pads (anti corner-jam), idempotent per pitch.
             Agent_PitchGuard.Build(this);
+            // Again, now that the guard's corner arcs exist: they are colliders the
+            // wall sensor must see, and they were not there at Awake.
+            Agent_Layers.StampPitch(this);
 
             // Self-discover agents under this pitch; also heals null serialized entries
             // and keeps runtime-instantiated grid clones self-contained.
@@ -1079,6 +1094,10 @@ namespace PoSoccer
                 .GetWithDefault("team_spacing", 0f));
             TeamRolesActive = Academy.Instance.EnvironmentParameters
                 .GetWithDefault("team_roles", 0f) > 0.5f;
+            // Turn churn. -1 = "no config named it", which leaves each profile's own
+            // turnChurnScale in charge (0 on every shipped profile, i.e. off).
+            TurnChurnOverride = Academy.Instance.EnvironmentParameters
+                .GetWithDefault("turn_churn", -1f);
             for (int botIndex = 0; botIndex < _bots.Count; botIndex++)
             {
                 if (_bots[botIndex] != null) _bots[botIndex].SetStrength(CurrentBotStrength);

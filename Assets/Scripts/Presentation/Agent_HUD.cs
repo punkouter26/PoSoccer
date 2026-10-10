@@ -11,6 +11,18 @@ namespace PoSoccer
     /// the bottom - nothing ever covers the play area. Includes a goal toast, a
     /// MENU button, and a first-to-N end panel (match flow off in training).
     /// Styling comes from Agent_UIStyle so menu and HUD stay consistent.
+    ///
+    /// 2026-10-10 - WHAT A MATCH SHOWS BY DEFAULT. Scoreboard, clock, identity
+    /// chips, and the sound / pause / broadcast controls. Everything that is
+    /// commentary ON the match rather than the match - the win-probability strip,
+    /// the stat ticker, the director's status bug, the ball-control meter - sits
+    /// behind ONE switch (<see cref="BroadcastEnabled"/>, the STATS button, also in
+    /// the settings sheet), persisted and OFF by default. The components behind
+    /// those readouts keep running either way: Agent_Director reads
+    /// Agent_WinProbability's threat signal whether or not its strip is painted.
+    /// Hidden elements are display:none, so the bands genuinely shrink and
+    /// <see cref="TopBandFraction"/> / <see cref="BottomBandFraction"/> report the
+    /// smaller figure to the camera with no second bookkeeping.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class Agent_HUD : MonoBehaviour
@@ -37,12 +49,35 @@ namespace PoSoccer
 
         UIDocument _doc;
         Label _score, _stepLabel, _toast;
-        [Tooltip("Show the broadcast strip over the pitch: the win-probability bar and " +
-                 "the rotating stat ticker. Off by default - they sit on the play area " +
-                 "and obscure the match. The components behind them keep running.")]
-        [SerializeField] private bool _showBroadcastStrip = false;
+        // Whether the broadcast readouts are painted right now. Seeded from the
+        // persisted BroadcastEnabled when the HUD builds. This was a serialized
+        // field until 2026-10-10 - a switch only reachable from the Inspector,
+        // which on a phone is no switch at all.
+        bool _showBroadcastStrip;
+
+        const string BROADCAST_KEY = "posoccer_broadcast";
+
+        /// <summary>
+        /// The player's persisted choice for the broadcast readouts (win-probability
+        /// strip, stat ticker, status bug, ball-control meter). Default OFF.
+        ///
+        /// Static because it is a preference, not scene state: the settings sheet
+        /// writes it from the MENU, where no HUD exists, and the next match reads it
+        /// when its HUD builds.
+        /// </summary>
+        public static bool BroadcastEnabled
+        {
+            get => PlayerPrefs.GetInt(BROADCAST_KEY, 0) == 1;
+            set
+            {
+                PlayerPrefs.SetInt(BROADCAST_KEY, value ? 1 : 0);
+                PlayerPrefs.Save();
+            }
+        }
 
         VisualElement _root, _endPanel, _blueChips, _redChips;
+        VisualElement _meter;
+        Button _broadcastButton, _soundButton;
         VisualElement _ballControlBlue, _ballControlRed;   // halves of the meter
         VisualElement _topBand, _bottomBand;
         int _blueScore, _redScore;
@@ -89,11 +124,42 @@ namespace PoSoccer
         public void SetBroadcastStripVisible(bool visible)
         {
             _showBroadcastStrip = visible;
-            var display = visible ? DisplayStyle.Flex : DisplayStyle.None;
-            if (_winProbBar != null) _winProbBar.style.display = display;
-            if (_winProbLabel != null) _winProbLabel.style.display = display;
-            if (_ticker != null) _ticker.style.display = display;
-            if (_broadcastTag != null) _broadcastTag.style.display = display;
+            ApplyBroadcastVisibility();
+        }
+
+        /// <summary>
+        /// The single place that decides which broadcast readouts are laid out.
+        ///
+        /// display:none, never opacity: a hidden strip must give its height back to
+        /// the band, because the band's measured height is what the camera frames
+        /// the pitch against (see <see cref="TopBandFraction"/>). An invisible strip
+        /// that still occupied the band would keep the camera pulled back for a
+        /// readout nobody can see.
+        ///
+        /// The win-probability pair additionally needs a match: it reads the score,
+        /// and a training scene has none. The meter is the reverse - outside a match
+        /// there is no STATS button to bring it back, so there it always shows.
+        /// </summary>
+        void ApplyBroadcastVisibility()
+        {
+            var broadcast = _showBroadcastStrip ? DisplayStyle.Flex : DisplayStyle.None;
+            var probability = _showBroadcastStrip && enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
+            var meter = _showBroadcastStrip || !enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (_winProbBar != null) _winProbBar.style.display = probability;
+            if (_winProbLabel != null) _winProbLabel.style.display = probability;
+            if (_ticker != null) _ticker.style.display = broadcast;
+            if (_broadcastTag != null) _broadcastTag.style.display = broadcast;
+            if (_meter != null) _meter.style.display = meter;
+            if (_broadcastButton != null)
+                _broadcastButton.EnableInClassList(Agent_UIStyle.ON, _showBroadcastStrip);
+        }
+
+        /// <summary>The STATS button: flips the readouts and remembers the choice.</summary>
+        void ToggleBroadcast()
+        {
+            BroadcastEnabled = !_showBroadcastStrip;
+            SetBroadcastStripVisible(BroadcastEnabled);
         }
 
         public bool IsPaused => _pausePanel != null;
@@ -169,20 +235,60 @@ namespace PoSoccer
         /// order - so it is a list, and every contributor removes its own.
         /// </summary>
         readonly List<System.Func<VisualElement>> _endPanelSections = new();
+        readonly List<EndTab> _endPanelTabs = new();
 
-        /// <summary>Register a builder for a section of the end-of-match panel.</summary>
+        /// <summary>
+        /// The three views of the end panel. The panel is one docked screen with a
+        /// tab strip; every registered section lives on exactly one tab.
+        /// </summary>
+        public enum EndTab
+        {
+            /// <summary>The result and the man of the match.</summary>
+            Summary = 0,
+            /// <summary>The measured match table (Agent_MatchStats).</summary>
+            Stats = 1,
+            /// <summary>Per-player material (Agent_Dossier's occupancy maps).</summary>
+            Players = 2,
+        }
+
+        const int END_TAB_COUNT = 3;
+        static readonly string[] EndTabNames = { "SUMMARY", "STATS", "PLAYERS" };
+
+        /// <summary>
+        /// Register a builder for a section of the end-of-match panel, on the tab
+        /// its owner implies. Contributors that predate the tabs call this
+        /// one-argument form, so the routing is done here by WHO is registering
+        /// rather than by editing each of them to say where it belongs.
+        /// </summary>
         public void AddEndPanelSection(System.Func<VisualElement> section)
         {
-            if (section != null && !_endPanelSections.Contains(section))
-            {
-                _endPanelSections.Add(section);
-            }
+            AddEndPanelSection(section, TabFor(section));
+        }
+
+        /// <summary>Register a builder for a section on a specific tab.</summary>
+        public void AddEndPanelSection(System.Func<VisualElement> section, EndTab tab)
+        {
+            if (section == null || _endPanelSections.Contains(section)) return;
+            _endPanelSections.Add(section);
+            _endPanelTabs.Add(tab);
         }
 
         /// <summary>Unregister a builder. Call from OnDestroy; safe if never added.</summary>
         public void RemoveEndPanelSection(System.Func<VisualElement> section)
         {
-            if (section != null) _endPanelSections.Remove(section);
+            if (section == null) return;
+            int index = _endPanelSections.IndexOf(section);
+            if (index < 0) return;
+            _endPanelSections.RemoveAt(index);
+            _endPanelTabs.RemoveAt(index);
+        }
+
+        static EndTab TabFor(System.Func<VisualElement> section)
+        {
+            object owner = section != null ? section.Target : null;
+            if (owner is Agent_MatchStats) return EndTab.Stats;
+            if (owner is Agent_Dossier) return EndTab.Players;
+            return EndTab.Summary;
         }
 
         void OnEnable()
@@ -296,6 +402,9 @@ namespace PoSoccer
             _winProbLabel = _root.Q<Label>("winprob-label");
             _ticker = _root.Q<Label>("ticker");
             _broadcastTag = _root.Q<Label>("broadcast-tag");
+            // Optional, unlike the rest: the meter is hidden with the broadcast
+            // readouts, and a template without it just has nothing to hide.
+            _meter = _root.Q<VisualElement>("meter");
             var controls = _root.Q<VisualElement>("controls");
 
             if (safe == null || _topBand == null || _bottomBand == null ||
@@ -345,36 +454,27 @@ namespace PoSoccer
             _ballControlBlue.style.width = Length.Percent(50);
             _ballControlRed.style.width = Length.Percent(50);
 
-            // The win-probability strip is a MATCH readout: it reads the score,
-            // and a training scene has none. Hidden rather than left at 50/50,
-            // which would look like a live estimate of nothing.
-            DisplayStyle probability = enableMatchFlow ? DisplayStyle.Flex : DisplayStyle.None;
-            _winProbBar.style.display = probability;
-            _winProbLabel.style.display = probability;
             SetWinProbability(0.5f);
 
-            // BROADCAST STRIP OFF BY DEFAULT (2026-09-07, user request).
+            // BROADCAST READOUTS OFF BY DEFAULT (2026-09-07, user request; made a
+            // persisted player choice 2026-10-10).
             //
-            // The win-probability bar and the rotating stat ticker sit directly above the
-            // play area and were reported as interfering with watching the match. Both are
-            // hidden here rather than by disabling Agent_WinProbability / Agent_MatchStats,
-            // deliberately: Agent_PlayMode_Broadcast asserts those components ARE installed
-            // in a match scene and are NOT in SCN_Training, so killing them would make
-            // those assertions pass against a no-op. The components keep running - the
-            // end-of-match telemetry table and the F3 readout are unaffected - their
-            // output simply is not painted over the pitch.
+            // The win-probability bar and the rotating stat ticker sit directly above
+            // the play area and were reported as interfering with watching the match.
+            // They are hidden here rather than by disabling Agent_WinProbability /
+            // Agent_MatchStats, deliberately: Agent_PlayMode_Broadcast asserts those
+            // components ARE installed in a match scene and are NOT in SCN_Training,
+            // and Agent_Director reads the win-probability THREAT signal to choose
+            // its shots. The components keep running - the end-of-match table and
+            // the health panel are unaffected - their output simply is not painted
+            // over the pitch until the player asks for it.
             //
-            // Losing the win-probability bar also removes the one number on screen that
-            // needed a MODEL qualifier next to it, because it is an uncalibrated
-            // hand-tuned logistic rather than a measurement. If it comes back, that tag
-            // is mandatory - see the note on Agent_WinProbability.
-            if (_showBroadcastStrip == false)
-            {
-                _winProbBar.style.display = DisplayStyle.None;
-                _winProbLabel.style.display = DisplayStyle.None;
-                _ticker.style.display = DisplayStyle.None;
-                _broadcastTag.style.display = DisplayStyle.None;
-            }
+            // The win-probability bar is the one number on screen that needs a MODEL
+            // qualifier next to it, because it is an uncalibrated hand-tuned logistic
+            // rather than a measurement. SetWinProbability writes that word into the
+            // label every time, so it comes back with the strip.
+            _showBroadcastStrip = BroadcastEnabled;
+            ApplyBroadcastVisibility();
 
             // The gallery turns match flow off, which drops the clock into its
             // training readout ("step N · goal 6.0m · bot 1.00"). That is honest
@@ -389,11 +489,22 @@ namespace PoSoccer
                 // the menu and in a match. Two MENU buttons on one screen is worse
                 // than either position on its own. Agent_Chrome.ReturnToMenu keeps
                 // the Agent_TimeFreeze.ReleaseAll() that used to happen here.
-                controls.Add(Agent_UIStyle.SoundToggleButton());
+                _soundButton = Agent_UIStyle.SoundToggleButton();
+                _soundButton.AddToClassList("hud__control");
+                controls.Add(_soundButton);
 
                 var pause = SmallButton("II", TogglePause);
-                pause.style.marginLeft = 12;
+                pause.name = "pause";
+                pause.AddToClassList("hud__control");
                 controls.Add(pause);
+
+                // ONE switch for every broadcast readout. Short label on purpose:
+                // this row is centred between Agent_Chrome's DEBUG button and the
+                // version label, and three wide buttons would reach both.
+                _broadcastButton = Agent_UIStyle.ToggleButton("STATS", _showBroadcastStrip, ToggleBroadcast);
+                _broadcastButton.name = "broadcast-toggle";
+                _broadcastButton.AddToClassList("hud__control");
+                controls.Add(_broadcastButton);
             }
             else
             {
@@ -434,6 +545,56 @@ namespace PoSoccer
             // then failed with "Held by: HUD.Pause". The ordering was the trigger,
             // not the defect.
             Agent_TimeFreeze.Release(_pauseToken);
+
+            // The settings sheet lives on this HUD's panel when it was opened from
+            // the pause screen. Its state is static, so drop it with the panel.
+            if (_settingsOpenedHere) Agent_SettingsSheet.Close();
+        }
+
+        /// <summary>
+        /// The app went to the background mid-match: pause, through the ordinary
+        /// pause panel and its ordinary token.
+        ///
+        /// Android suspends the player on its own, so nothing is lost while away -
+        /// the cost is on the way BACK. Without this the match resumes at full
+        /// speed the instant the app is foregrounded, before the player has found
+        /// the ball again; with it they return to PAUSED and choose when to go.
+        ///
+        /// Only the `true` edge is handled. Unity also sends `false` at startup
+        /// and on return, and resuming there would un-pause a match the player
+        /// paused by hand before switching away. No second token: Pause() is
+        /// skipped when the panel is already up, and it is the same _pauseToken
+        /// either way, which Agent_TimeFreeze holds at most once.
+        /// </summary>
+        void OnApplicationPause(bool paused)
+        {
+            if (!paused) return;
+            if (!enableMatchFlow || MatchOver || _root == null || _score == null) return;
+            if (!Agent_Presentation.IsMatchScene(this)) return;
+            if (!IsPaused) Pause();
+        }
+
+        bool _settingsOpenedHere;
+
+        void OpenSettings()
+        {
+            if (_root == null) return;
+            _settingsOpenedHere = true;
+            Agent_SettingsSheet.Open(_root, OnSettingsChanged);
+        }
+
+        /// <summary>
+        /// Runs after any change in the settings sheet. The sheet has already
+        /// re-stamped the palette / type-scale classes on this panel's root; what
+        /// is left is what this HUD has baked in or mirrors: the broadcast switch,
+        /// the mute label, and the chips, whose team tint is an inline colour read
+        /// from Agent_Palette at build time.
+        /// </summary>
+        void OnSettingsChanged()
+        {
+            SetBroadcastStripVisible(BroadcastEnabled);
+            if (_soundButton != null) _soundButton.text = Agent_Audio.Muted ? "SND OFF" : "SND ON";
+            _chipsBuilt = false;
         }
 
         float _matchSeconds;
@@ -614,35 +775,47 @@ namespace PoSoccer
         {
             Agent_TimeFreeze.Acquire(_pauseToken);
 
-            _pausePanel = new VisualElement();
+            _pausePanel = new VisualElement { name = "pause-panel" };
             _pausePanel.AddToClassList("panel--scrim");
+            // Absolute on the panel root, so it carries its own safe-area inset.
+            Agent_UIStyle.BindSafeArea(_pausePanel, Agent_Chrome.BAR_HEIGHT, Agent_Chrome.BAR_HEIGHT);
 
             var heading = new Label("PAUSED");
             heading.AddToClassList("score");
-            heading.style.marginBottom = 8;
+            heading.style.marginBottom = Agent_UIStyle.Space2;
             _pausePanel.Add(heading);
 
             var score = new Label($"{_blueScore}  —  {_redScore}");
             score.AddToClassList("clock");
-            score.style.marginBottom = 24;
+            score.style.marginBottom = Agent_UIStyle.Pad;
             _pausePanel.Add(score);
 
-            // Pause is where a volume control belongs: it is the only screen
-            // reachable mid-match, and adjusting the mix is precisely something
-            // you want to do while listening to the thing being mixed. The clock
-            // is already frozen here, so nothing is lost to the time spent.
-            _pausePanel.Add(Agent_UIStyle.VolumeSliders());
-
-            _pausePanel.Add(EndButton("RESUME", true, Resume));
-            _pausePanel.Add(EndButton("MENU", false,
+            // THE VOLUME SLIDERS USED TO BE INLINE HERE. They are the Audio tab of
+            // the settings sheet now, one tap away, alongside every other setting -
+            // so the mix, the palette and the text size can all be changed while
+            // looking at the paused match they apply to, and this panel is three
+            // buttons instead of a form.
+            _pausePanel.Add(PauseButton("RESUME", true, Resume));
+            _pausePanel.Add(PauseButton("SETTINGS", false, OpenSettings));
+            _pausePanel.Add(PauseButton("MENU", false,
                 () => { Agent_TimeFreeze.ReleaseAll(); SceneManager.LoadScene(menuScene); }));
 
             _root.Add(_pausePanel);
             Agent_UIStyle.PlayEntrance(_pausePanel);
         }
 
+        static Button PauseButton(string text, bool primary, System.Action onClick)
+        {
+            var button = EndButton(text, primary, onClick);
+            button.AddToClassList("pause__btn");
+            return button;
+        }
+
         void Resume()
         {
+            // The sheet is a child of the pause flow; it cannot outlive it.
+            if (_settingsOpenedHere && Agent_SettingsSheet.IsOpen) Agent_SettingsSheet.Close();
+
             if (_pausePanel != null && _pausePanel.parent != null)
                 _pausePanel.parent.Remove(_pausePanel);
             _pausePanel = null;
@@ -719,6 +892,30 @@ namespace PoSoccer
             else ShowEndPanel();
         }
 
+        VisualElement _endBody;
+        readonly VisualElement[] _endPanes = new VisualElement[END_TAB_COUNT];
+        readonly Button[] _endTabButtons = new Button[END_TAB_COUNT];
+
+        /// <summary>
+        /// The result screen: ONE docked view, nothing scrolls.
+        ///
+        ///     headline + score      what happened
+        ///     SUMMARY | STATS | PLAYERS
+        ///     one content pane      switched in place by the tabs
+        ///     REMATCH | MENU        fixed, inside thumb reach
+        ///
+        /// It used to be a centred column that appended every registered section -
+        /// man of the match, the telemetry table, the occupancy maps - one under
+        /// the other. On a 2v2 that is already taller than a 16:9 screen, and the
+        /// two buttons were the LAST children, so the first thing to fall off the
+        /// bottom was the only way out. Tabs bound the height; the pane is the
+        /// only flexible child and clips, so nothing a contributor builds can move
+        /// the action row.
+        ///
+        /// Panes are built lazily, on the first visit to a tab, and kept: the
+        /// dossier bakes a texture per player, which is not worth doing for a tab
+        /// nobody opens and must not be done twice for one they revisit.
+        /// </summary>
         void ShowEndPanel()
         {
             _ended = true;
@@ -730,42 +927,201 @@ namespace PoSoccer
             HideBanner();
             Agent_TimeFreeze.Acquire(this);
 
-            _endPanel = new VisualElement();
+            _endPanel = new VisualElement { name = "end-panel" };
             _endPanel.AddToClassList("panel--scrim");
+            _endPanel.AddToClassList("endpanel");
+            // Absolute on the panel root, so it insets itself - and reserves both
+            // of Agent_Chrome's bars, which draw above this panel.
+            Agent_UIStyle.BindSafeArea(_endPanel, Agent_Chrome.BAR_HEIGHT, Agent_Chrome.BAR_HEIGHT);
+
+            var head = new VisualElement();
+            head.AddToClassList("endpanel__head");
+            _endPanel.Add(head);
 
             // A draw was unreachable while first-to-N was the only terminal
             // condition, so the headline was a two-way branch that filed every
             // level scoreline as a RED win. matchTimeLimit makes level scores
             // reachable, so the third case has to exist.
             bool drawn = _blueScore == _redScore;
-            var headline = new Label(drawn ? "DRAW" : _blueScore > _redScore ? "BLUE WINS" : "RED WINS");
-            headline.style.fontSize = Agent_UIStyle.FontXL;
-            headline.style.unityFontStyleAndWeight = FontStyle.Bold;
+            var headline = new Label(drawn ? "DRAW" : _blueScore > _redScore ? "BLUE WINS" : "RED WINS")
+            {
+                name = "end-headline",
+            };
+            headline.AddToClassList("endpanel__headline");
+            // Whose win it was is data; the size and face are the stylesheet's.
             headline.style.color = drawn
                 ? Agent_UIStyle.TextPrimary
                 : _blueScore > _redScore ? Agent_UIStyle.BlueTeam : Agent_UIStyle.RedTeam;
-            _endPanel.Add(headline);
+            head.Add(headline);
 
-            var score = new Label($"{_blueScore}  —  {_redScore}");
-            score.style.fontSize = Agent_UIStyle.FontL;
-            score.style.color = Agent_UIStyle.TextPrimary;
-            score.style.marginBottom = 40;
-            _endPanel.Add(score);
+            var score = new Label($"{_blueScore}  —  {_redScore}") { name = "end-score" };
+            score.AddToClassList("endpanel__score");
+            head.Add(score);
 
-            // Man-of-the-match card, match telemetry table - whatever registered.
-            for (int i = 0; i < _endPanelSections.Count; i++)
+            var tabs = new VisualElement { name = "end-tabs" };
+            tabs.AddToClassList("tabs");
+            for (int tabIndex = 0; tabIndex < END_TAB_COUNT; tabIndex++)
             {
-                var section = _endPanelSections[i]?.Invoke();
-                if (section != null) _endPanel.Add(section);
+                var tab = (EndTab)tabIndex;
+                var button = new Button(() => ShowEndTab(tab)) { text = EndTabNames[tabIndex] };
+                button.AddToClassList("btn");
+                button.AddToClassList("tab");
+                _endTabButtons[tabIndex] = button;
+                _endPanes[tabIndex] = null;
+                tabs.Add(button);
             }
+            _endPanel.Add(tabs);
 
-            _endPanel.Add(EndButton("REMATCH", true,
-                () => { Agent_TimeFreeze.ReleaseAll(); SceneManager.LoadScene(SceneManager.GetActiveScene().name); }));
-            _endPanel.Add(EndButton("MENU", false,
-                () => { Agent_TimeFreeze.ReleaseAll(); SceneManager.LoadScene(menuScene); }));
+            _endBody = new VisualElement { name = "end-body" };
+            _endBody.AddToClassList("endpanel__body");
+            _endPanel.Add(_endBody);
+
+            var actions = new VisualElement { name = "end-actions" };
+            actions.AddToClassList("endpanel__actions");
+            // REMATCH = the same lineup again. Agent_MatchSetup's statics are only
+            // cleared on arrival at the MENU, so reloading this scene hands
+            // Agent_MatchLoader the squads it was given the first time; the score
+            // and the first-to-N state die with this component; and ReleaseAll
+            // drops this panel's hold, every phase token and the spectator speed
+            // before the load, so the new kickoff countdown starts on a clean clock.
+            var rematch = EndButton("REMATCH", true,
+                () => { Agent_TimeFreeze.ReleaseAll(); SceneManager.LoadScene(SceneManager.GetActiveScene().name); });
+            rematch.AddToClassList("btn--dock");
+            actions.Add(rematch);
+            var menu = EndButton("MENU", false,
+                () => { Agent_TimeFreeze.ReleaseAll(); SceneManager.LoadScene(menuScene); });
+            menu.AddToClassList("btn--dock");
+            actions.Add(menu);
+            _endPanel.Add(actions);
 
             _root.Add(_endPanel);
             Agent_UIStyle.PlayEntrance(_endPanel);
+            ShowEndTab(EndTab.Summary);
+        }
+
+        /// <summary>Switches the end panel's content pane in place.</summary>
+        public void ShowEndTab(EndTab tab)
+        {
+            if (_endBody == null) return;
+            int wanted = Mathf.Clamp((int)tab, 0, END_TAB_COUNT - 1);
+
+            if (_endPanes[wanted] == null)
+            {
+                _endPanes[wanted] = BuildEndPane((EndTab)wanted);
+                _endBody.Add(_endPanes[wanted]);
+            }
+
+            for (int tabIndex = 0; tabIndex < END_TAB_COUNT; tabIndex++)
+            {
+                _endTabButtons[tabIndex].EnableInClassList(Agent_UIStyle.ON, tabIndex == wanted);
+                if (_endPanes[tabIndex] != null)
+                {
+                    _endPanes[tabIndex].style.display =
+                        tabIndex == wanted ? DisplayStyle.Flex : DisplayStyle.None;
+                }
+            }
+        }
+
+        VisualElement BuildEndPane(EndTab tab)
+        {
+            var pane = new VisualElement();
+            pane.style.alignItems = Align.Center;
+            // Natural height, CLIPPED by the body - never shrunk to fit it. A
+            // shrinking pane squeezes its rows into each other, which reads as a
+            // rendering bug; a clipped one reads as a list that continues.
+            pane.style.flexShrink = 0;
+
+            int contributed = 0;
+            for (int sectionIndex = 0; sectionIndex < _endPanelSections.Count; sectionIndex++)
+            {
+                if (_endPanelTabs[sectionIndex] != tab) continue;
+                var builder = _endPanelSections[sectionIndex];
+                var section = builder != null ? builder() : null;
+                if (section == null) continue;
+                pane.Add(section);
+                contributed++;
+            }
+
+            switch (tab)
+            {
+                case EndTab.Summary:
+                    pane.Add(EndNote(SummaryLine()));
+                    break;
+                case EndTab.Stats:
+                    if (contributed == 0) pane.Add(EndNote("No match statistics were recorded."));
+                    break;
+                default:
+                    // Agent_Dossier declines to draw a map from under ten seconds
+                    // of play. The roster itself is always known, so the tab is
+                    // never empty.
+                    if (contributed == 0) BuildPlayerList(pane);
+                    break;
+            }
+            return pane;
+        }
+
+        string SummaryLine()
+        {
+            int seconds = Mathf.Max(0, Mathf.RoundToInt(_matchSeconds));
+            string length = $"{seconds / 60:0}:{seconds % 60:00} played";
+            bool timedOut = matchTimeLimit > 0f && _matchSeconds >= matchTimeLimit
+                            && (matchGoals <= 0 || (_blueScore < matchGoals && _redScore < matchGoals));
+            if (timedOut) return $"time expired  ·  {length}";
+            return matchGoals > 0 ? $"first to {matchGoals}  ·  {length}" : length;
+        }
+
+        static Label EndNote(string text)
+        {
+            var note = new Label(text);
+            note.AddToClassList("endpanel__note");
+            return note;
+        }
+
+        /// <summary>Rows drawn before the list collapses into a "+N more" line.</summary>
+        const int MAX_END_PLAYER_ROWS = 10;
+
+        /// <summary>
+        /// Who played and who drove them - what this class can say about the
+        /// roster on its own, used when no per-player section registered or the one
+        /// that did had nothing to draw.
+        /// </summary>
+        void BuildPlayerList(VisualElement pane)
+        {
+            if (env == null) return;
+
+            int drawn = 0, skipped = 0;
+            for (int agentIndex = 0; agentIndex < env.agents.Count; agentIndex++)
+            {
+                var agent = env.agents[agentIndex];
+                if (agent == null || agent.rewards == null) continue;
+                if (drawn >= MAX_END_PLAYER_ROWS) { skipped++; continue; }
+                drawn++;
+
+                var row = new VisualElement();
+                row.AddToClassList("endpanel__player");
+
+                var name = new Label(agent.rewards.playerName);
+                name.AddToClassList("endpanel__player-name");
+                name.style.color = agent.team == Agent_Soccer.Team.Blue
+                    ? Agent_UIStyle.BlueTeam : Agent_UIStyle.RedTeam;
+                row.Add(name);
+
+                var driver = new Label(agent.RuleBased ? "BOT" : "AI");
+                driver.AddToClassList("endpanel__player-driver");
+                row.Add(driver);
+
+                string run = agent.RuleBased
+                    ? "scripted"
+                    : string.IsNullOrEmpty(agent.rewards.trainingRunId) ? "run unknown" : agent.rewards.trainingRunId;
+                var provenance = new Label(run);
+                provenance.AddToClassList("endpanel__player-run");
+                row.Add(provenance);
+
+                pane.Add(row);
+            }
+
+            if (skipped > 0) pane.Add(EndNote($"+{skipped} more"));
+            if (drawn == 0) pane.Add(EndNote("No players to list."));
         }
 
         static Button EndButton(string text, bool primary, System.Action onClick)
@@ -858,6 +1214,15 @@ namespace PoSoccer
             if (!enableMatchFlow) return;
             var keyboard = UnityEngine.InputSystem.Keyboard.current;
             if (keyboard == null || !keyboard.escapeKey.wasPressedThisFrame) return;
+
+            // Back goes up ONE level, and the settings sheet is the topmost one:
+            // it closes back to the pause panel it was opened from, rather than
+            // back resuming the match out from under an open sheet.
+            if (_settingsOpenedHere && Agent_SettingsSheet.IsOpen)
+            {
+                Agent_SettingsSheet.Close();
+                return;
+            }
 
             // ON THE RESULT SCREEN, BACK MEANS LEAVE. It used to mean nothing:
             // TogglePause refuses once MatchOver is true (correctly - a pause layered

@@ -15,6 +15,7 @@
 //   _RimColor       / _RimStrength / _RimPower     team rim on player bodies
 //   _EmissionBoost                                 celebration flare
 //   _NetStrength    / _NetTiling   / _NetRipple    goal net (cuts ALPHA, not albedo)
+//   _Fatigue                                       tired body: desaturation + sweat sheen
 //
 // No shader_feature keywords on purpose: four toggles would mean sixteen
 // variants for effects that cost a few ALU each, and keyword-free branches keep
@@ -53,6 +54,10 @@ Shader "PoSoccer/SpriteLitFX"
         _KitMode("Kit Pattern (0 none 1 stripes 2 hoops 3 sash 4 halves)", Float) = 0
         _KitColor("Kit Secondary Colour", Color) = (1, 1, 1, 0)
         _KitScale("Kit Bands Across", Float) = 6
+
+        // 0 = rested, and bit-identical to the shader before this existed.
+        // Driven per body by Agent_Surfaces from Agent_Stamina.
+        _Fatigue("Fatigue (0 rested .. 1 spent)", Range(0, 1)) = 0
 
         // Legacy properties, kept so this can fall back to the sprite shader.
         [HideInInspector] _Color("Tint", Color) = (1,1,1,1)
@@ -120,6 +125,7 @@ Shader "PoSoccer/SpriteLitFX"
                 half4 _KitColor;
                 half  _KitMode;
                 half  _KitScale;
+                half  _Fatigue;
             CBUFFER_END
 
             #include "PoSoccerFX.hlsl"
@@ -206,6 +212,7 @@ Shader "PoSoccer/SpriteLitFX"
                 half4 _KitColor;
                 half  _KitMode;
                 half  _KitScale;
+                half  _Fatigue;
             CBUFFER_END
 
             Varyings NormalsRenderingVertex(Attributes input)
@@ -274,6 +281,7 @@ Shader "PoSoccer/SpriteLitFX"
                 half4 _KitColor;
                 half  _KitMode;
                 half  _KitScale;
+                half  _Fatigue;
             CBUFFER_END
 
             #include "PoSoccerFX.hlsl"

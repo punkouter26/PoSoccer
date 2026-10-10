@@ -46,7 +46,7 @@ namespace PoSoccer
         void Start()
         {
             _env = GetComponent<Agent_EnvController>();
-            var hud = FindFirstObjectByType<Agent_HUD>();
+            var hud = FindAnyObjectByType<Agent_HUD>();
             if (!_enableParticles || !Agent_Presentation.IsVisualScene(hud))
             {
                 enabled = false;
@@ -245,8 +245,21 @@ namespace PoSoccer
         void OnBallHit(Collision2D collision)
         {
             if (_debris == null) return;
+
+            // BallContact.Hit is static, so every gallery pitch hears every ball.
+            // otherRigidbody is the body that received the callback - the ball -
+            // which keeps each pitch's debris on its own pitch.
+            if (_env.Ball != null && collision.otherRigidbody != null
+                && collision.otherRigidbody != _env.Ball) return;
+
             float impact = collision.relativeVelocity.magnitude;
             if (impact < _impactThreshold) return;
+
+            // Burst size follows the contact's NORMAL IMPULSE, the same number
+            // Agent_Audio sets the impact's level from, so a glancing touch at
+            // speed throws a little and a square strike throws a lot - and the
+            // biggest spray always lands on the loudest hit.
+            float strength = Agent_ImpactScale.Ball01(collision);
 
             Vector3 at = collision.contactCount > 0
                 ? (Vector3)collision.GetContact(0).point
@@ -255,15 +268,21 @@ namespace PoSoccer
                 ? collision.GetContact(0).normal
                 : Vector2.up;
 
-            int count = Mathf.Clamp(Mathf.RoundToInt(impact * 0.8f), 3, 18);
+            // Clamped at both ends: three motes is the least that reads as a
+            // contact at all, and eighteen is where a burst stops gaining anything
+            // but overdraw (the system caps at 200 live particles regardless).
+            int count = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(3f, 18f, strength)), 3, 18);
+            float topSpeed = Mathf.Lerp(2f, 6.5f, strength);
+            float size = Mathf.Lerp(0.06f, 0.13f, strength);
             for (int i = 0; i < count; i++)
             {
                 var emit = new ParticleSystem.EmitParams
                 {
                     position = at,
                     velocity = (normal + Random.insideUnitCircle * 0.9f).normalized
-                               * Random.Range(1.5f, impact * 0.35f),
+                               * Random.Range(1.5f, topSpeed),
                     startLifetime = Random.Range(0.2f, 0.45f),
+                    startSize = size * Random.Range(0.8f, 1.2f),
                 };
                 _debris.Emit(emit, 1);
             }

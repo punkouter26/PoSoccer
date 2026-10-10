@@ -187,6 +187,41 @@ namespace PoSoccer
         [Range(0f, 1f)] [SerializeField] private float _breathBelow = 0.55f;
         [Range(0f, 1f)] [SerializeField] private float _breathVolume = 0.3f;
 
+        [Header("Contacts (impulse-scaled)")]
+        // Optional variation banks. Each contact pair round-robins over its own
+        // bank so two hits in a row are never the same sample at the same pitch;
+        // with the placeholder clips a bank is one or two entries, and a Store
+        // pack dropped in here widens it with no code change. The single clips
+        // above always join their bank, so leaving these empty changes nothing.
+        [Tooltip("Extra ball-on-player samples, round-robined with `kick`.")]
+        [SerializeField] private AudioClip[] _kickVariants;
+        [Tooltip("Extra ball-on-wall samples, round-robined with `wall`.")]
+        [SerializeField] private AudioClip[] _wallVariants;
+        [Tooltip("Player-on-player body thuds. When empty, `wall` and `kick` are " +
+                 "played well down, which reads as mass rather than leather.")]
+        [SerializeField] private AudioClip[] _bodyVariants;
+        [Tooltip("Random pitch spread per contact, as a fraction. 0.06 = +/-6%.")]
+        [Range(0f, 0.2f)] [SerializeField] private float _pitchJitter = 0.06f;
+        [Tooltip("Contact voices allowed to ring at once before quiet contacts are " +
+                 "dropped. Loud ones still steal the oldest voice.")]
+        [SerializeField] private int _maxContactVoices = 6;
+
+        [Header("Foot skid")]
+        [Tooltip("Looping skid bed. Auto-loaded from Resources/Audio/skid when empty, " +
+                 "and synthesised once at start when that is missing too.")]
+        public AudioClip skid;
+        [Tooltip("Fraction of the friction circle above which feet are heard slipping.")]
+        [Range(0.5f, 0.99f)] [SerializeField] private float _skidSaturation = 0.85f;
+        [Tooltip("Speed (m/s) below which a saturated foot is a standing shove, not a skid.")]
+        [SerializeField] private float _skidMinSpeed = 1.5f;
+        [Tooltip("Speed (m/s) at which the skid is loudest and highest.")]
+        [SerializeField] private float _skidFullSpeed = 8f;
+        [Range(0f, 1f)] [SerializeField] private float _skidVolume = 0.3f;
+        [Tooltip("Seconds for the skid to come up. Short: a slip is an onset.")]
+        [SerializeField] private float _skidAttack = 0.04f;
+        [Tooltip("Seconds for the skid to die away once grip returns.")]
+        [SerializeField] private float _skidRelease = 0.15f;
+
         [Header("Buses")]
         [Range(0f, 1f)] [SerializeField] private float _masterVolume = 1f;
         [Range(0f, 1f)] [SerializeField] private float _sfxVolume = 1f;
@@ -250,6 +285,37 @@ namespace PoSoccer
         float _booTime;
         float _duck;
 
+        // -- Contact voices ---------------------------------------------------
+        //
+        // The pairs the simulation can actually tell apart. Ball-on-post is a
+        // wall contact near a goal mouth (see IsNearGoalMouth - there is no post
+        // collider), and player-on-player arrives through Agent_Contact rather
+        // than through the ball's own callback.
+        enum ContactPair { BallPlayer = 0, BallWall = 1, BallPost = 2, PlayerPlayer = 3 }
+
+        const int PAIR_COUNT = 4;
+
+        // Minimum seconds between two voices of the SAME pair. A ball trapped
+        // against a wall, or two bodies grinding, re-enters contact every few
+        // physics ticks; without this every one of them is a full sample and the
+        // result is a machine gun. Per pair, so a wall hit never swallows the
+        // kick that caused it. Player-on-player is long because both bodies
+        // report the same collision (see Agent_ImpactFX's dedupe).
+        static readonly float[] PairInterval = { 0.06f, 0.08f, 0.16f, 0.12f };
+
+        // Where each pair sits in the mix at full strength.
+        static readonly float[] PairGain = { 1f, 0.8f, 1f, 0.75f };
+
+        readonly float[] _pairLastTime = new float[PAIR_COUNT];
+        readonly int[] _pairNextClip = new int[PAIR_COUNT];
+        AudioClip[][] _pairClips;
+        Agent_Contact[] _contacts;
+
+        // -- Foot skid --------------------------------------------------------
+        AudioSource _skid;
+        AudioClip _synthSkid;
+        float _skidLevel;
+
         // -- Public reactions ------------------------------------------------
 
         /// <summary>
@@ -304,6 +370,17 @@ namespace PoSoccer
             _players = GetComponentsInChildren<Agent_Soccer>();
 
             BuildMixingDesk();
+            BuildContactBanks();
+
+            // The two additions below are gated harder than the rest of the desk.
+            // IsHeadless above only rules out a process with no screen; an
+            // in-editor training run is NOT headless, and neither a body-contact
+            // subscription per player nor a synthesised clip has any business
+            // existing there. Player contacts are per-pitch (gallery included);
+            // the skid is one voice per MATCH, so it takes the stricter gate.
+            var hud = FindAnyObjectByType<Agent_HUD>();
+            if (Agent_Presentation.IsVisualScene(hud)) SubscribePlayerContacts();
+            if (Agent_Presentation.IsMatchScene(hud)) BuildSkid();
 
             if (crowdLoop != null) { _crowd.clip = crowdLoop; _crowd.volume = 0f; _crowd.Play(); }
             // The bed wins over the legacy single loop when it exists, so a
@@ -352,12 +429,190 @@ namespace PoSoccer
             if (ballRoll == null) ballRoll = Resources.Load<AudioClip>("Audio/ball_roll");
             if (breath == null) breath = Resources.Load<AudioClip>("Audio/breath");
             if (post == null) post = Resources.Load<AudioClip>("Audio/post");
+            // No such file ships today; BuildSkid synthesises one when this
+            // comes back null. Loading first means a recorded skid dropped into
+            // Resources/Audio wins without touching code or a scene.
+            if (skid == null) skid = Resources.Load<AudioClip>("Audio/skid");
         }
 
         void OnDestroy()
         {
             if (_env != null) _env.EpisodeEnded -= OnEpisodeEnded;
             Agent_MatchFX.BallContact.Hit -= OnBallHit;
+
+            if (_contacts != null)
+            {
+                for (int i = 0; i < _contacts.Length; i++)
+                    if (_contacts[i] != null) _contacts[i].PlayerContact -= OnPlayerContact;
+            }
+
+            // Created with AudioClip.Create, so nothing else owns it.
+            if (_synthSkid != null) Destroy(_synthSkid);
+        }
+
+        // -- Contact banks and the skid voice ---------------------------------
+
+        /// <summary>
+        /// One clip bank per contact pair, built once. Null clips are skipped, so
+        /// a missing file shortens a bank rather than leaving a silent slot in
+        /// the rotation.
+        /// </summary>
+        void BuildContactBanks()
+        {
+            _pairClips = new AudioClip[PAIR_COUNT][];
+            _pairClips[(int)ContactPair.BallPlayer] = Bank(_kickVariants, kick, null);
+            _pairClips[(int)ContactPair.BallWall] = Bank(_wallVariants, wall, null);
+            // The post falls back to the wall thud, as it did before this existed.
+            _pairClips[(int)ContactPair.BallPost] = Bank(null, post != null ? post : wall, null);
+            _pairClips[(int)ContactPair.PlayerPlayer] =
+                _bodyVariants != null && _bodyVariants.Length > 0
+                    ? Bank(_bodyVariants, null, null)
+                    : Bank(null, wall, kick);
+
+            for (int i = 0; i < PAIR_COUNT; i++) _pairLastTime[i] = float.NegativeInfinity;
+        }
+
+        static AudioClip[] Bank(AudioClip[] variants, AudioClip first, AudioClip second)
+        {
+            int count = 0;
+            if (first != null) count++;
+            if (second != null) count++;
+            if (variants != null)
+            {
+                for (int i = 0; i < variants.Length; i++)
+                    if (variants[i] != null) count++;
+            }
+
+            var bank = new AudioClip[count];
+            int next = 0;
+            if (first != null) bank[next++] = first;
+            if (second != null) bank[next++] = second;
+            if (variants != null)
+            {
+                for (int i = 0; i < variants.Length; i++)
+                    if (variants[i] != null) bank[next++] = variants[i];
+            }
+            return bank;
+        }
+
+        /// <summary>
+        /// Body-on-body contact has been computed by Agent_Contact since it was
+        /// written and has never made a sound: the ball's own callback only fires
+        /// for the ball. Subscribed per player; both bodies report each collision,
+        /// and the pair's re-trigger interval is what collapses the two into one.
+        /// </summary>
+        void SubscribePlayerContacts()
+        {
+            if (_players == null) return;
+            _contacts = new Agent_Contact[_players.Length];
+            for (int i = 0; i < _players.Length; i++)
+            {
+                if (_players[i] == null) continue;
+                var contact = _players[i].GetComponent<Agent_Contact>();
+                if (contact == null) continue;
+                _contacts[i] = contact;
+                contact.PlayerContact += OnPlayerContact;
+            }
+        }
+
+        /// <summary>
+        /// ONE skid voice for the whole match, moved to whichever player is
+        /// slipping hardest - the same decision, for the same reason, as the
+        /// breath voice below: a source per player is four loops fighting for the
+        /// same band on a phone speaker.
+        /// </summary>
+        void BuildSkid()
+        {
+            if (skid == null)
+            {
+                _synthSkid = SynthesiseSkid();
+                skid = _synthSkid;
+            }
+            if (skid == null) return;
+
+            var go = new GameObject("Audio_Skid");
+            go.transform.SetParent(transform, false);
+            _skid = NewPositionalVoice(go);
+            _skid.loop = true;
+            _skid.clip = skid;
+            _skid.volume = 0f;
+            _skid.Play();
+        }
+
+        /// <summary>
+        /// A short band-limited noise loop, rendered ONCE into an AudioClip.
+        ///
+        /// Follows Editor_GenerateAudio's conventions, because that is where every
+        /// other synthesised layer in the project comes from: a deterministic LCG
+        /// rather than UnityEngine.Random (so the clip is identical every run and
+        /// a recording of the game is reproducible), one-pole filters, and an
+        /// equal-power crossfade of the tail over the head - noise cannot be
+        /// loop-locked the way a sine can. It is done at runtime instead of in
+        /// that editor tool only because adding a binary asset was out of scope;
+        /// the moment a `skid.wav` exists in Resources/Audio this never runs.
+        ///
+        /// The band (roughly 700 Hz - 3.2 kHz) is studs tearing turf: above the
+        /// ball's rolling rumble, below the hiss a phone speaker turns to static.
+        /// 22.05 kHz is enough for that band and halves the one-off cost.
+        /// </summary>
+        static AudioClip SynthesiseSkid()
+        {
+            const int RATE = 22050;
+            const float SECONDS = 1.6f;
+            const float FADE_SECONDS = 0.3f;
+
+            int length = (int)(SECONDS * RATE);
+            int fade = (int)(FADE_SECONDS * RATE);
+            int loopLength = length - fade;
+            if (loopLength <= fade) return null;
+
+            var raw = new float[length];
+
+            float dt = 1f / RATE;
+            float highRc = 1f / (2f * Mathf.PI * 700f);
+            float highAlpha = highRc / (highRc + dt);
+            float lowRc = 1f / (2f * Mathf.PI * 3200f);
+            float lowAlpha = dt / (lowRc + dt);
+
+            ulong state = 0x5C1D5C1DUL;
+            float previousIn = 0f, high = 0f, lowA = 0f, lowB = 0f;
+            for (int i = 0; i < length; i++)
+            {
+                state = state * 6364136223846793005UL + 1442695040888963407UL;
+                double unit = ((state >> 11) & 0x1FFFFFFFFFFFFFUL) / (double)0x20000000000000UL;
+                float white = (float)(unit * 2.0 - 1.0);
+
+                high = highAlpha * (high + white - previousIn);
+                previousIn = white;
+                lowA += lowAlpha * (high - lowA);
+                lowB += lowAlpha * (lowA - lowB);      // 12 dB/oct, as BallRoll does
+                raw[i] = lowB;
+            }
+
+            // Tail over head, then keep only the part before the tail.
+            var loop = new float[loopLength];
+            float peak = 1e-6f;
+            for (int i = 0; i < loopLength; i++)
+            {
+                float sample = raw[i];
+                if (i < fade)
+                {
+                    float t = i / (float)fade;
+                    sample = sample * Mathf.Sqrt(t) + raw[loopLength + i] * Mathf.Sqrt(1f - t);
+                }
+                loop[i] = sample;
+                float magnitude = Mathf.Abs(sample);
+                if (magnitude > peak) peak = magnitude;
+            }
+
+            float gain = 0.6f / peak;
+            for (int i = 0; i < loopLength; i++) loop[i] *= gain;
+
+            // Exactly loopLength samples: SetData WRAPS when handed more than the
+            // clip holds, which would write the tail back over the crossfaded head.
+            var clip = AudioClip.Create("skid_procedural", loopLength, 1, RATE, false);
+            clip.SetData(loop, 0);
+            return clip;
         }
 
         /// <summary>
@@ -618,11 +873,21 @@ namespace PoSoccer
 
         void OnBallHit(Collision2D collision)
         {
+            // BallContact.Hit is STATIC, so in the gallery every pitch's desk
+            // hears every pitch's ball. otherRigidbody is the body on the object
+            // that received the callback - the ball - so this keeps each desk to
+            // its own, which is also what makes the voice cap below mean anything.
+            if (_env.Ball != null && collision.otherRigidbody != null
+                && collision.otherRigidbody != _env.Ball) return;
+
             float impact = collision.relativeVelocity.magnitude;
             if (impact < 1.5f) return;
 
-            float volume = Mathf.Clamp01(impact / 14f);
-            float pitch = Random.Range(0.92f, 1.08f);
+            // Normal impulse, not closing speed: a ball skimming a wall and a
+            // ball driven square into it close at the same speed and should not
+            // sound the same. See Agent_ImpactScale.
+            float strength = Agent_ImpactScale.Ball01(collision);
+
             // The contact point, not the ball centre - a ball hitting the far post
             // should sound like it happened at the far post.
             Vector3 at = collision.contactCount > 0
@@ -631,7 +896,9 @@ namespace PoSoccer
 
             if (!collision.collider.CompareTag("Wall"))
             {
-                PlayAt(kick, at, volume, pitch);
+                // Heavier strikes sit slightly LOWER: more of the ball deforms, so
+                // the thump gains body and loses click.
+                PlayContact(ContactPair.BallPlayer, at, strength, 1.06f, 0.9f);
                 return;
             }
 
@@ -641,14 +908,75 @@ namespace PoSoccer
             // the two apart, and it is the thing a listener is using anyway.
             if (post != null && IsNearGoalMouth(at))
             {
-                // Higher impacts ring the post higher, which is how a struck bar
-                // actually behaves and reads as "off the woodwork".
-                PlayAt(post, at, volume, Mathf.Lerp(0.9f, 1.15f, Mathf.Clamp01(impact / 18f)));
+                // The one pair that goes UP with force: a struck bar rings higher
+                // the harder it is hit, and that is what reads as "off the
+                // woodwork" rather than "off the boards".
+                PlayContact(ContactPair.BallPost, at, strength, 0.92f, 1.12f);
                 Cheer(0.55f);   // the crowd reacts to woodwork whether or not it goes in
                 return;
             }
 
-            PlayAt(wall, at, volume * 0.8f, pitch);
+            PlayContact(ContactPair.BallWall, at, strength, 1.04f, 0.9f);
+        }
+
+        /// <summary>
+        /// Body on body. Pitched well down from the samples' natural register so
+        /// the same two placeholder clips read as mass rather than as leather.
+        /// </summary>
+        void OnPlayerContact(Vector2 point, Vector2 normal, float impulse)
+        {
+            float strength = Agent_ImpactScale.Player01(impulse);
+            if (strength <= 0f) return;
+            PlayContact(ContactPair.PlayerPlayer, point, strength, 0.74f, 0.58f);
+        }
+
+        /// <summary>
+        /// One impulse-scaled contact voice.
+        ///
+        /// Level is the SQUARE ROOT of normalised strength (perceived loudness is
+        /// a power law, so a linear map leaves ordinary touches inaudible), pitch
+        /// runs from <paramref name="lightPitch"/> to <paramref name="heavyPitch"/>
+        /// with a random spread on top, and the clip is the next in the pair's
+        /// bank. Three things stop a scrum from becoming a machine gun: the
+        /// per-pair re-trigger interval, the voice cap, and the rotation itself.
+        /// </summary>
+        void PlayContact(ContactPair pair, Vector3 at, float strength,
+                         float lightPitch, float heavyPitch)
+        {
+            if (Muted || _pairClips == null) return;
+
+            int index = (int)pair;
+            var bank = _pairClips[index];
+            if (bank == null || bank.Length == 0) return;
+
+            // Unscaled: the interval is about what a listener hears, and a
+            // hit-stop that slows the clock must not also stretch the gap.
+            float now = Time.unscaledTime;
+            if (now - _pairLastTime[index] < PairInterval[index]) return;
+
+            float loudness = Agent_ImpactScale.Loudness(strength);
+            if (loudness < 0.12f) return;
+
+            // At the cap, quiet contacts are dropped and loud ones are allowed to
+            // steal - NextVoice takes the oldest slot when none is free.
+            if (loudness < 0.5f && ActiveContactVoices() >= Mathf.Max(1, _maxContactVoices)) return;
+
+            _pairLastTime[index] = now;
+            int slot = _pairNextClip[index] % bank.Length;
+            _pairNextClip[index] = (slot + 1) % bank.Length;
+
+            float pitch = Mathf.Lerp(lightPitch, heavyPitch, Mathf.Clamp01(strength))
+                          * Random.Range(1f - _pitchJitter, 1f + _pitchJitter);
+            PlayAt(bank[slot], at, loudness * PairGain[index], pitch);
+        }
+
+        int ActiveContactVoices()
+        {
+            if (_pool == null) return 0;
+            int active = 0;
+            for (int i = 0; i < _pool.Length; i++)
+                if (_pool[i] != null && _pool[i].isPlaying) active++;
+            return active;
         }
 
         /// <summary>
@@ -693,6 +1021,79 @@ namespace PoSoccer
             UpdateFilters(dt);
             UpdateRoll(dt);
             UpdateBreath(dt);
+            UpdateSkid(dt);
+        }
+
+        /// <summary>
+        /// Feet at the limit of grip, heard.
+        ///
+        /// The signal is the same one Agent_ImpactFX draws scuffs from and
+        /// Agent_Wear darkens the pitch with: Agent_Soccer.TractionSaturation
+        /// above a threshold, times speed - saturated and stationary is a shove,
+        /// not a skid. The voice follows the MAX over players rather than a sum,
+        /// so two players cutting at once are as loud as the harder cut, not
+        /// twice as loud.
+        ///
+        /// Fast attack, slower release, as a one-pole follower on unscaled time:
+        /// a slip is an onset and has to land on the frame it happens, while a
+        /// release that short would chatter every time saturation dithers around
+        /// the threshold. Silenced outright while the clock is stopped -
+        /// TractionSaturation holds its last value through a freeze, and a skid
+        /// sustained across a goal replay is a stuck note.
+        /// </summary>
+        void UpdateSkid(float dt)
+        {
+            if (_skid == null || _players == null) return;
+
+            float best = 0f;
+            float bestSpeed01 = 0f;
+            Agent_Soccer slipping = null;
+
+            if (!Muted && !Agent_TimeFreeze.IsFrozen && Time.timeScale > 0.01f)
+            {
+                float speedSpan = Mathf.Max(0.1f, _skidFullSpeed - _skidMinSpeed);
+                for (int i = 0; i < _players.Length; i++)
+                {
+                    var player = _players[i];
+                    if (player == null || player.Body == null || !player.isActiveAndEnabled) continue;
+
+                    float saturation = player.TractionSaturation;
+                    if (saturation <= _skidSaturation) continue;
+
+                    float speed = player.Body.linearVelocity.magnitude;
+                    if (speed <= _skidMinSpeed) continue;
+
+                    float speed01 = Mathf.Clamp01((speed - _skidMinSpeed) / speedSpan);
+                    float slip = Mathf.InverseLerp(_skidSaturation, 1f, saturation) * speed01;
+                    if (slip <= best) continue;
+
+                    best = slip;
+                    bestSpeed01 = speed01;
+                    slipping = player;
+                }
+            }
+
+            float seconds = best > _skidLevel ? _skidAttack : _skidRelease;
+            _skidLevel += (best - _skidLevel) * (1f - Mathf.Exp(-dt / Mathf.Max(0.005f, seconds)));
+            if (_skidLevel < 0.001f) _skidLevel = 0f;
+
+            if (slipping != null)
+            {
+                Vector3 at = slipping.transform.position;
+                _skid.transform.position = at;
+
+                // Same explicit stereo spread PlayAt applies, for the same reason.
+                float halfWidth = Mathf.Max(0.01f, _env.PitchHalfExtents.x);
+                _skid.panStereo =
+                    Mathf.Clamp((at.x - transform.position.x) / halfWidth, -1f, 1f) * _stereoSpread;
+
+                // Pitch follows speed: a fast slide tears, a slow one grinds.
+                // Eased, because the source can jump between players.
+                _skid.pitch = Mathf.MoveTowards(_skid.pitch,
+                    Mathf.Lerp(0.8f, 1.3f, bestSpeed01), 4f * dt);
+            }
+
+            _skid.volume = Muted ? 0f : Mathf.Sqrt(_skidLevel) * _skidVolume * SfxBus;
         }
 
         /// <summary>

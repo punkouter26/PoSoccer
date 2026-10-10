@@ -69,8 +69,8 @@ namespace PoSoccer
             // overlay is opened, and Update early-outs.
             if (GetComponent<Agent_Telemetry>() == null) gameObject.AddComponent<Agent_Telemetry>();
 
-            var hud = FindFirstObjectByType<Agent_HUD>();
-            var env = FindFirstObjectByType<Agent_EnvController>();
+            var hud = FindAnyObjectByType<Agent_HUD>();
+            var env = FindAnyObjectByType<Agent_EnvController>();
 
             // MENU is the only way out of a match or the gallery, so the chrome
             // that carries it is guaranteed rather than left to a serialized

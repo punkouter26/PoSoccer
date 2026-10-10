@@ -35,6 +35,22 @@ namespace PoSoccer
         [Tooltip("Neutral is the safe broadcast look; ACES is punchier but crushes saturated team colours.")]
         [SerializeField] private TonemappingMode _tonemapping = TonemappingMode.Neutral;
 
+        [Header("Follow spot")]
+        [Tooltip("One spot that eases toward whoever touched the ball last. Match scene only.")]
+        [SerializeField] private bool _followSpot = true;
+        [Tooltip("Resting intensity. Low on purpose: it is an accent on top of four " +
+                 "floodlights, and anything stronger washes out the body colour it sits on.")]
+        [Range(0f, 2f)] [SerializeField] private float _spotIntensity = 0.45f;
+        [Tooltip("Outer radius in metres - a little over two body widths.")]
+        [SerializeField] private float _spotRadius = 3.2f;
+        [Tooltip("How quickly the spot closes on its target, per second. 6 = most of the " +
+                 "way there in about a third of a second, so it trails a pass instead of teleporting.")]
+        [SerializeField] private float _spotFollowRate = 6f;
+        [Tooltip("Extra intensity at the peak of a goal pulse.")]
+        [Range(0f, 4f)] [SerializeField] private float _spotGoalBoost = 1.5f;
+        [Tooltip("Seconds a goal pulse takes to die away.")]
+        [SerializeField] private float _spotGoalSeconds = 0.7f;
+
         Bloom _bloom;
         ChromaticAberration _chroma;
         ColorAdjustments _grading;
@@ -47,6 +63,25 @@ namespace PoSoccer
         readonly List<float> _floodBaseIntensity = new();
         float _celebrate;
         Color _celebrateColor = Color.white;
+
+        // Follow spot. Null everywhere except a live match scene - see Start.
+        static readonly Color SpotRestColor = new(1f, 0.97f, 0.88f);
+        Agent_EnvController _env;
+        Light2D _spot;
+        float _spotPresence;     // 0 = nobody to follow, 1 = locked on
+        float _spotPulse;        // 1 at the instant of a goal, decays to 0
+        Color _spotPulseColor = Color.white;
+
+        /// <summary>
+        /// Off = the follow spot is switched off and costs nothing. Defaults on.
+        ///
+        /// It is a CONTINUOUS cost - one more point light in the 2D light pass,
+        /// every frame - so by Agent_Quality's own ordering (continuous cost is
+        /// spent before momentary meaning) it belongs with the things shed early.
+        /// Exposed as a property rather than wired here because the tier ladder
+        /// lives in Agent_Quality.Apply.
+        /// </summary>
+        public bool FollowSpotEnabled { get; set; } = true;
 
         void Awake()
         {
@@ -86,7 +121,59 @@ namespace PoSoccer
             BuildPostVolume();
         }
 
-        void MakeLight(string label, Light2D.LightType type, Vector2 pos,
+        /// <summary>
+        /// The follow spot is built in Start, not with the other lights in Awake,
+        /// and behind a harder gate than they are.
+        ///
+        /// Awake's IsHeadless check only asks whether this process has a screen.
+        /// The spot is a GLOBAL - one light, one target - so it needs the
+        /// IsMatchScene answer instead: no trainer attached, not an evaluation,
+        /// and not the gallery, where there are six pitches and one stadium and
+        /// "the last toucher" would mean whichever env FindAnyObjectByType
+        /// happened to return. That predicate reads the Academy, which is why it
+        /// waits for Start. A disabled component gets no Start, so the headless
+        /// exit in Awake still covers this and nothing here can exist across
+        /// Agent_TrainingGrid's sixteen cloned pitches.
+        /// </summary>
+        void Start()
+        {
+            if (!_followSpot) return;
+
+            var hud = FindAnyObjectByType<Agent_HUD>();
+            if (!Agent_Presentation.IsMatchScene(hud)) return;
+
+            _env = FindAnyObjectByType<Agent_EnvController>();
+            if (_env == null) return;
+
+            _spot = MakeLight("FollowSpot", Light2D.LightType.Point, Vector2.zero,
+                SpotRestColor, 0f, Mathf.Max(0.5f, _spotRadius));
+            // Dark until there is somebody to follow: a disabled Light2D is not
+            // drawn at all, where one at intensity 0 still takes its pass.
+            _spot.enabled = false;
+
+            _env.EpisodeEnded += OnEpisodeEnded;
+        }
+
+        void OnDestroy()
+        {
+            if (_env != null) _env.EpisodeEnded -= OnEpisodeEnded;
+        }
+
+        /// <summary>
+        /// Goal: the spot flares in the SCORING team's colour, on the scorer.
+        /// EpisodeEnded fires before ResetPitch, so LastToucher is still the
+        /// player who put it in and the spot is already sitting on them. The
+        /// colour comes from Agent_Palette so the colour-vision modes move it
+        /// with everything else.
+        /// </summary>
+        void OnEpisodeEnded(Agent_Soccer.Team? winner)
+        {
+            if (winner == null) return;
+            _spotPulseColor = Agent_Palette.Team(winner.Value);
+            _spotPulse = 1f;
+        }
+
+        Light2D MakeLight(string label, Light2D.LightType type, Vector2 pos,
             Color color, float intensity, float radius)
         {
             var go = new GameObject(label);
@@ -108,6 +195,8 @@ namespace PoSoccer
                 _floodBaseColor.Add(color);
                 _floodBaseIntensity.Add(intensity);
             }
+
+            return light;
         }
 
         void BuildPostVolume()
@@ -197,6 +286,7 @@ namespace PoSoccer
 
         void Update()
         {
+            if (_spot != null) TickFollowSpot();
             if (_celebrate > 0f) TickCelebration();
 
             if (_pulse <= 0f || _bloom == null) return;
@@ -204,6 +294,58 @@ namespace PoSoccer
             _bloom.intensity.Override(0.9f + _pulse * 1.6f);
             _chroma.intensity.Override(_pulse * 0.45f);
             SetExposureBoost(_pulse * 0.5f);
+        }
+
+        /// <summary>
+        /// Eases the spot onto the last toucher and plays out any goal pulse.
+        ///
+        /// Position moves on SCALED time, so the spot holds still with everything
+        /// else through a replay freeze; the pulse decays on UNSCALED time for
+        /// the same reason the floodlight strobe does - it has to play while the
+        /// goal has the clock stopped. No toucher (kickoff, after a reset) fades
+        /// the spot out rather than parking it on the centre circle.
+        /// </summary>
+        void TickFollowSpot()
+        {
+            if (!FollowSpotEnabled)
+            {
+                if (_spot.enabled) _spot.enabled = false;
+                _spotPresence = 0f;
+                _spotPulse = 0f;
+                return;
+            }
+
+            float unscaled = Time.unscaledDeltaTime;
+            _spotPulse = Mathf.Max(0f, _spotPulse - unscaled / Mathf.Max(0.05f, _spotGoalSeconds));
+
+            Agent_Soccer target = _env != null ? _env.LastToucher : null;
+            bool hasTarget = target != null;
+            _spotPresence = Mathf.MoveTowards(_spotPresence, hasTarget ? 1f : 0f, unscaled * 2.5f);
+
+            if (hasTarget)
+            {
+                Transform spot = _spot.transform;
+                Vector3 from = spot.position;
+                Vector3 to = target.transform.position;
+                to.z = from.z;
+                // Arriving from nothing: start ON the player rather than sweeping
+                // in from wherever the previous possession ended.
+                float blend = _spot.enabled
+                    ? 1f - Mathf.Exp(-Mathf.Max(0.1f, _spotFollowRate) * Time.deltaTime)
+                    : 1f;
+                spot.position = Vector3.Lerp(from, to, blend);
+            }
+
+            // Squared so the pulse snaps up and tails off, like a lamp striking.
+            float pulse = _spotPulse * _spotPulse;
+            float intensity = _spotIntensity * _spotPresence + _spotGoalBoost * pulse;
+
+            bool lit = intensity > 0.005f;
+            if (_spot.enabled != lit) _spot.enabled = lit;
+            if (!lit) return;
+
+            _spot.intensity = intensity;
+            _spot.color = Color.Lerp(SpotRestColor, _spotPulseColor, Mathf.Clamp01(pulse * 1.5f));
         }
 
         void TickCelebration()

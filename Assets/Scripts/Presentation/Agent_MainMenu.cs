@@ -22,10 +22,18 @@ namespace PoSoccer
     /// 2026-09-06 - THE TREE IS NOW A TEMPLATE. Structure lives in
     /// Resources/Menu.uxml and appearance in Resources/PoSoccerTheme.uss; this
     /// class binds them and builds only what is data-shaped (a roster button per
-    /// profile, a card per squad slot). It also owns the accessibility shelf,
-    /// which is on this screen rather than behind a settings modal because a
-    /// player who cannot separate the two team colours cannot navigate three
-    /// taps into a game they cannot read.
+    /// profile, a card per squad slot).
+    ///
+    /// 2026-10-10 - SETTINGS LEFT THIS SCREEN. The three-button accessibility
+    /// shelf (colours / text / buzz) is now the Access and Display tabs of
+    /// Agent_SettingsSheet, opened by ONE button in the options row - which is
+    /// also where the pause panel sends you, so every setting is reachable from
+    /// both places instead of each living wherever it happened to land. The
+    /// colour-vision palette is two taps from launch (SETTINGS, ACCESS), not
+    /// three into a match.
+    ///
+    /// The same pass made the menu remember: the last lineup that was actually
+    /// PLAYED is restored on arrival, validated against the current roster.
     /// </summary>
     [RequireComponent(typeof(UIDocument))]
     public sealed class Agent_MainMenu : MonoBehaviour
@@ -50,8 +58,19 @@ namespace PoSoccer
         readonly List<Reward_Settings> _red = new();
 
         VisualElement _blueStrip, _redStrip;
-        Label _blueCount, _redCount, _pitchNote;
-        Button _play;
+        Label _blueCount, _redCount, _pitchNote, _brainNote;
+        Button _play, _soundButton;
+
+        /// <summary>
+        /// True when at least one roster profile carries a brain this runtime can
+        /// actually run. Decides between per-card "(bot)" badges and the single
+        /// line under the title - see <see cref="RefreshBrainNote"/>.
+        /// </summary>
+        bool _anyUsableBrain;
+
+        const string LINEUP_BLUE_KEY = "posoccer_lineup_blue";
+        const string LINEUP_RED_KEY = "posoccer_lineup_red";
+        const char LINEUP_SEPARATOR = '|';
 
         // Panel root, kept so the roster card can be raised over the whole menu
         // rather than inside the scrolling squad column.
@@ -99,6 +118,17 @@ namespace PoSoccer
             // to do it, deliberately, so the call belongs here.
             Agent_Presentation.EnsureChrome();
 
+            // The health panel (TAB, or the chrome's DEBUG button) has to answer
+            // here too. Agent_Bootstrap installs Agent_Telemetry in the pitch
+            // scenes and this scene deliberately has no Bootstrap, so DEBUG on the
+            // menu used to log "nothing to show". Its OWN GameObject, never this
+            // one: Agent_Telemetry takes the UIDocument of whatever it sits on, and
+            // this object's document is the menu. Costs nothing while hidden.
+            if (FindAnyObjectByType<Agent_Telemetry>() == null)
+            {
+                new GameObject("Telemetry").AddComponent<Agent_Telemetry>();
+            }
+
             var doc = GetComponent<UIDocument>();
             var root = doc.rootVisualElement;
             if (doc.panelSettings == null || root == null)
@@ -115,10 +145,157 @@ namespace PoSoccer
                 return;
             }
 
-            ApplyPreset(2);
+            _anyUsableBrain = AnyUsableBrain();
+
+            // The last lineup that was PLAYED, if it still means something;
+            // otherwise the 2v2 the menu has always opened on.
+            if (!RestoreLineup()) ApplyPreset(2);
 
             _root = root;
             Build();
+        }
+
+        // -- Remembered lineup -------------------------------------------------
+
+        /// <summary>
+        /// Writes both squads to PlayerPrefs as profile NAMES. Called on PLAY and
+        /// nowhere else: a lineup somebody was only poking at is not a lineup they
+        /// chose, and restoring a half-built squad on the next launch would be
+        /// remembering a mistake.
+        ///
+        /// Names rather than indices or asset paths, because the roster is five
+        /// serialized references whose order is a presentation choice. A name that
+        /// no longer resolves is dropped on restore; an index that no longer means
+        /// the same player would silently field somebody else.
+        /// </summary>
+        void SaveLineup()
+        {
+            PlayerPrefs.SetString(LINEUP_BLUE_KEY, JoinNames(_blue));
+            PlayerPrefs.SetString(LINEUP_RED_KEY, JoinNames(_red));
+            PlayerPrefs.Save();
+        }
+
+        static string JoinNames(List<Reward_Settings> squad)
+        {
+            var builder = new System.Text.StringBuilder();
+            for (int slot = 0; slot < squad.Count; slot++)
+            {
+                if (squad[slot] == null) continue;
+                if (builder.Length > 0) builder.Append(LINEUP_SEPARATOR);
+                builder.Append(squad[slot].playerName);
+            }
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// Rebuilds both squads from the saved names. Returns false - leaving the
+        /// squads for the caller to fill - when nothing was saved or when either
+        /// side comes back empty, which is what a renamed or removed profile does
+        /// to a saved 1v1. Silent on purpose: a stale preference is not an error
+        /// the player can act on, and the fallback is the default they would have
+        /// seen anyway.
+        /// </summary>
+        bool RestoreLineup()
+        {
+            if (!PlayerPrefs.HasKey(LINEUP_BLUE_KEY) || !PlayerPrefs.HasKey(LINEUP_RED_KEY)) return false;
+
+            _blue.Clear();
+            _red.Clear();
+            ParseNames(PlayerPrefs.GetString(LINEUP_BLUE_KEY, string.Empty), _blue);
+            ParseNames(PlayerPrefs.GetString(LINEUP_RED_KEY, string.Empty), _red);
+
+            if (_blue.Count > 0 && _red.Count > 0) return true;
+
+            _blue.Clear();
+            _red.Clear();
+            return false;
+        }
+
+        void ParseNames(string saved, List<Reward_Settings> squad)
+        {
+            if (string.IsNullOrEmpty(saved)) return;
+
+            string[] names = saved.Split(LINEUP_SEPARATOR);
+            for (int nameIndex = 0; nameIndex < names.Length; nameIndex++)
+            {
+                if (squad.Count >= Agent_MatchSetup.MAX_SQUAD) return;
+                var profile = FindProfile(names[nameIndex]);
+                if (profile != null) squad.Add(profile);
+            }
+        }
+
+        Reward_Settings FindProfile(string playerName)
+        {
+            if (string.IsNullOrEmpty(playerName)) return null;
+            for (int rosterIndex = 0; rosterIndex < _roster.Length; rosterIndex++)
+            {
+                if (string.Equals(_roster[rosterIndex].playerName, playerName, System.StringComparison.Ordinal))
+                    return _roster[rosterIndex];
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Forgets the remembered lineup, so the next menu load opens on the 2v2
+        /// preset. For tests that assert on that default - PlayerPrefs are shared
+        /// between the test runner and every play session on the machine, so a
+        /// test that assumes "freshly loaded menu = 2v2" is otherwise asserting on
+        /// whatever was last played.
+        /// </summary>
+        public static void ForgetLineup()
+        {
+            PlayerPrefs.DeleteKey(LINEUP_BLUE_KEY);
+            PlayerPrefs.DeleteKey(LINEUP_RED_KEY);
+        }
+
+        // -- Usable brains -----------------------------------------------------
+
+        /// <summary>
+        /// A brain is USABLE when the profile carries one and it fits this
+        /// runtime's observation contract. `brainModel != null` is not enough: a
+        /// model trained on an older contract is refused at Awake by
+        /// Agent_Soccer.DropIncompatibleModel and the body is driven by the
+        /// scripted bot, so badging that card "trained AI" would be the menu
+        /// promising a brain the match will not field.
+        /// </summary>
+        static bool IsUsable(Reward_Settings profile)
+        {
+            if (profile == null || profile.brainModel == null) return false;
+            try
+            {
+                return Agent_Soccer.ModelFitsContract(profile.brainModel);
+            }
+            catch (System.Exception)
+            {
+                // An LFS pointer stub or a corrupt asset throws on load. The menu
+                // IS the screen; it must not be what dies on a bad binary.
+                return false;
+            }
+        }
+
+        bool AnyUsableBrain()
+        {
+            for (int rosterIndex = 0; rosterIndex < _roster.Length; rosterIndex++)
+            {
+                if (IsUsable(_roster[rosterIndex])) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// ONE line instead of a badge on every card.
+        ///
+        /// With no usable brain anywhere in the roster, every squad card used to
+        /// carry "(bot)" and "no brain" - the same fact repeated on each of up to
+        /// twenty cards, reading as twenty separate problems. It is one fact about
+        /// the install, so it is said once, under the title. The moment any profile
+        /// has a usable brain the badges come back, because then "which of these is
+        /// trained" is a per-card question again.
+        /// </summary>
+        void RefreshBrainNote()
+        {
+            if (_brainNote == null) return;
+            Agent_UIStyle.SetShown(_brainNote, !_anyUsableBrain);
         }
 
         /// <summary>
@@ -164,6 +341,8 @@ namespace PoSoccer
             _pitchNote = _root.Q<Label>("pitch-note");
             _play = _root.Q<Button>("play");
             _backHint = _root.Q<Label>("back-hint");
+            // Optional: an older template without it simply shows no note.
+            _brainNote = _root.Q<Label>("brain-note");
             var blueRoster = _root.Q<VisualElement>("roster-blue");
             var redRoster = _root.Q<VisualElement>("roster-red");
             var options = _root.Q<VisualElement>("options");
@@ -204,14 +383,23 @@ namespace PoSoccer
             FillRoster(blueRoster, _blue, "menu__pick--blue");
             FillRoster(redRoster, _red, "menu__pick--red");
 
-            // Sound could previously only be muted from inside a match, which is
-            // the one place you cannot reach without starting one first.
+            // ONE ROW. This used to be two - an options row and a three-button
+            // accessibility shelf under it - on a portrait column that was already
+            // full. Everything the shelf held is in the settings sheet now, so the
+            // shelf's container stays in the template (its name is part of the
+            // contract Agent_EditMode_Theme pins) but takes no space.
+            //
+            // The mute toggle stays out here on purpose: it is the one control
+            // someone reaches for without looking, and it could previously only be
+            // reached from inside a match.
             options.Add(CardsButton());
             options.Add(GalleryButton());
-            options.Add(Agent_UIStyle.SoundToggleButton());
+            _soundButton = Agent_UIStyle.SoundToggleButton();
+            options.Add(_soundButton);
+            options.Add(SettingsButton());
+            settings.style.display = DisplayStyle.None;
 
-            BuildSettings(settings);
-
+            RefreshBrainNote();
             RefreshAll();
 
             // Staged entrance: header first, footer last. Each element animates
@@ -228,56 +416,32 @@ namespace PoSoccer
             if (button != null) button.clicked += onClick;
         }
 
-        /// <summary>
-        /// The accessibility shelf: colour-vision palette, type scale, haptics.
-        ///
-        /// Each button says what it is currently SET TO, not what it would switch
-        /// to. A control labelled with its next state reads as an instruction and
-        /// leaves the player with no way to know where they are - which matters
-        /// most for exactly the people this row exists for.
-        /// </summary>
-        void BuildSettings(VisualElement host)
+        Button SettingsButton()
         {
-            var palette = new Button { text = $"COLOURS: {Agent_Palette.Label(Agent_Palette.Current)}" };
-            palette.AddToClassList("btn");
-            palette.clicked += () =>
-            {
-                Agent_Palette.CycleMode();
-                // A full rebuild, not a restyle: the squad cards and roster
-                // buttons carry team colour in their classes, and the USS
-                // variables only re-cascade from the root.
-                Build();
-            };
-            host.Add(palette);
-
-            var type = new Button { text = $"TEXT: {TypeLabel(Agent_Palette.TypeScale)}" };
-            type.AddToClassList("btn");
-            type.clicked += () =>
-            {
-                Agent_Palette.CycleTypeScale();
-                Build();
-            };
-            host.Add(type);
-
-            var haptics = new Button();
-            haptics.AddToClassList("btn");
-            haptics.text = Agent_Haptics.Enabled ? "BUZZ ON" : "BUZZ OFF";
-            haptics.clicked += () =>
-            {
-                Agent_Haptics.Enabled = !Agent_Haptics.Enabled;
-                haptics.text = Agent_Haptics.Enabled ? "BUZZ ON" : "BUZZ OFF";
-            };
-            host.Add(haptics);
+            var button = new Button(OpenSettings) { text = "SETTINGS", name = "open-settings" };
+            button.AddToClassList("btn");
+            return button;
         }
 
-        static string TypeLabel(int step)
+        void OpenSettings()
         {
-            switch (step)
-            {
-                case 1: return "LARGE";
-                case 2: return "LARGER";
-                default: return "NORMAL";
-            }
+            if (_root == null) return;
+            Agent_SettingsSheet.Open(_root, OnSettingsChanged);
+        }
+
+        /// <summary>
+        /// Runs after any change in the settings sheet.
+        ///
+        /// The sheet has already re-stamped the palette and type-scale classes on
+        /// the panel root, and every team colour on this screen comes from a class
+        /// (.slot--blue, .menu__pick--red, .menu__band--*), so the USS variables
+        /// re-cascade with no rebuild. The old shelf rebuilt the whole tree on
+        /// every tap; that would now destroy the sheet the player is still using.
+        /// What is left is the one piece of text that mirrors a setting.
+        /// </summary>
+        void OnSettingsChanged()
+        {
+            if (_soundButton != null) _soundButton.text = Agent_Audio.Muted ? "SND OFF" : "SND ON";
         }
 
         static Reward_Settings[] Compact(params Reward_Settings[] entries)
@@ -476,18 +640,24 @@ namespace PoSoccer
             return label;
         }
 
-        /// <summary>Who actually drives this body: a trained brain or the scripted bot.</summary>
+        /// <summary>
+        /// Who actually drives this body: a trained brain or the scripted bot.
+        /// Blank for every personality while the roster has no usable brain at all
+        /// - that is said once, by <see cref="RefreshBrainNote"/>.
+        /// </summary>
         string DriverLine(Reward_Settings profile)
         {
             if (ReferenceEquals(profile, ruleBot)) return "rule-based";
-            return profile.brainModel != null ? "trained AI" : "(bot)";
+            if (!_anyUsableBrain) return string.Empty;
+            return IsUsable(profile) ? "trained AI" : "(bot)";
         }
 
         /// <summary>How much training is behind this player's brain.</summary>
         string StepsLine(Reward_Settings profile)
         {
             if (ReferenceEquals(profile, ruleBot)) return "scripted";
-            if (profile.brainModel == null) return "no brain";
+            if (!_anyUsableBrain) return string.Empty;
+            if (!IsUsable(profile)) return "no brain";
             if (profile.trainingSteps <= 0) return "steps unknown";
             return $"{FormatSteps(profile.trainingSteps)} steps";
         }
@@ -503,7 +673,7 @@ namespace PoSoccer
 
         Button CardsButton()
         {
-            var b = new Button(() => OpenCards(0)) { text = "PLAYER CARDS" };
+            var b = new Button(() => OpenCards(0)) { text = "CARDS" };
             b.AddToClassList("btn");
             return b;
         }
@@ -616,7 +786,7 @@ namespace PoSoccer
 
             var close = new Button(CloseCards) { text = "CLOSE" };
             close.AddToClassList("btn");
-            close.style.marginTop = 18;
+            close.style.marginTop = Agent_UIStyle.Space4;
             _cardOverlay.Add(close);
 
             _root.Add(_cardOverlay);
@@ -693,8 +863,15 @@ namespace PoSoccer
             var keyboard = UnityEngine.InputSystem.Keyboard.current;
             if (keyboard == null || !keyboard.escapeKey.wasPressedThisFrame) return;
 
-            // The card is a modal layer, so back dismisses it before back means
-            // anything to the menu underneath - and long before it means quit.
+            // Modal layers first, topmost first: back dismisses what is on top
+            // before it means anything to the menu underneath - and long before it
+            // means quit.
+            if (Agent_SettingsSheet.IsOpen)
+            {
+                Agent_SettingsSheet.Close();
+                return;
+            }
+
             if (_cardOverlay != null)
             {
                 CloseCards();
@@ -722,6 +899,7 @@ namespace PoSoccer
             Agent_MatchSetup.Applied = true;
             Agent_MatchSetup.BlueSquad = _blue.ToArray();
             Agent_MatchSetup.RedSquad = _red.ToArray();
+            SaveLineup();
             SceneManager.LoadScene(matchScene);
         }
     }

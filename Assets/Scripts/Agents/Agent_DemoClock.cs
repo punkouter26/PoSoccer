@@ -25,6 +25,23 @@ namespace PoSoccer
     /// Agent_Soccer.ApplyDemoRecording, which runs only under POSOCCER_RECORD_DEMO, so
     /// it can never contend with Agent_TimeFreeze during a real match - that component
     /// stays the sole owner of the clock everywhere it matters.
+    ///
+    /// DELIBERATELY NOT ROUTED THROUGH Agent_TimeFreeze (reviewed 2026-10-10, when
+    /// the spectator speed control made that class the single writer for match
+    /// scenes). Three reasons, any one of which is enough:
+    ///  - Its channels do not fit. SpectatorSpeed is clamped to 0.25..4 and
+    ///    SlowMotion to 0.01..1; a recording run needs 20.
+    ///  - Agent_TimeFreeze writes the clock when one of its inputs CHANGES. The
+    ///    whole finding above is that a one-shot write does not hold in this
+    ///    scene, so routing would still need a per-frame re-assert - the same
+    ///    direct write, one call deeper, with nothing gained.
+    ///  - This path produces the .demo files imitation runs train from and cannot
+    ///    be exercised without a recording run. Changing how its clock is driven
+    ///    for the sake of tidiness risks the 12.5-entries-per-second failure
+    ///    coming back silently.
+    /// Agent_EvalStats is the other direct writer and is left alone on the same
+    /// grounds: both exist only in SCN_Training, where nothing asks
+    /// Agent_TimeFreeze to apply anything.
     /// </summary>
     [DisallowMultipleComponent]
     internal sealed class Agent_DemoClock : MonoBehaviour

@@ -403,7 +403,7 @@ namespace PoSoccer.Tests
             var chrome = Object.FindAnyObjectByType<Agent_Chrome>();
             Assert.IsNotNull(chrome, "The match scene has no MENU chrome - the match is a dead end");
 
-            Assert.AreEqual(1, Object.FindObjectsByType<Agent_Chrome>(FindObjectsSortMode.None).Length,
+            Assert.AreEqual(1, Object.FindObjectsByType<Agent_Chrome>().Length,
                 "Two Agent_Chrome instances: the serialized object and a code-installed one " +
                 "are both present, so the screen carries two MENU buttons.");
 

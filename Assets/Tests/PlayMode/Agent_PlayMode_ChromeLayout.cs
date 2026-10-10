@@ -229,7 +229,7 @@ namespace PoSoccer.Tests
             if (float.IsNaN(target.x)) return hits;
 
             float panelHeight = chromeDocument.rootVisualElement.worldBound.height;
-            UIDocument[] documents = Object.FindObjectsByType<UIDocument>(FindObjectsSortMode.None);
+            UIDocument[] documents = Object.FindObjectsByType<UIDocument>();
 
             foreach (UIDocument document in documents)
             {

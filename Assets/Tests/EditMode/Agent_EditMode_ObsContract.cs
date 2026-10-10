@@ -34,12 +34,17 @@ namespace PoSoccer.Tests
         {
             // Pins the arithmetic the docs quote, so a silent drift in either half
             // shows up here rather than in a training run three hours later.
-            Assert.That(Sensor_Vision.TotalRayObservationSize, Is.EqualTo(120),
+            // 2026-10-10: 120 -> 105 ray (the goal sensor's (1+2)*5 = 15 removed:
+            // ball 39 + opponents 39 + walls 27), so 188 -> 173 in total.
+            Assert.That(Sensor_Vision.Battery.Length, Is.EqualTo(3),
+                "Ray battery is ball / opponents / walls. The goal sensor was removed " +
+                "2026-10-10 because both goals are in the vector observation.");
+            Assert.That(Sensor_Vision.TotalRayObservationSize, Is.EqualTo(105),
                 "Ray observations changed. Sensor_Vision.Battery is the source of truth - " +
                 "update the tables in Sensor_Vision, Agent_Soccer and CLAUDE.md together.");
             Assert.That(Agent_Soccer.BaseObservationSize * Agent_Soccer.StackedObservations,
                 Is.EqualTo(68), "Vector observations changed (BaseObservationSize x StackedObservations).");
-            Assert.That(ExpectedModelInputSize, Is.EqualTo(188));
+            Assert.That(ExpectedModelInputSize, Is.EqualTo(173));
             Assert.That(Agent_Soccer.ExpectedModelInputSize, Is.EqualTo(ExpectedModelInputSize),
                 "The runtime's own model guard (Agent_Soccer.DropIncompatibleModel) must agree " +
                 "with this test about what a compatible brain looks like.");

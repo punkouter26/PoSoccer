@@ -120,6 +120,36 @@ half3 PoSoccerApplyFX(half3 albedo, float2 uv)
         albedo += _SheenStrength * band;
     }
 
+    // -- Fatigue -----------------------------------------------------------
+    // A tired body: the cloth loses a little colour, and a soft band of sweat
+    // sheen sits across the upper half. Driven by Agent_Stamina through
+    // Agent_Surfaces; at _Fatigue 0 the whole block is skipped, so a rested
+    // player is bit-identical to before this existed.
+    //
+    // BEFORE the rim on purpose. The rim is the team colour and the team colour
+    // is identity - a spent player must wash out, not change sides - so the
+    // desaturation is applied to the cloth and the rim is added on top of it
+    // at full strength.
+    //
+    // The band is positioned in SPRITE-LOCAL uv (luv, from PoSoccerLocalUV
+    // above). Bodies are atlased; on the raw uv this would be a band across the
+    // atlas PAGE, i.e. a flat tint, which is the 2026-09-06 landmine exactly.
+    if (_Fatigue > 0.0h)
+    {
+        half luma = dot(albedo, half3(0.2126h, 0.7152h, 0.0722h));
+        albedo = lerp(albedo, half3(luma, luma, luma), _Fatigue * 0.35h);
+
+        // Slightly tilted, so it reads as light catching a wet surface rather
+        // than as a printed stripe (which would be a kit, and kits are off).
+        float across = luv.y + (luv.x - 0.5) * 0.25;
+        float fromBand = across - 0.66;
+        float band = exp(-fromBand * fromBand * 70.0);
+        // Fade out toward the sprite's edge so the sheen never touches the rim.
+        float radial = saturate(length(luv - 0.5) * 2.0);
+        band *= 1.0 - smoothstep(0.55, 0.95, radial);
+        albedo += (half)(band * 0.22) * _Fatigue;
+    }
+
     // -- Team rim ----------------------------------------------------------
     // Radial falloff from the sprite centre. On a round body this reads as a rim
     // light and replaces the four LineRenderers previously drawn per player.

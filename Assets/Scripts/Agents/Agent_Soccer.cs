@@ -127,6 +127,8 @@ namespace PoSoccer
         Vector2 _driveVec;                             // slew-limited foot force (N), world space
         float _nextWallKick;                           // kick-out cooldown timestamp
         readonly float[] _prevActions = new float[4];  // for the jitter penalty
+        float _prevRawTurn;                            // for the turn-churn penalty
+        bool _hasPrevRawTurn;                          // false until the episode's first action
         float _prevBallDist = float.PositiveInfinity;  // for differential-proximity reward
         // Potential for the ball->goal shaping term. Same telescoping trick as
         // _prevBallDist, applied to the BALL's distance to the attacking goal.
@@ -198,6 +200,13 @@ namespace PoSoccer
         /// not see and had to infer it from teammate geometry, which it cannot do for the
         /// episode-long goalie assignment at all. Model inputs 178 -> 188: every .onnx
         /// trained before this date no longer loads (see DropIncompatibleModel).
+        ///
+        /// 2026-10-10: still 34 here, but model inputs 188 -> 173. The vector half is
+        /// untouched; Sensor_Vision dropped its goal ray sensor (15 inputs - the goals
+        /// are the "Goals (5)" block below) and every remaining ray sensor now casts
+        /// against a single physics layer (Agent_Layers), which changes what a ray
+        /// reading means without changing its shape. No .onnx existed for 188, so
+        /// nothing was obsoleted; anything trained before this date would be.
         /// </summary>
         public const int BaseObservationSize = 34;
 
@@ -259,8 +268,8 @@ namespace PoSoccer
         {
             base.Awake();
 
-            // Before anything else: the team tag is what the opponent ray sensor
-            // keys on, so it has to exist before any sensor casts a ray.
+            // Before anything else: the team tag and team layer are what the opponent
+            // ray sensor keys on, so they have to exist before any sensor casts a ray.
             ApplyTeamTag();
 
             // Added here rather than via [RequireComponent]: that attribute logs
@@ -323,8 +332,7 @@ namespace PoSoccer
         /// </summary>
         void ApplyDemoRecording()
         {
-            string flag = System.Environment.GetEnvironmentVariable("POSOCCER_RECORD_DEMO");
-            if (string.IsNullOrEmpty(flag) || flag == "0") return;
+            if (!Agent_RunConfig.IsSet(Agent_RunConfig.RECORD_DEMO)) return;
 
             // BOTH sides play the bot during a recording run, so the demonstrations are
             // drawn from BOT-VS-BOT - the same distribution that produces the 42.5%
@@ -357,9 +365,10 @@ namespace PoSoccer
             // Agent_DemoClock re-asserts it every LateUpdate instead, which is correct
             // against any one-shot writer including one nobody has identified yet.
             {
-                string ts = System.Environment.GetEnvironmentVariable("POSOCCER_DEMO_TIMESCALE");
                 var clock = gameObject.AddComponent<Agent_DemoClock>();
-                clock.Scale = float.TryParse(ts, out float scale) && scale > 0f ? scale : 20f;
+                clock.Scale =
+                    Agent_RunConfig.TryGetFloat(Agent_RunConfig.DEMO_TIMESCALE, out float scale)
+                    && scale > 0f ? scale : 20f;
                 Application.targetFrameRate = -1;
                 QualitySettings.vSyncCount = 0;
             }
@@ -372,17 +381,16 @@ namespace PoSoccer
             // run launched from the repo root writes straight into the project. The env
             // var exists so the recording script can place it explicitly rather than
             // depending on where it happened to be invoked from.
-            string dir = System.Environment.GetEnvironmentVariable("POSOCCER_DEMO_DIR");
             recorder.DemonstrationDirectory =
-                string.IsNullOrEmpty(dir) ? "Assets/Demonstrations" : dir;
+                Agent_RunConfig.GetString(Agent_RunConfig.DEMO_DIR, "Assets/Demonstrations");
 
             // The recorder calls Application.Quit once this many steps are written, so a
             // recording run terminates ITSELF rather than needing a timeout to kill it.
             // 0 would mean "record forever", which in a headless run means "until someone
             // notices" - the failure mode that leaves orphaned players behind.
-            string steps = System.Environment.GetEnvironmentVariable("POSOCCER_DEMO_STEPS");
             recorder.NumStepsToRecord =
-                int.TryParse(steps, out int parsed) && parsed > 0 ? parsed : 200000;
+                Agent_RunConfig.TryGetInt(Agent_RunConfig.DEMO_STEPS, out int parsed)
+                && parsed > 0 ? parsed : 200000;
         }
 
         /// <summary>
@@ -435,8 +443,7 @@ namespace PoSoccer
         {
             // A recording run is the one case where the bot's observations ARE the
             // deliverable. Checked first so it can never be overridden below.
-            string demo = System.Environment.GetEnvironmentVariable("POSOCCER_RECORD_DEMO");
-            if (!string.IsNullOrEmpty(demo) && demo != "0") return false;
+            if (Agent_RunConfig.IsSet(Agent_RunConfig.RECORD_DEMO)) return false;
 
             // Eval: ApplyEvalMode puts BLUE on inference (needs rays) unless this is a
             // bot-vs-bot baseline, where neither side is ever read.
@@ -448,10 +455,11 @@ namespace PoSoccer
             // Training: mirrors ApplyTrainingOpponent exactly - RED only, and only
             // when the run has opted in to the scripted opponent.
             if (side != Team.Red) return false;
-            string mode = System.Environment.GetEnvironmentVariable("POSOCCER_OPPONENT");
-            return !string.IsNullOrEmpty(mode)
-                && mode.Equals("bot", System.StringComparison.OrdinalIgnoreCase);
+            return Agent_RunConfig.Is(Agent_RunConfig.OPPONENT, OPPONENT_BOT);
         }
+
+        /// <summary>Value of POSOCCER_OPPONENT that makes RED the scripted bot.</summary>
+        const string OPPONENT_BOT = "bot";
 
         void ApplyTrainingOpponent()
         {
@@ -459,12 +467,7 @@ namespace PoSoccer
             if (Agent_EvalStats.EvalMode) return;
             if (team != Team.Red) return;
 
-            string mode = System.Environment.GetEnvironmentVariable("POSOCCER_OPPONENT");
-            if (string.IsNullOrEmpty(mode) ||
-                !mode.Equals("bot", System.StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
+            if (!Agent_RunConfig.Is(Agent_RunConfig.OPPONENT, OPPONENT_BOT)) return;
 
             _behavior.BehaviorType = BehaviorType.HeuristicOnly;
             var bot = GetComponent<Agent_HeuristicBot>();
@@ -567,6 +570,8 @@ namespace PoSoccer
             _driveVec = Vector2.zero;
             _nextWallKick = 0f;
             System.Array.Clear(_prevActions, 0, _prevActions.Length);
+            _prevRawTurn = 0f;
+            _hasPrevRawTurn = false;
             _prevBallDist = float.PositiveInfinity;
             _prevBallGoalDist = float.PositiveInfinity;
             _prevApproachKey = -1;
@@ -583,11 +588,17 @@ namespace PoSoccer
         /// foe. Applied here rather than serialized in the scene because the team
         /// itself can be reassigned at runtime by Agent_MatchLoader, and a stale
         /// tag would silently make an agent invisible to one side's sensor.
+        ///
+        /// The team LAYER is stamped with it (2026-10-10) and for the same reason: the
+        /// opposing side's opponent sensor casts against exactly that layer (see
+        /// Agent_Layers). Root object only - that is where the body collider lives -
+        /// and in Awake, so POSOCCER_SQUAD clones and gallery pitches get it too.
         /// </summary>
         void ApplyTeamTag()
         {
             string wanted = Sensor_Vision.TeamTag(team);
             if (!gameObject.CompareTag(wanted)) gameObject.tag = wanted;
+            Agent_Layers.Stamp(gameObject, Agent_Layers.TeamLayerName(team));
         }
 
         /// <summary>
@@ -1029,11 +1040,14 @@ namespace PoSoccer
         // than her realized dense reward with nothing naming the difference.
         // 10 -> 11 on 2026-09-28: `spacing`, the team term. Zero unless the trainer
         // config sets `team_spacing`, and always zero on a 1v1 pitch.
-        internal const int TermCount = 11;
+        // 11 -> 12 on 2026-10-10: `turn_churn`. Zero unless the profile sets
+        // turnChurnScale or the trainer config sets `turn_churn`.
+        internal const int TermCount = 12;
         internal static readonly string[] TermNames =
         {
             "step", "proximity", "facing", "ball_to_goal", "crossbar",
             "jitter", "wall", "corner", "defense", "possession", "spacing",
+            "turn_churn",
         };
 
         void Account(int term, float value)
@@ -1196,6 +1210,37 @@ namespace PoSoccer
             Account(5, -rewards.actionJitterScale * jitter);
             _prevActions[0] = move; _prevActions[1] = lateral;
             _prevActions[2] = turn; _prevActions[3] = boost;
+
+            // Turn churn (2026-10-10, off unless the profile or the trainer's
+            // `turn_churn` parameter sets a scale): charge the change in the RAW turn
+            // output from one decision to the next. The measured basis is the movement
+            // probe - 174 deg of heading churn in a 4 s chase against the bot's 83.
+            //
+            // PER DECISION, although this method runs every physics tick: ML-Agents
+            // replays the last action between decisions (period 8), so the difference is
+            // exactly 0 on the seven repeat ticks and the term pays once, on the tick a
+            // new decision lands. RAW, not the gained/clamped `turn`: ActionGain
+            // multiplies then clamps, which would hide every change past the clamp.
+            // The first action of an episode has no predecessor and pays nothing.
+            //
+            // Budget: |change| <= 2 and a 9000-step episode holds 1125 decisions, so the
+            // ceiling is scale x 2250 - at the p30 config's 0.0002 that is -0.45, the
+            // same ceiling as stepPenalty and under half of conceding. It overlaps the
+            // jitter term above, which already charges a quarter of actionJitterScale
+            // for the same change; this isolates the one channel the probe implicates.
+            {
+                float rawTurn = LastRawActions.z;
+                float churnScale = env.TurnChurnOverride >= 0f
+                    ? env.TurnChurnOverride
+                    : rewards.turnChurnScale;
+                if (_hasPrevRawTurn && churnScale > 0f)
+                {
+                    float change = Mathf.Abs(rawTurn - _prevRawTurn);
+                    if (change > 0f) Account(11, -churnScale * change);
+                }
+                _prevRawTurn = rawTurn;
+                _hasPrevRawTurn = true;
+            }
 
             // Wall aversion: standing in the boundary band produced wall-hug play.
             Vector2 local = Body.position - (Vector2)env.transform.position;

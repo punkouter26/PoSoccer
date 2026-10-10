@@ -56,7 +56,7 @@ namespace PoSoccer
 
         void Start()
         {
-            var hud = FindFirstObjectByType<Agent_HUD>();
+            var hud = FindAnyObjectByType<Agent_HUD>();
             // Batch mode is checked separately from IsMatchScene on purpose. The
             // gate is the thing standing between a cosmetic effect and a corrupted
             // eval, and one predicate covering two unrelated conditions is one

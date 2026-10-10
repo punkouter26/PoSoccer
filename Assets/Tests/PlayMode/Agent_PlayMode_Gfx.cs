@@ -260,6 +260,11 @@ namespace PoSoccer.Tests
         [UnityTest]
         public IEnumerator Menu_BuildsFromItsTemplate()
         {
+            // The menu restores the last lineup that was PLAYED, and PlayerPrefs
+            // are shared with every play session on this machine - so "a freshly
+            // loaded menu shows the 2v2 preset", which this test asserts below, is
+            // only true once that memory is cleared.
+            Agent_MainMenu.ForgetLineup();
             SceneManager.LoadScene("SCN_Menu");
             yield return null;
             yield return null;
@@ -291,11 +296,19 @@ namespace PoSoccer.Tests
             Assert.IsNotNull(roster);
             Assert.Greater(roster.childCount, 0, "The roster picker was never filled.");
 
-            // The accessibility shelf: three buttons, on the first screen.
+            // Settings are ONE button on the first screen (2026-10-10). The
+            // three-button accessibility shelf moved into Agent_SettingsSheet, so
+            // its container is still in the template but empty and collapsed -
+            // and the way in must exist, or palette, type scale and haptics are
+            // unreachable from the menu.
             var settings = root.Q<VisualElement>("settings");
             Assert.IsNotNull(settings);
-            Assert.AreEqual(3, settings.childCount,
-                "The accessibility shelf should hold palette, type scale and haptics.");
+            Assert.AreEqual(0, settings.childCount,
+                "The old accessibility shelf should be empty; its controls live in the settings sheet.");
+            Assert.AreEqual(DisplayStyle.None, settings.resolvedStyle.display,
+                "The emptied shelf still takes a row of a portrait column that has none to spare.");
+            Assert.IsNotNull(root.Q<Button>("open-settings"),
+                "The menu has no SETTINGS button, so no setting is reachable from it.");
 
             // And the stylesheet is attached, or every class above is inert.
             Assert.Greater(root.styleSheets.count, 0,

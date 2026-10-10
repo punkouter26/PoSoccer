@@ -63,8 +63,7 @@ namespace PoSoccer
             // Curriculum strength (v2): scale everything by POSOCCER_BOT_STRENGTH.
             // Clamped to [0, 1]; default 1.0 = full strength (v1 behaviour).
             // Training scripts set this via env var before launching the player.
-            string raw = System.Environment.GetEnvironmentVariable("POSOCCER_BOT_STRENGTH");
-            if (!string.IsNullOrEmpty(raw) && float.TryParse(raw, out float parsed))
+            if (Agent_RunConfig.TryGetFloat(Agent_RunConfig.BOT_STRENGTH, out float parsed))
                 _strength = Mathf.Clamp01(parsed);
 
             // Optional fair-information handicap (v3). The bot reads opponents straight
@@ -72,8 +71,7 @@ namespace PoSoccer
             // guarantees detection within ~1.9 units. Capping this radius is how you ask
             // "is the 80% bar reachable, or is it just the perfect-information gap?".
             // Default 0 (unlimited) keeps every historical result comparable.
-            string vision = System.Environment.GetEnvironmentVariable("POSOCCER_BOT_VISION");
-            if (!string.IsNullOrEmpty(vision) && float.TryParse(vision, out float radius))
+            if (Agent_RunConfig.TryGetFloat(Agent_RunConfig.BOT_VISION, out float radius))
                 perceptionRadius = Mathf.Max(0f, radius);
         }
 

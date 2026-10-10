@@ -82,7 +82,7 @@ namespace PoSoccer
 
         void Start()
         {
-            var hud = FindFirstObjectByType<Agent_HUD>();
+            var hud = FindAnyObjectByType<Agent_HUD>();
             if (!Agent_Presentation.IsMatchScene(hud))
             {
                 enabled = false;
@@ -99,8 +99,8 @@ namespace PoSoccer
             _effectiveBudgetMs = Application.targetFrameRate > 0
                 ? 1000f / Application.targetFrameRate
                 : _budgetMs;
-            _screenFX = FindFirstObjectByType<Agent_ScreenFX>();
-            _wear = FindFirstObjectByType<Agent_Wear>();
+            _screenFX = FindAnyObjectByType<Agent_ScreenFX>();
+            _wear = FindAnyObjectByType<Agent_Wear>();
             _stadium = Agent_Stadium.Instance;
 
             // A scene entered at a degraded tier from a previous match would be
@@ -212,6 +212,8 @@ namespace PoSoccer
             // building towards. So they go last.
             if (_wear != null) _wear.Visible = Tier < 1;
             if (_stadium != null) _stadium.SetBloomEnabled(Tier < 2);
+            // The follow spot is a continuous light, so it goes with the bloom.
+            if (_stadium != null) _stadium.FollowSpotEnabled = Tier < 2;
             if (_screenFX != null) _screenFX.AllowContinuous = Tier < 3;
         }
 

@@ -237,6 +237,13 @@ namespace PoSoccer
                  "v2 halved from 0.001: hard cuts are *correct* for soccer (cutting inside the box) " +
                  "and the old penalty was teaching the brain to be smooth and idle.")]
         public float actionJitterScale = 0.0004f;
+        [Tooltip("Penalty per DECISION on the change in the raw turn action: " +
+                 "-scale * |turn_now - turn_prev|. 0 = off. A trainer config's `turn_churn` " +
+                 "environment parameter overrides this when present. Ceiling is scale x 2250 " +
+                 "per 9000-step episode (|change| <= 2, 1125 decisions).")]
+        // 0 by default, so the "a changed initializer never reaches an existing
+        // Reward_*.asset" landmine is moot here: absent from the YAML reads as 0 too.
+        public float turnChurnScale = 0f;
         [Tooltip("Penalty scale for lingering within 0.8m of a wall (cures wall-hugging).")]
         // v5 (2026-09-07): 0.0005 -> 0.00005. Budget fix: at 0.0005 the ceiling is -4.5
         // per episode, 4.5x the cost of CONCEDING A GOAL (-1.0). Wall-hugging is a real

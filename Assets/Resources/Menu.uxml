@@ -27,6 +27,12 @@
         <ui:VisualElement name="header" class="stack-center enter">
             <ui:Label name="title" text="PoSoccer" class="title" />
             <ui:Label name="subtitle" text="tap a name to add · tap a card to remove" class="text-muted" />
+            <!--
+              Shown only when NO roster profile carries a usable brain: one line
+              about the install instead of a "(bot)" badge on every squad card.
+              Agent_MainMenu.RefreshBrainNote toggles `is-shown`.
+            -->
+            <ui:Label name="brain-note" text="No trained brains installed — every player uses the scripted bot" class="menu__brain-note" />
         </ui:VisualElement>
 
         <ui:VisualElement name="presets" class="menu__presets">
@@ -67,10 +73,10 @@
             <ui:Button name="play" text="PLAY" class="btn btn--play" />
             <ui:VisualElement name="options" class="row menu__options" />
             <!--
-              The accessibility shelf. Deliberately on the FIRST screen and not
-              behind a settings modal: a player who cannot tell the two teams
-              apart cannot reach a control that is three taps into a game they
-              cannot read.
+              Formerly the accessibility shelf. Its three buttons moved into the
+              settings sheet (Agent_SettingsSheet, opened by SETTINGS in the row
+              above); the container stays because its name is part of the
+              template contract, and Agent_MainMenu collapses it.
             -->
             <ui:VisualElement name="settings" class="row menu__settings" />
             <ui:Label name="back-hint" text="press back again to exit" class="text-muted menu__hint" />

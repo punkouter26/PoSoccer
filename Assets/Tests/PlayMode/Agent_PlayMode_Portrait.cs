@@ -377,7 +377,7 @@ namespace PoSoccer.Tests
                 int checkedCount = 0;
                 var offenders = new System.Text.StringBuilder();
 
-                foreach (var doc in Object.FindObjectsByType<UIDocument>(FindObjectsSortMode.None))
+                foreach (var doc in Object.FindObjectsByType<UIDocument>())
                 {
                     var root = doc.rootVisualElement;
                     if (root == null) continue;
@@ -475,7 +475,7 @@ namespace PoSoccer.Tests
                 yield return Frames(4);
 
                 var offenders = new System.Text.StringBuilder();
-                foreach (var doc in Object.FindObjectsByType<UIDocument>(FindObjectsSortMode.None))
+                foreach (var doc in Object.FindObjectsByType<UIDocument>())
                 {
                     VisualElement root = doc.rootVisualElement;
                     if (root == null) continue;
@@ -529,7 +529,7 @@ namespace PoSoccer.Tests
                 int checkedCount = 0;
                 var offenders = new System.Text.StringBuilder();
 
-                foreach (var doc in Object.FindObjectsByType<UIDocument>(FindObjectsSortMode.None))
+                foreach (var doc in Object.FindObjectsByType<UIDocument>())
                 {
                     VisualElement root = doc.rootVisualElement;
                     if (root == null) continue;
@@ -573,6 +573,448 @@ namespace PoSoccer.Tests
                     $"{scene}: UI outside the panel - unreadable or untappable on " +
                     $"every device:\n{offenders}");
             }
+        }
+
+        // ------------------------------------------------------------------
+        // Safe area on tall phones
+        // ------------------------------------------------------------------
+
+        /// <summary>Tall devices, as (label, width px, height px).</summary>
+        static readonly (string Label, int Width, int Height)[] TallScreens =
+        {
+            ("19.5:9", 1170, 2532),
+            ("20:9", 1080, 2400),
+            ("21:9", 1080, 2520),
+            // Same shape as 20:9 at a higher pixel density: the case the inset
+            // conversion got wrong for a month, because panel units are not pixels.
+            ("20:9 @1440", 1440, 3200),
+        };
+
+        /// <summary>
+        /// The conversion from a device safe rectangle to panel padding, at the
+        /// aspect ratios the editor cannot be put into.
+        ///
+        /// Screen.safeArea cannot be faked and the Game View cannot be resized from
+        /// a test without perturbing every later measurement (CLAUDE.md records what
+        /// a resize does to `Screen.*`), so the arithmetic is tested as a pure
+        /// function here and the LAYOUT is tested live, at whatever size the Game
+        /// View has, by the test below. Between them: the numbers are right at
+        /// every aspect, and the layout obeys the numbers.
+        /// </summary>
+        [Test]
+        public void SafeAreaInsets_LandInPanelUnits_OnEveryTallScreen()
+        {
+            const float REFERENCE_WIDTH = 1080f;   // the shared PanelSettings, match-width
+
+            foreach (var (label, width, height) in TallScreens)
+            {
+                // A punch-hole / notch status bar and a gesture bar, in SCREEN px.
+                float top = Mathf.Round(height * 0.045f);
+                float bottom = Mathf.Round(height * 0.02f);
+                // Screen.safeArea is y-UP: yMin is the BOTTOM edge.
+                var safe = new Rect(0f, bottom, width, height - top - bottom);
+
+                Vector4 pixels = Agent_UIStyle.SafeAreaInsets(safe, width, height);
+                Assert.AreEqual(top, pixels.x, 0.01f, $"{label}: top inset (screen px)");
+                Assert.AreEqual(bottom, pixels.y, 0.01f, $"{label}: bottom inset (screen px)");
+                Assert.AreEqual(0f, pixels.z, 0.01f, $"{label}: left inset");
+                Assert.AreEqual(0f, pixels.w, 0.01f, $"{label}: right inset");
+
+                Vector4 panel = Agent_UIStyle.SafeAreaInsetsInPanelUnits(safe, width, height, REFERENCE_WIDTH);
+                float scale = width / REFERENCE_WIDTH;
+                float panelHeight = height / scale;
+
+                Assert.AreEqual(top / scale, panel.x, 0.01f,
+                    $"{label}: the top inset was not converted into panel units. Written " +
+                    "raw, a 1440-wide phone pads a third too deep.");
+                Assert.AreEqual(bottom / scale, panel.y, 0.01f, $"{label}: bottom inset (panel units)");
+
+                // The padded content box must be exactly the safe rectangle: the
+                // same FRACTION of the panel that the safe rect is of the screen.
+                float contentHeight = panelHeight - panel.x - panel.y;
+                Assert.AreEqual(safe.height / height, contentHeight / panelHeight, 0.0005f,
+                    $"{label}: the padded content box is not the safe rectangle.");
+                Assert.Greater(contentHeight, panelHeight * 0.9f,
+                    $"{label}: a status-bar-sized inset consumed more than a tenth of the screen.");
+            }
+
+            // A safe rect reported LARGER than the screen (seen during rotation and
+            // on some foldables) must clamp to zero, not become negative padding
+            // that drags the UI off the top.
+            Vector4 clamped = Agent_UIStyle.SafeAreaInsets(new Rect(-10f, -10f, 1100f, 2420f), 1080f, 2400f);
+            Assert.AreEqual(Vector4.zero, clamped, "An oversized safe rect produced a negative inset.");
+        }
+
+        /// <summary>
+        /// The live half: with a notch-sized inset injected through
+        /// <see cref="Agent_UIStyle.SafeAreaOverride"/>, every label and button on
+        /// every screen - menu, settings sheet, HUD, pause, end panel on each of its
+        /// tabs, health panel - resolves inside the safe rectangle, none of it is a
+        /// ScrollView, and nothing lands on the scoreboard.
+        ///
+        /// WHY AN INJECTED INSET AND NOT THE DEVICE'S. In the editor Screen.safeArea
+        /// is the whole Game View, so every safe-area path runs with an inset of
+        /// ZERO - the one input under which an element that ignores the inset
+        /// entirely still measures as inside it. That is not hypothetical here:
+        /// Agent_Chrome's corners and the old telemetry label were both absolutely
+        /// positioned children that skipped the padding, on every notched phone,
+        /// with a green suite.
+        ///
+        /// Asserts on RESOLVED world bounds, like its siblings. Transparent lanes
+        /// (an idle toast, the back hint) are skipped: they are laid out but not
+        /// drawn, and the full-bleed letterbox is a VisualElement, not text.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator EveryScreen_StaysInsideASimulatedNotch_AndOffTheScoreboard()
+        {
+            float topInset = Mathf.Round(Screen.height * 0.045f);
+            float bottomInset = Mathf.Round(Screen.height * 0.02f);
+            Agent_UIStyle.SafeAreaOverride = new Rect(
+                0f, bottomInset, Screen.width, Screen.height - topInset - bottomInset);
+
+            try
+            {
+                // ---------------- menu ----------------
+                SceneManager.LoadScene("SCN_Menu");
+                yield return Frames(4);
+                yield return new WaitForSecondsRealtime(0.6f);   // staged entrance transitions
+                AssertInsideSafeRect("menu", topInset, bottomInset);
+                AssertNoScrollViews("menu");
+
+                var menuRoot = RootOfMenu();
+                var openSettings = menuRoot.Q<Button>("open-settings");
+                Assert.IsNotNull(openSettings,
+                    "The menu has no SETTINGS button - the palette, text size and haptics " +
+                    "that used to sit on this screen are now unreachable from it.");
+                Click(openSettings);
+                yield return Frames(3);
+                yield return new WaitForSecondsRealtime(0.4f);   // sheet slide-in
+                Assert.IsTrue(Agent_SettingsSheet.IsOpen, "SETTINGS did not open the sheet");
+                AssertInsideSafeRect("menu + settings sheet", topInset, bottomInset);
+                AssertNoScrollViews("menu + settings sheet");
+                Agent_SettingsSheet.Close();
+
+                // ---------------- match ----------------
+                SceneManager.LoadScene("SCN_Exhibition");
+                yield return Frames(6);
+                yield return WaitForClockToSettle(15f);
+
+                var hud = Object.FindAnyObjectByType<Agent_HUD>();
+                Assert.IsNotNull(hud, "No HUD in the match scene");
+                var hudRoot = hud.GetComponent<UIDocument>().rootVisualElement;
+
+                AssertInsideSafeRect("match HUD", topInset, bottomInset);
+                AssertNothingOverlapsTheScoreboard(hudRoot);
+
+                // The bands are still measured with an inset applied - a HUD that
+                // reported zero here would have the camera framing under the notch.
+                Assert.Greater(hud.TopBandFraction + hud.BottomBandFraction, 0.02f,
+                    "The HUD bands measured as covering nothing with a safe-area inset applied.");
+
+                // ---------------- pause + settings ----------------
+                hud.TogglePause();
+                yield return Frames(3);
+                yield return new WaitForSecondsRealtime(0.4f);
+                Assert.IsTrue(hud.IsPaused, "Pause did not engage");
+                AssertInsideSafeRect("pause panel", topInset, bottomInset);
+
+                Button pauseSettings = null;
+                hudRoot.Query<Button>().ForEach(b => { if (b.text == "SETTINGS") pauseSettings = b; });
+                Assert.IsNotNull(pauseSettings, "The pause panel has no SETTINGS button");
+                Click(pauseSettings);
+                yield return Frames(3);
+                yield return new WaitForSecondsRealtime(0.4f);
+                Assert.IsTrue(Agent_SettingsSheet.IsOpen, "Pause > SETTINGS did not open the sheet");
+                AssertInsideSafeRect("pause + settings sheet", topInset, bottomInset);
+                AssertNoScrollViews("pause + settings sheet");
+
+                hud.TogglePause();   // resume closes the sheet with the panel
+                yield return Frames(2);
+                Assert.IsFalse(Agent_SettingsSheet.IsOpen,
+                    "Resuming left the settings sheet standing over a live match.");
+                Assert.IsFalse(hud.IsPaused, "Resume did not clear the pause panel");
+
+                // ---------------- health panel ----------------
+                var telemetry = Object.FindAnyObjectByType<Agent_Telemetry>();
+                Assert.IsNotNull(telemetry, "No Agent_Telemetry in the match scene");
+                telemetry.SetVisible(true);
+                yield return Frames(4);
+                AssertInsideSafeRect("health panel", topInset, bottomInset);
+                AssertNoScrollViews("health panel");
+                telemetry.SetVisible(false);
+                yield return null;
+
+                // ---------------- end panel, every tab ----------------
+                hud.ShowEndPanelNow();
+                yield return Frames(3);
+                yield return new WaitForSecondsRealtime(0.4f);
+
+                var endPanel = hudRoot.Q<VisualElement>("end-panel");
+                Assert.IsNotNull(endPanel, "ShowEndPanelNow raised no end panel");
+
+                foreach (Agent_HUD.EndTab tab in new[]
+                         { Agent_HUD.EndTab.Summary, Agent_HUD.EndTab.Stats, Agent_HUD.EndTab.Players })
+                {
+                    hud.ShowEndTab(tab);
+                    yield return Frames(3);
+
+                    string where = $"end panel / {tab}";
+                    AssertNoScrollViews(where);
+
+                    // The action row is FIXED: whatever a tab holds, REMATCH and
+                    // MENU stay on screen, inside the safe rect, below the tabs.
+                    var actions = endPanel.Q<VisualElement>("end-actions");
+                    var tabs = endPanel.Q<VisualElement>("end-tabs");
+                    var body = endPanel.Q<VisualElement>("end-body");
+                    Assert.IsNotNull(actions); Assert.IsNotNull(tabs); Assert.IsNotNull(body);
+
+                    Rect panel = hudRoot.worldBound;
+                    float scale = Screen.width / panel.width;
+                    float safeBottom = panel.yMax - bottomInset / scale;
+                    float safeTop = panel.yMin + topInset / scale;
+
+                    Assert.LessOrEqual(actions.worldBound.yMax, safeBottom + 2f,
+                        $"{where}: REMATCH / MENU run past the bottom of the safe area.");
+                    Assert.GreaterOrEqual(tabs.worldBound.yMin, safeTop - 2f,
+                        $"{where}: the tab strip is under the notch.");
+                    Assert.GreaterOrEqual(actions.worldBound.yMin, body.worldBound.yMax - 2f,
+                        $"{where}: the content pane overlaps the action row.");
+                    Assert.Greater(body.worldBound.height, 100f,
+                        $"{where}: the content pane collapsed - the head, tabs and action " +
+                        "row leave no room for content at this aspect.");
+
+                    // Headline, score, tabs and buttons are checked individually.
+                    // Content INSIDE the pane is clipped by design (overflow:
+                    // hidden), so it is the pane that is asserted on, not its
+                    // children.
+                    endPanel.Query<Button>().ForEach(b =>
+                    {
+                        Rect r = b.worldBound;
+                        Assert.GreaterOrEqual(r.yMin, safeTop - 2f, $"{where}: '{b.text}' is under the notch");
+                        Assert.LessOrEqual(r.yMax, safeBottom + 2f, $"{where}: '{b.text}' is below the safe area");
+                    });
+                    Assert.GreaterOrEqual(endPanel.Q<Label>("end-headline").worldBound.yMin, safeTop - 2f,
+                        $"{where}: the result headline is under the notch.");
+                }
+            }
+            finally
+            {
+                Agent_UIStyle.SafeAreaOverride = null;
+                Agent_SettingsSheet.Close();
+                Agent_TimeFreeze.ReleaseAll();
+            }
+        }
+
+        /// <summary>
+        /// The debug and broadcast controls are reachable by touch, and the
+        /// broadcast readouts really are off until asked for.
+        ///
+        /// The second half guards the camera as much as the screen: the readouts
+        /// are hidden with display:none precisely so the bands shrink, and a band
+        /// that did not shrink would keep the pitch framed around a strip nobody
+        /// can see.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator BroadcastReadouts_AreOneSwitch_AndGiveTheirHeightBack()
+        {
+            bool previous = Agent_HUD.BroadcastEnabled;
+            try
+            {
+                Agent_HUD.BroadcastEnabled = false;
+                SceneManager.LoadScene("SCN_Exhibition");
+                yield return Frames(6);
+
+                var hud = Object.FindAnyObjectByType<Agent_HUD>();
+                var root = hud.GetComponent<UIDocument>().rootVisualElement;
+
+                var toggle = root.Q<Button>("broadcast-toggle");
+                Assert.IsNotNull(toggle, "The HUD has no broadcast toggle");
+                Assert.IsNotNull(root.Q<Button>("pause"), "The HUD has no pause button");
+
+                foreach (string name in new[] { "winprob", "winprob-label", "ticker", "broadcast-tag", "meter" })
+                {
+                    Assert.AreEqual(DisplayStyle.None, root.Q<VisualElement>(name).resolvedStyle.display,
+                        $"'{name}' is laid out with the broadcast switch OFF.");
+                }
+                foreach (string name in new[] { "score", "clock", "chips-blue", "chips-red" })
+                {
+                    Assert.AreNotEqual(DisplayStyle.None, root.Q<VisualElement>(name).resolvedStyle.display,
+                        $"'{name}' is part of the default HUD and is hidden.");
+                }
+
+                float offBands = hud.TopBandFraction + hud.BottomBandFraction;
+                Assert.Greater(offBands, 0.02f, "The bands measured zero with the readouts hidden.");
+
+                // The estimator keeps running while its strip is hidden: the
+                // director reads its threat signal to choose shots.
+                var probability = Object.FindAnyObjectByType<Agent_WinProbability>();
+                Assert.IsNotNull(probability, "No Agent_WinProbability in the match scene");
+                Assert.IsTrue(probability.enabled,
+                    "Hiding the strip disabled the estimator that Agent_Director depends on.");
+
+                Click(toggle);
+                yield return Frames(3);
+
+                Assert.IsTrue(Agent_HUD.BroadcastEnabled, "The toggle did not persist the choice");
+                Assert.AreNotEqual(DisplayStyle.None, root.Q<VisualElement>("winprob").resolvedStyle.display,
+                    "The toggle did not bring the win-probability strip back.");
+                StringAssert.Contains("MODEL", root.Q<Label>("winprob-label").text,
+                    "The win-probability strip came back without its MODEL qualifier.");
+
+                float onBands = hud.TopBandFraction + hud.BottomBandFraction;
+                Assert.Greater(onBands, offBands + 0.005f,
+                    $"Bands cover {onBands:P1} with the readouts on and {offBands:P1} with them " +
+                    "off - hiding them did not give the camera its space back.");
+            }
+            finally
+            {
+                Agent_HUD.BroadcastEnabled = previous;
+                Agent_TimeFreeze.ReleaseAll();
+            }
+        }
+
+        static void Click(Button button)
+        {
+            Assert.IsNotNull(button, "Cannot click a button that is not there");
+            Assert.IsTrue(button.enabledInHierarchy, $"'{button.text}' is disabled");
+
+            using var evt = NavigationSubmitEvent.GetPooled();
+            evt.target = button;
+            button.SendEvent(evt);
+        }
+
+        /// <summary>
+        /// Every drawn label and button on every panel sits inside the injected
+        /// safe rectangle, converted into that panel's own units.
+        /// </summary>
+        static void AssertInsideSafeRect(string screen, float topInsetPx, float bottomInsetPx)
+        {
+            const float SLACK = 2f;
+            int checkedCount = 0;
+            var offenders = new System.Text.StringBuilder();
+
+            foreach (var doc in Object.FindObjectsByType<UIDocument>())
+            {
+                VisualElement root = doc.rootVisualElement;
+                if (root == null) continue;
+
+                Rect panel = root.worldBound;
+                if (float.IsNaN(panel.width) || panel.width <= 1f) continue;
+
+                float scale = Screen.width / panel.width;
+                float safeTop = panel.yMin + topInsetPx / scale;
+                float safeBottom = panel.yMax - bottomInsetPx / scale;
+
+                root.Query<VisualElement>().ForEach(element =>
+                {
+                    if (element is not (Label or Button)) return;
+                    if (!IsDrawn(element)) return;
+                    // Content inside the end panel's pane is clipped on purpose.
+                    if (HasAncestorNamed(element, "end-body")) return;
+
+                    Rect r = element.worldBound;
+                    if (float.IsNaN(r.x) || float.IsNaN(r.y)) return;
+                    if (r.width <= 0.5f || r.height <= 0.5f) return;
+                    checkedCount++;
+
+                    if (r.yMin < safeTop - SLACK || r.yMax > safeBottom + SLACK ||
+                        r.xMin < panel.xMin - SLACK || r.xMax > panel.xMax + SLACK)
+                    {
+                        string label = element is Button b && !string.IsNullOrEmpty(b.text)
+                            ? b.text
+                            : element is Label l && !string.IsNullOrEmpty(l.text) ? l.text : element.name;
+                        offenders.AppendLine(
+                            $"  '{label}' on {doc.gameObject.name}: y {r.yMin:F0}..{r.yMax:F0}, " +
+                            $"x {r.xMin:F0}..{r.xMax:F0} vs safe y {safeTop:F0}..{safeBottom:F0}");
+                    }
+                });
+            }
+
+            Assert.Greater(checkedCount, 0, $"{screen}: found nothing laid out, so this asserted nothing");
+            Assert.AreEqual(string.Empty, offenders.ToString(),
+                $"{screen}: UI outside the safe area with a {topInsetPx:F0}px top / " +
+                $"{bottomInsetPx:F0}px bottom inset - under a notch or the gesture bar:\n{offenders}");
+        }
+
+        /// <summary>Laid out, displayed, and not transparent - on itself or any ancestor.</summary>
+        static bool IsDrawn(VisualElement element)
+        {
+            for (VisualElement current = element; current != null; current = current.parent)
+            {
+                if (current.resolvedStyle.display == DisplayStyle.None) return false;
+                if (current.resolvedStyle.visibility == Visibility.Hidden) return false;
+                if (current.resolvedStyle.opacity < 0.05f) return false;
+            }
+            return true;
+        }
+
+        static bool HasAncestorNamed(VisualElement element, string name)
+        {
+            for (VisualElement current = element.parent; current != null; current = current.parent)
+            {
+                if (current.name == name) return true;
+            }
+            return false;
+        }
+
+        static void AssertNoScrollViews(string screen)
+        {
+            var offenders = new System.Text.StringBuilder();
+            foreach (var doc in Object.FindObjectsByType<UIDocument>())
+            {
+                VisualElement root = doc.rootVisualElement;
+                if (root == null) continue;
+                root.Query<ScrollView>().ForEach(sv =>
+                    offenders.AppendLine($"  ScrollView '{sv.name}' on {doc.gameObject.name}"));
+            }
+            Assert.AreEqual(string.Empty, offenders.ToString(),
+                $"{screen} contains a scrolling container on a screen that is supposed to fit:\n{offenders}");
+        }
+
+        /// <summary>
+        /// Nothing drawn on ANY panel intersects the score or the clock. The other
+        /// panels matter most: Agent_Chrome sorts above the HUD, so anything of its
+        /// that strays into the band wins, and "60 FPS" printed through the score
+        /// is a defect this project has already shipped once.
+        /// </summary>
+        static void AssertNothingOverlapsTheScoreboard(VisualElement hudRoot)
+        {
+            var score = hudRoot.Q<Label>("score");
+            var clock = hudRoot.Q<Label>("clock");
+            Assert.IsNotNull(score, "HUD has no #score");
+            Assert.IsNotNull(clock, "HUD has no #clock");
+
+            var offenders = new System.Text.StringBuilder();
+            foreach (var doc in Object.FindObjectsByType<UIDocument>())
+            {
+                VisualElement root = doc.rootVisualElement;
+                if (root == null) continue;
+
+                root.Query<VisualElement>().ForEach(element =>
+                {
+                    if (element is not (Label or Button)) return;
+                    if (ReferenceEquals(element, score) || ReferenceEquals(element, clock)) return;
+                    if (!IsDrawn(element)) return;
+                    if (element is Label text && string.IsNullOrEmpty(text.text)) return;
+
+                    Rect r = element.worldBound;
+                    if (float.IsNaN(r.x) || r.width <= 0.5f || r.height <= 0.5f) return;
+
+                    foreach (Label target in new[] { score, clock })
+                    {
+                        Rect t = target.worldBound;
+                        bool overlaps = r.xMin < t.xMax - 1f && t.xMin < r.xMax - 1f &&
+                                        r.yMin < t.yMax - 1f && t.yMin < r.yMax - 1f;
+                        if (!overlaps) continue;
+                        offenders.AppendLine(
+                            $"  '{element.name}' on {doc.gameObject.name} " +
+                            $"({r.xMin:F0},{r.yMin:F0} {r.width:F0}x{r.height:F0}) overlaps #{target.name}");
+                    }
+                });
+            }
+
+            Assert.AreEqual(string.Empty, offenders.ToString(),
+                $"UI drawn over the scoreboard:\n{offenders}");
         }
 
         static VisualElement RootOfMenu()

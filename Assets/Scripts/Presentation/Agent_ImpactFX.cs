@@ -90,7 +90,7 @@ namespace PoSoccer
         void Start()
         {
             _env = GetComponent<Agent_EnvController>();
-            var hud = FindFirstObjectByType<Agent_HUD>();
+            var hud = FindAnyObjectByType<Agent_HUD>();
 
             if (!_enableImpactFX || !Agent_Presentation.IsVisualScene(hud))
             {
@@ -224,8 +224,11 @@ namespace PoSoccer
             _lastContactTime = Time.time;
             _lastContactPoint = point;
 
-            float strength = Mathf.Clamp01(
-                Mathf.InverseLerp(_contactThreshold, _contactSaturation, impulse));
+            // Same normalisation Agent_Audio uses for the body thud, fed this
+            // component's own (serialized) floor and saturation - which default to
+            // the shared constants, so the shock and the sound peak together.
+            float strength = Agent_ImpactScale.Player01(
+                impulse, _contactThreshold, _contactSaturation);
 
             var shock = NextShock();
             if (shock != null)
@@ -236,6 +239,10 @@ namespace PoSoccer
 
             if (_shrapnel == null) return;
             int count = Mathf.Clamp(Mathf.RoundToInt(3f + strength * 14f), 3, 18);
+            // Size as well as count and speed: a heavy collision throws bigger
+            // divots, not just more of the same ones. Clamped so the largest is
+            // still well under a body width.
+            float size = Mathf.Lerp(0.07f, 0.15f, strength);
             Vector2 along = new(-normal.y, normal.x);
             for (int i = 0; i < count; i++)
             {
@@ -248,6 +255,7 @@ namespace PoSoccer
                     velocity = (along * Random.Range(-1f, 1f) + normal * Random.Range(-0.35f, 0.35f))
                                .normalized * Random.Range(1.5f, 2f + strength * 7f),
                     startLifetime = Random.Range(0.2f, 0.5f),
+                    startSize = size * Random.Range(0.8f, 1.2f),
                 };
                 _shrapnel.Emit(emit, 1);
             }

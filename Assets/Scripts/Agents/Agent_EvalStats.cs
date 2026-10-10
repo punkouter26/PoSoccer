@@ -14,10 +14,9 @@ namespace PoSoccer
     [RequireComponent(typeof(Agent_EnvController))]
     public sealed class Agent_EvalStats : MonoBehaviour
     {
-        public static bool BaselineMode =>
-            Environment.GetEnvironmentVariable("POSOCCER_BASELINE") == "1";
+        public static bool BaselineMode => Agent_RunConfig.IsOne(Agent_RunConfig.BASELINE);
         public static bool EvalMode =>
-            BaselineMode || Environment.GetEnvironmentVariable("POSOCCER_EVAL") == "1";
+            BaselineMode || Agent_RunConfig.IsOne(Agent_RunConfig.EVAL);
 
         static readonly object Gate = new();
         static Agent_EvalStats _primary;
@@ -41,8 +40,7 @@ namespace PoSoccer
             if (_primary == null)
             {
                 _primary = this;
-                _target = int.TryParse(
-                    Environment.GetEnvironmentVariable("POSOCCER_EPISODES"), out int n) ? n : 100;
+                _target = Agent_RunConfig.GetInt(Agent_RunConfig.EPISODES, 100);
                 // Headless eval runs faster than real time; physics step stays 0.01s.
                 Time.timeScale = 20f;
                 Application.targetFrameRate = -1;
@@ -97,7 +95,7 @@ namespace PoSoccer
         {
             var report = new Report
             {
-                runId = Environment.GetEnvironmentVariable("POSOCCER_RUNID") ?? "unknown",
+                runId = Agent_RunConfig.GetString(Agent_RunConfig.RUN_ID) ?? "unknown",
                 episodes = _episodes,
                 blueWins = _blueWins,
                 redWins = _redWins,
@@ -118,13 +116,12 @@ namespace PoSoccer
                 // The lineup the grade was played at. A 2v2 grade and a 1v1 grade of the
                 // same brain are different measurements; without this field the JSON
                 // could not tell them apart. Empty POSOCCER_SQUAD = the authored 1v1.
-                squad = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("POSOCCER_SQUAD"))
-                    ? "1" : Environment.GetEnvironmentVariable("POSOCCER_SQUAD"),
+                squad = Agent_RunConfig.GetString(Agent_RunConfig.SQUAD, "1"),
                 invalid = _invalid,
                 timestampUtc = DateTime.UtcNow.ToString("o"),
             };
 
-            string path = Environment.GetEnvironmentVariable("POSOCCER_OUT");
+            string path = Agent_RunConfig.GetString(Agent_RunConfig.OUT);
             if (string.IsNullOrEmpty(path))
                 path = Path.Combine(Application.persistentDataPath, "eval.json");
 
@@ -143,8 +140,7 @@ namespace PoSoccer
         {
             if (BaselineMode) return "(baseline: heuristic bot, no model)";
 
-            var agents = UnityEngine.Object.FindObjectsByType<Agent_Soccer>(
-                FindObjectsSortMode.None);
+            var agents = UnityEngine.Object.FindObjectsByType<Agent_Soccer>();
             for (int i = 0; i < agents.Length; i++)
             {
                 var a = agents[i];

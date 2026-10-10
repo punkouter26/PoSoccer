@@ -99,6 +99,36 @@ namespace PoSoccer
         [Tooltip("Seconds the director stands down at kickoff so the opening wide shot plays.")]
         [SerializeField] private float _openingSilence = 2.5f;
 
+        [Header("Zoom on impact")]
+        [Tooltip("Push in on a hard body check for a moment. Off = collisions never move the camera.")]
+        [SerializeField] private bool _enableImpactZoom = true;
+        [Tooltip("Normal impulse (N*s, from Agent_Contact.PlayerContact) a collision needs " +
+                 "before the camera reacts. Above the stagger threshold (12) and the haptic " +
+                 "one (14) on purpose: a jostle that rocks a player is not yet a shot.")]
+        [SerializeField] private float _impactThreshold = 18f;
+        [Tooltip("Impulse at which the push-in is as tight as it gets.")]
+        [SerializeField] private float _impactSaturation = 48f;
+        [Tooltip("Seconds the impact shot holds, on the unscaled clock - the hit-stop that " +
+                 "usually accompanies a big collision must not stretch it.")]
+        [SerializeField] private float _impactSeconds = 0.4f;
+        [Tooltip("Framing for a collision right at the threshold (fraction of the wide shot).")]
+        [Range(0.2f, 1f)] [SerializeField] private float _impactLooseFraction = 0.6f;
+        [Tooltip("Framing for a collision at or past saturation. Agent_CameraFollow clamps " +
+                 "every shot to its own tightest fraction, so going below that buys nothing.")]
+        [Range(0.2f, 1f)] [SerializeField] private float _impactTightFraction = 0.45f;
+
+        [Header("Tension framing")]
+        [Tooltip("Tighten the working shots as the threat signal rises toward the iso " +
+                 "threshold. NEVER applied to the wide shot - see the note on TensionScale.")]
+        [SerializeField] private bool _enableTension = true;
+        [Tooltip("Largest fraction the working shots are tightened by, reached as threat " +
+                 "arrives at the iso threshold.")]
+        [Range(0f, 0.2f)] [SerializeField] private float _tensionTighten = 0.12f;
+        [Tooltip("How fast the tightening follows the threat signal (per second). The signal " +
+                 "is a logistic over live positions and moves every frame; framing that " +
+                 "followed it directly would breathe visibly.")]
+        [Range(0.5f, 8f)] [SerializeField] private float _tensionSmoothing = 2f;
+
         [SerializeField] private bool _enableDirector = true;
 
         Agent_EnvController _env;
@@ -109,6 +139,17 @@ namespace PoSoccer
         Shot _shot = Shot.Wide;
         float _shotStarted;
         float _silentUntil;
+
+        // Impact shot. Written from OnCollisionEnter2D (physics step), read in
+        // LateUpdate - both on the main thread, so no synchronisation is needed.
+        Agent_Contact[] _contacts;
+        bool _contactsSubscribed;
+        Vector2 _impactPoint;
+        float _impactStrength;
+        float _impactFraction = 1f;
+        float _impactUntil = float.NegativeInfinity;
+
+        float _tension;
 
         // Last tag pushed to the HUD. The composed string allocates, so it is only
         // built when one of its two halves has actually changed.
@@ -137,10 +178,38 @@ namespace PoSoccer
         /// <summary>True while the director is actually driving the camera.</summary>
         public bool IsDirecting { get; private set; }
 
+        /// <summary>
+        /// True while a collision's push-in still owns the framing. Public for the
+        /// same reason Agent_CameraFollow.ShotActive is: the visible effect is a
+        /// framing that can coincide with what the ordinary shot would have chosen.
+        /// </summary>
+        public bool ImpactShotActive => Time.unscaledTime < _impactUntil;
+
+        /// <summary>Smoothed tension, 0 (calm) .. 1 (threat at the iso threshold).</summary>
+        public float Tension => _tension;
+
+        /// <summary>
+        /// Multiplier the tension puts on a working shot's fraction, 0.88 .. 1.
+        ///
+        /// WHY THE WIDE SHOT IS EXEMPT. The request was to tighten the wide shot by
+        /// up to 12%. The wide shot has no 12% to give: Agent_CameraFollow sizes it
+        /// so the pitch's half-length plus a 0.5 m edge margin exactly fills the
+        /// clear band between the HUD bands, which at 2v2 (12.65 m half-length) is
+        /// 3.8% of slack. Anything past that puts both goal lines back under the
+        /// scoreboard and the chip row - the 2026-09-13 landmine - and
+        /// Agent_PlayMode_Portrait.TheCamerasWideShot_ClearsTheMeasuredHudBands
+        /// asserts exactly that through CurrentWideOrtho. So tension tightens
+        /// Chase, Break and Scrum, which pan with the ball and are pan-clamped
+        /// against the clear band, and leaves Wide and CurrentWideOrtho alone. Iso
+        /// is exempt too: it IS the tension response, and it has to hold ball and
+        /// goal mouth in one frame.
+        /// </summary>
+        float TensionScale => _enableTension ? 1f - _tensionTighten * _tension : 1f;
+
         void Start()
         {
             _env = GetComponent<Agent_EnvController>();
-            _hud = FindFirstObjectByType<Agent_HUD>();
+            _hud = FindAnyObjectByType<Agent_HUD>();
 
             if (!_enableDirector || !Agent_Presentation.IsMatchScene(_hud))
             {
@@ -148,7 +217,7 @@ namespace PoSoccer
                 return;
             }
 
-            _camera = FindFirstObjectByType<Agent_CameraFollow>();
+            _camera = FindAnyObjectByType<Agent_CameraFollow>();
             _probability = GetComponent<Agent_WinProbability>();
             if (_camera == null)
             {
@@ -159,11 +228,71 @@ namespace PoSoccer
             _silentUntil = Time.unscaledTime + _openingSilence;
             _shotStarted = Time.unscaledTime;
             _env.EpisodeEnded += OnEpisodeEnded;
+
+            // Children of the pitch root, the same sweep Agent_Haptics makes. By
+            // Start the lineup is final: Agent_MatchLoader builds the squads at
+            // order -60 in Awake, long before any Start runs.
+            _contacts = _env.GetComponentsInChildren<Agent_Contact>();
+            SubscribeContacts();
+        }
+
+        void OnEnable()
+        {
+            // Null until Start has passed the gate, so a director that gated itself
+            // out never subscribes at all; after that this re-arms a director that
+            // was disabled and switched back on.
+            SubscribeContacts();
+        }
+
+        void OnDisable()
+        {
+            UnsubscribeContacts();
         }
 
         void OnDestroy()
         {
             if (_env != null) _env.EpisodeEnded -= OnEpisodeEnded;
+            UnsubscribeContacts();
+        }
+
+        void SubscribeContacts()
+        {
+            if (_contacts == null || _contactsSubscribed) return;
+            for (int i = 0; i < _contacts.Length; i++)
+            {
+                if (_contacts[i] != null) _contacts[i].PlayerContact += OnPlayerContact;
+            }
+            _contactsSubscribed = true;
+        }
+
+        void UnsubscribeContacts()
+        {
+            if (_contacts == null || !_contactsSubscribed) return;
+            for (int i = 0; i < _contacts.Length; i++)
+            {
+                if (_contacts[i] != null) _contacts[i].PlayerContact -= OnPlayerContact;
+            }
+            _contactsSubscribed = false;
+        }
+
+        /// <summary>
+        /// A hard body check. Records where and how hard; LateUpdate turns it into
+        /// a shot. Both bodies in a collision raise this with the same impulse, so
+        /// the "only a stronger hit replaces a live one" rule also collapses the
+        /// pair into a single shot.
+        /// </summary>
+        void OnPlayerContact(Vector2 point, Vector2 normal, float impulse)
+        {
+            if (!_enableImpactZoom || impulse < _impactThreshold) return;
+
+            float strength = Mathf.InverseLerp(
+                _impactThreshold, Mathf.Max(_impactThreshold + 0.01f, _impactSaturation), impulse);
+            if (ImpactShotActive && strength <= _impactStrength) return;
+
+            _impactPoint = point;
+            _impactStrength = strength;
+            _impactFraction = Mathf.Lerp(_impactLooseFraction, _impactTightFraction, strength);
+            _impactUntil = Time.unscaledTime + Mathf.Max(0f, _impactSeconds);
         }
 
         void OnEpisodeEnded(Agent_Soccer.Team? winner)
@@ -174,6 +303,9 @@ namespace PoSoccer
             _silentUntil = Time.unscaledTime + _postGoalSilence;
             _shot = Shot.Wide;
             _shotStarted = Time.unscaledTime;
+            // A collision in the goalmouth scramble must not push in over the
+            // celebration that follows it.
+            _impactUntil = float.NegativeInfinity;
             _camera.ClearShot();
         }
 
@@ -183,8 +315,21 @@ namespace PoSoccer
 
             UpdateBroadcastTag();
 
-            // Replay owns the frame outright; so does the opening/celebration hold.
-            if (_camera.HasOverrideTarget || Time.unscaledTime < _silentUntil)
+            // Smoothed whether or not the director holds the camera this frame, so
+            // it is already where it should be when the camera comes back rather
+            // than easing in from a stale value.
+            float tensionTarget = _probability != null
+                ? Mathf.Clamp01(_probability.Threat / Mathf.Max(0.01f, _isoThreat))
+                : 0f;
+            _tension = Mathf.Lerp(_tension, tensionTarget,
+                1f - Mathf.Exp(-_tensionSmoothing * Time.unscaledDeltaTime));
+
+            // Replay owns the frame outright; so does the opening/celebration hold,
+            // and so does a spectator who has locked the camera onto a player - a
+            // person choosing a subject outranks a grammar inferring one, and the
+            // rig would ignore these requests anyway.
+            if (_camera.HasOverrideTarget || _camera.Focus != null
+                || Time.unscaledTime < _silentUntil)
             {
                 IsDirecting = false;
                 return;
@@ -198,19 +343,45 @@ namespace PoSoccer
             // that the camera reaches a second late is a chance nobody saw.
             bool mayChange = !held || wanted == Shot.Iso;
 
+            bool cut = false;
             if (wanted != _shot && mayChange)
             {
-                bool cut = wanted == Shot.Iso || _shot == Shot.Iso;
+                cut = wanted == Shot.Iso || _shot == Shot.Iso;
                 _shot = wanted;
                 _shotStarted = Time.unscaledTime;
-                ApplyShot(cut);
+            }
+
+            // The impact push-in is an INSERT over the current shot, not a member
+            // of the vocabulary: the shot state above keeps evolving underneath it,
+            // so when it lapses the camera returns to whatever the story has become
+            // rather than to where it was 0.4 s ago. An iso outranks it - a chance
+            // on goal is the one thing a collision may not pull the camera off.
+            if (ImpactShotActive && _shot != Shot.Iso)
+            {
+                // Never LOOSER than the shot it interrupts: a threshold-strength
+                // hit during a scrum shot would otherwise zoom out on impact.
+                float fraction = Mathf.Min(_impactFraction, FractionOf(_shot));
+                _camera.RequestShot(_impactPoint, _camera.CurrentWideOrtho * fraction, false);
             }
             else
             {
-                ApplyShot(false);
+                ApplyShot(cut);
             }
 
             IsDirecting = true;
+        }
+
+        /// <summary>Framing for a shot as a fraction of the wide baseline, tension included.</summary>
+        float FractionOf(Shot shot)
+        {
+            switch (shot)
+            {
+                case Shot.Iso: return _isoFraction;
+                case Shot.Scrum: return _scrumFraction * TensionScale;
+                case Shot.Break: return _breakFraction * TensionScale;
+                case Shot.Chase: return _chaseFraction * TensionScale;
+                default: return 1f;
+            }
         }
 
         /// <summary>
@@ -267,7 +438,7 @@ namespace PoSoccer
             float wide = _camera.CurrentWideOrtho;
             Vector2 ball = _env.Ball.position;
             Vector2 focus;
-            float fraction;
+            float fraction = FractionOf(_shot);
 
             switch (_shot)
             {
@@ -279,24 +450,19 @@ namespace PoSoccer
                         ? _probability.ThreatTeam : Agent_Soccer.Team.Blue;
                     Vector2 mouth = _env.GetGoalPosition(Agent_Soccer.Opponent(attacking));
                     focus = Vector2.Lerp(ball, mouth, 0.4f);
-                    fraction = _isoFraction;
                     break;
                 }
                 case Shot.Scrum:
                     focus = ball;
-                    fraction = _scrumFraction;
                     break;
                 case Shot.Break:
                     focus = ball + _env.Ball.linearVelocity * _leadSeconds;
-                    fraction = _breakFraction;
                     break;
                 case Shot.Chase:
                     focus = ball + _env.Ball.linearVelocity * (_leadSeconds * 0.6f);
-                    fraction = _chaseFraction;
                     break;
                 default:
                     focus = ball;
-                    fraction = 1f;
                     break;
             }
 

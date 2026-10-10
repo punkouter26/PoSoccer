@@ -45,6 +45,11 @@ namespace PoSoccer
         static readonly int KitMode = Shader.PropertyToID("_KitMode");
         static readonly int KitColor = Shader.PropertyToID("_KitColor");
         static readonly int KitScale = Shader.PropertyToID("_KitScale");
+        static readonly int Fatigue = Shader.PropertyToID("_Fatigue");
+
+        // _Fatigue is quantised before it is pushed, so a body that is not
+        // getting any more tired does not get a property-block write every tick.
+        const float FATIGUE_STEPS = 32f;
 
         [Tooltip("Depth of the mown-grass banding on the pitch.")]
         [Range(0f, 0.5f)] [SerializeField] private float _pitchStripes = 0.075f;
@@ -57,6 +62,20 @@ namespace PoSoccer
         [Tooltip("Add a small Light2D to the ball so it carries its own highlight.")]
         [SerializeField] private bool _ballLight = true;
         [SerializeField] private bool _enableSurfaces = true;
+
+        [Header("Fatigue")]
+        [Tooltip("Tired players lose a little colour and pick up a sweat sheen.")]
+        [SerializeField] private bool _showFatigue = true;
+        [Tooltip("Stamina ratio below which fatigue starts to show. 1 would paint every " +
+                 "sprint; 0.65 keeps it to players who are actually spent.")]
+        [Range(0.1f, 1f)] [SerializeField] private float _fatigueBelow = 0.65f;
+        [Tooltip("Seconds between fatigue updates. Stamina is not a per-frame signal.")]
+        [SerializeField] private float _fatigueInterval = 0.1f;
+        [Tooltip("How fast the look comes on, per second.")]
+        [SerializeField] private float _fatigueRise = 1.2f;
+        [Tooltip("How fast it clears, per second. Slower than the rise: sweat lingers " +
+                 "after the tank has refilled.")]
+        [SerializeField] private float _fatigueFall = 0.35f;
 
         [Header("Goal nets")]
         [SerializeField] private bool _goalNets = true;
@@ -91,6 +110,27 @@ namespace PoSoccer
         readonly System.Collections.Generic.Dictionary<BodyLook, Material> _bodyMaterials = new();
         Shader _shader;
         Texture2D _sphereNormal;
+
+        // Fatigue is the ONE per-instance property on a body, and it is the only
+        // reason a property block ever touches one. The shared-material design
+        // above still holds for a rested player: the block is only attached while
+        // _Fatigue is above zero and is REMOVED when it returns to zero, so a
+        // squad that is not tired batches exactly as it did before this existed.
+        Agent_Soccer[] _fatigueAgents;
+        SpriteRenderer[] _fatigueBodies;
+        float[] _fatigueLevel;
+        float[] _fatigueShown;
+        bool[] _fatigueForeignBlock;
+        MaterialPropertyBlock _fatigueBlock;
+        float _fatigueTimer;
+
+        /// <summary>
+        /// Off = every body is driven back to _Fatigue 0 and its property block
+        /// released. Defaults on. The cost it sheds is not the shader term (a
+        /// handful of ALU behind a branch) but the per-renderer block, which
+        /// takes a tired body out of the SRP Batcher.
+        /// </summary>
+        public bool FatigueVisible { get; set; } = true;
 
         /// <summary>
         /// Everything that makes two player bodies look different. Two agents
@@ -131,8 +171,12 @@ namespace PoSoccer
 
         void Start()
         {
-            var env = FindFirstObjectByType<Agent_EnvController>();
-            var hud = FindFirstObjectByType<Agent_HUD>();
+            // This pitch's controller first. Agent_Presentation installs this on the
+            // pitch root, and the gallery clones that root - FindAnyObjectByType
+            // alone hands every clone whichever controller it finds first.
+            var env = GetComponent<Agent_EnvController>();
+            if (env == null) env = FindAnyObjectByType<Agent_EnvController>();
+            var hud = FindAnyObjectByType<Agent_HUD>();
             if (!_enableSurfaces || env == null || !Agent_Presentation.IsVisualScene(hud))
             {
                 enabled = false;
@@ -346,7 +390,11 @@ namespace PoSoccer
 
         void Update()
         {
-            if (!_goalNets || _env == null) return;
+            if (_env == null) return;
+
+            TickFatigue();
+
+            if (!_goalNets) return;
 
             if (!Mathf.Approximately(_env.CurrentGoalWidth, _shownGoalWidth))
                 ApplyNetWidth(_env.CurrentGoalWidth);
@@ -424,11 +472,23 @@ namespace PoSoccer
             // and every player kept the stock one. Walking the hierarchy is what
             // the env controller itself does, and it cannot race.
             var agents = env.GetComponentsInChildren<Agent_Soccer>();
+            _fatigueAgents = agents;
+            _fatigueBodies = new SpriteRenderer[agents.Length];
+            _fatigueLevel = new float[agents.Length];
+            _fatigueShown = new float[agents.Length];
+            _fatigueForeignBlock = new bool[agents.Length];
+            _fatigueBlock = new MaterialPropertyBlock();
+
             for (int i = 0; i < agents.Length; i++)
             {
                 var agent = agents[i];
                 if (agent == null) continue;
                 if (!agent.TryGetComponent(out SpriteRenderer body)) continue;
+
+                _fatigueBodies[i] = body;
+                // Somebody else already hangs a block on this renderer: never
+                // clear it, only ever merge into it.
+                _fatigueForeignBlock[i] = body.HasPropertyBlock();
 
                 var profile = agent.rewards;
                 var look = profile != null
@@ -436,6 +496,88 @@ namespace PoSoccer
                     : new BodyLook(agent.team, Reward_Settings.KitPattern.None, Color.clear, 6f);
                 body.sharedMaterial = BodyMaterial(look, body);
             }
+        }
+
+        // -- Fatigue ----------------------------------------------------------
+
+        /// <summary>
+        /// Pushes each player's tiredness to the body shader's _Fatigue term.
+        ///
+        /// Agent_Stamina drains, recovers slowly out of full depletion, and wears
+        /// permanently - and until now the only things on screen that said so
+        /// were a few effort wisps below 22%. The body itself now carries it.
+        ///
+        /// Runs every <see cref="_fatigueInterval"/> seconds rather than every
+        /// frame, and writes only when the QUANTISED value changes, so a squad at
+        /// rest costs one timer decrement per frame and nothing else.
+        ///
+        /// The block is read before it is written (GetPropertyBlock, set one
+        /// float, SetPropertyBlock) so anything another component has put on the
+        /// renderer survives; and it is released outright at zero unless the
+        /// renderer already carried a block when this component first saw it.
+        /// </summary>
+        void TickFatigue()
+        {
+            if (!_showFatigue || _fatigueAgents == null) return;
+
+            // Unscaled, so switching FatigueVisible off still lands while a
+            // replay has the clock stopped. Stamina does not move during a
+            // freeze, so nothing else changes then anyway.
+            _fatigueTimer -= Time.unscaledDeltaTime;
+            if (_fatigueTimer > 0f) return;
+
+            float step = Mathf.Max(0.02f, _fatigueInterval);
+            _fatigueTimer = step;
+
+            for (int i = 0; i < _fatigueAgents.Length; i++)
+            {
+                var agent = _fatigueAgents[i];
+                var body = _fatigueBodies[i];
+                if (agent == null || body == null) continue;
+
+                float target = FatigueVisible ? FatigueOf(agent.Stamina) : 0f;
+                float level = _fatigueLevel[i];
+                level = Mathf.MoveTowards(level, target,
+                    (target > level ? _fatigueRise : _fatigueFall) * step);
+                _fatigueLevel[i] = level;
+
+                float shown = Mathf.Round(level * FATIGUE_STEPS) / FATIGUE_STEPS;
+                if (Mathf.Approximately(shown, _fatigueShown[i])) continue;
+                _fatigueShown[i] = shown;
+
+                if (shown <= 0f && !_fatigueForeignBlock[i])
+                {
+                    // Back in the batch with its team-mates.
+                    body.SetPropertyBlock(null);
+                    continue;
+                }
+
+                body.GetPropertyBlock(_fatigueBlock);
+                _fatigueBlock.SetFloat(Fatigue, shown);
+                body.SetPropertyBlock(_fatigueBlock);
+            }
+        }
+
+        /// <summary>
+        /// 0 rested .. 1 spent. Mostly how empty the tank is right now, plus a
+        /// smaller share for permanent wear once it is substantial - so late in a
+        /// long match a worn player looks a little heavy-legged even on a full
+        /// tank, which is exactly what Agent_Stamina's shrunken ceiling means.
+        /// </summary>
+        float FatigueOf(Agent_Stamina stamina)
+        {
+            if (stamina == null) return 0f;
+
+            float tired = Mathf.InverseLerp(_fatigueBelow, 0f, stamina.Ratio);
+
+            float wearRange = 1f - stamina.wearFloor;
+            float worn = wearRange > 0.001f ? Mathf.Clamp01(stamina.Wear / wearRange) : 0f;
+            // Dead zone: the first quarter of the wear range shows nothing, or a
+            // few seconds of boost would pin every body out of the batch for the
+            // rest of the match.
+            worn = Mathf.InverseLerp(0.25f, 1f, worn);
+
+            return Mathf.Clamp01(tired * 0.8f + worn * 0.35f);
         }
 
         /// <summary>

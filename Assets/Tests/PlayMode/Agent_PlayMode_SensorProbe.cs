@@ -38,7 +38,7 @@ namespace PoSoccer.Tests
             SceneManager.LoadScene("SCN_Training");
             yield return Frames(3);
 
-            var agents = Object.FindObjectsByType<Agent_Soccer>(FindObjectsSortMode.None);
+            var agents = Object.FindObjectsByType<Agent_Soccer>();
             Assert.Greater(agents.Length, 0, "No agents in SCN_Training");
 
             foreach (var agent in agents)

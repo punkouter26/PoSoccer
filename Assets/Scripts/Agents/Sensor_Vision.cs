@@ -5,23 +5,31 @@ using UnityEngine;
 namespace PoSoccer
 {
     /// <summary>
-    /// Specialized ray perception (v4, 2026-08-11).
+    /// Specialized ray perception (v5, 2026-10-10).
     ///
     /// One RayPerceptionSensor2D per object class so the policy never has to
-    /// disentangle "what" from "where". Each sensor is intentionally narrow
-    /// (1-2 rays) but together they cover the world fully without conflating
-    /// signals. Pattern lifted from "AI Learns to Play Soccer" (Hugging Face
-    /// ML-Agents unit, 2023) where splitting a single 4-tag sensor into
-    /// goal/own-goal pairs produced the breakthrough.
+    /// disentangle "what" from "where": one detectable tag AND one physics layer
+    /// per sensor (see <see cref="Agent_Layers"/> for why the layer matters).
     ///
     /// Budget (RayPerceptionSensor.OutputSize = (Tags+2) * (2*RPD+1)):
-    ///   Sensor_Ball        : 2 rays/dir  tag Ball   -> (1+2)*5 -> 15
-    ///   Sensor_Goal        : 1 ray /dir  tag Goal   -> (1+2)*3 ->  9
-    ///   Sensor_Opponents   : 2 rays/dir  tag Agent  -> (1+2)*5 -> 15
-    ///   Sensor_Walls       : 2 rays/dir  tag Wall   -> (1+2)*5 -> 15
-    ///   Ray total                                             -> 54
-    ///   Vector obs (BaseObservationSize 27 x 2 stacks)        -> 54
-    ///   Grand total model inputs                              -> 108
+    ///   Sensor_Ball      : 6 rays/dir  tag Ball   layer Ball          -> (1+2)*13 ->  39
+    ///   Sensor_Opponents : 6 rays/dir  tag Team*  layer Player(opp.)  -> (1+2)*13 ->  39
+    ///   Sensor_Walls     : 4 rays/dir  tag Wall   layer Pitch         -> (1+2)* 9 ->  27
+    ///   Ray total                                                                 -> 105
+    ///   Vector obs (BaseObservationSize 34 x 2 stacks)                            ->  68
+    ///   Grand total model inputs                                                  -> 173
+    ///
+    /// 2026-10-10: 188 -> 173. Sensor_Goal (2 rays/dir, a 60 degree forward wedge,
+    /// (1+2)*5 = 15 inputs) was REMOVED. Both goals are already in the vector
+    /// observation in the body frame, at any range and any heading
+    /// (Agent_Soccer.CollectObservations, "Goals (5)"), so the wedge re-reported a
+    /// subset of that through a coarser instrument. It was also not team-relative:
+    /// both goals carry the one "Goal" tag, so the same ray meant "attack here" or
+    /// "defend here" depending on which way the agent happened to face.
+    /// Same day: each sensor gained a single-layer RayLayerMask. That changes NO
+    /// tensor shape and changes what every ray means - the dangerous direction; see
+    /// Agent_Layers. The previous table on this page (15/9/15/15 = 54, 108 total) had
+    /// also been stale since the 2026-08-27 ray-count change.
     ///
     /// CORRECTED 2026-08-12. This block used to double every ray figure and
     /// claim 108 ray / 160 total, on the belief that
@@ -37,37 +45,24 @@ namespace PoSoccer
     /// Agent_EditMode_ObsContract, which fails the build rather than letting a
     /// mismatched brain degrade silently at eval time.
     ///
-    /// Sensor_Goal is team-relative through rewards: +Y points "forward" for
-    /// blue (toward Red's goal) and "backward" for red (toward Red's own goal),
-    /// so the policy learns that the same input means "opponent goal" for blue
-    /// and "own goal" for red via the reward signal.
-    ///
-    /// Awake wipes any pre-existing ray sensors on the GameObject first so a
-    /// scene-serialized 11-ray sensor cannot silently stack with the new
-    /// 4-sensor battery. DefaultExecutionOrder(-100) keeps this Awake ahead
-    /// of Agent sensor initialization, so the contract is set exactly once.
+    /// Awake reconfigures any pre-existing ray sensors on the GameObject in place
+    /// (and destroys a surplus) so a scene-serialized sensor cannot silently stack
+    /// with the battery. DefaultExecutionOrder(-100) keeps this Awake ahead of
+    /// Agent sensor initialization, so the contract is set exactly once.
     /// </summary>
     [DefaultExecutionOrder(-100)]
     [DisallowMultipleComponent]
     public sealed class Sensor_Vision : MonoBehaviour
     {
-        // Half-arc for the goal sensor. Narrow enough that the ray only fires
-        // when the agent is roughly facing the goal mouth; at any other angle
-        // the slot reads zero (the policy learns "ray hit = something good is
-        // over there" without having to triangulate which goal).
-        const float GoalHalfArcDegrees = 30f;
-
-        // Ray lengths. Goals can sit up to ~40 m across the pitch; walls live
-        // at the perimeter (max 30 m from centre on the 36x54 training pitch);
-        // ball and opponents are within 24 m 99% of the time. Lengths are
-        // generous on purpose - one of the v3 (300 deg / 24 m) findings was
-        // that short rays left agents blind in the far half.
-        const float GoalRayLength = 40f;
+        // Ray lengths. Walls live at the perimeter (max 30 m from centre on the
+        // 36x54 training pitch); ball and opponents are within 24 m 99% of the
+        // time. Lengths are generous on purpose - one of the v3 (300 deg / 24 m)
+        // findings was that short rays left agents blind in the far half.
         const float StandardRayLength = 24f;
         const float WallRayLength = 12f;
 
         /// <summary>
-        /// One entry per ray sensor. Declared as data rather than four inline
+        /// One entry per ray sensor. Declared as data rather than inline
         /// AddSensor calls so the observation contract is computable without
         /// entering play mode - Agent_EditMode_ObsContract sums
         /// <see cref="TotalRayObservationSize"/> off this table and compares it
@@ -78,15 +73,18 @@ namespace PoSoccer
         {
             public readonly string Name;
             public readonly string Tag;
+            /// <summary>The ONE physics layer this sensor casts against (Agent_Layers).</summary>
+            public readonly string Layer;
             public readonly int RaysPerDirection;
             public readonly float MaxRayDegrees;
             public readonly float RayLength;
 
-            public SensorSpec(string name, string tag, int raysPerDirection,
+            public SensorSpec(string name, string tag, string layer, int raysPerDirection,
                               float maxRayDegrees, float rayLength)
             {
                 Name = name;
                 Tag = tag;
+                Layer = layer;
                 RaysPerDirection = raysPerDirection;
                 MaxRayDegrees = maxRayDegrees;
                 RayLength = rayLength;
@@ -96,7 +94,7 @@ namespace PoSoccer
             public int ObservationSize => (1 + 2) * (2 * RaysPerDirection + 1);
         }
 
-        /// <summary>Placeholder replaced per-agent with the opposing team's tag.</summary>
+        /// <summary>Placeholder replaced per-agent with the opposing team's tag (and layer).</summary>
         internal const string OPPONENT_TAG_PLACEHOLDER = "__OPPONENT__";
 
         /// <summary>
@@ -116,15 +114,20 @@ namespace PoSoccer
         /// apart, so the gap is d*sin(15deg) = 0.259d and detection is guaranteed
         /// within ~1.93 units: parity with the old sensor, but now with full 360
         /// coverage AND friend/foe separation. Walls are large and continuous so
-        /// they need less angular precision; the goal sensor keeps its narrow
-        /// forward wedge by design.
+        /// they need less angular precision.
+        ///
+        /// LAYERS (2026-10-10). Each sensor casts against exactly one layer, so
+        /// nothing occludes another class's sensor: the ball is seen through
+        /// players, an opponent through a teammate. The wall sensor's layer (Pitch)
+        /// also holds the two goal TRIGGERS, and Physics2D queries hit triggers
+        /// (m_QueriesHitTriggers: 1), so a wall ray into a goal mouth stops on the
+        /// trigger and reads "hit, not a wall" at that distance.
         /// </summary>
         internal static readonly SensorSpec[] Battery =
         {
-            new SensorSpec("Sensor_Ball",      "Ball",                    6, 180f,               StandardRayLength),
-            new SensorSpec("Sensor_Goal",      "Goal",                    2, GoalHalfArcDegrees, GoalRayLength),
-            new SensorSpec("Sensor_Opponents", OPPONENT_TAG_PLACEHOLDER,  6, 180f,               StandardRayLength),
-            new SensorSpec("Sensor_Walls",     "Wall",                    4, 180f,               WallRayLength),
+            new SensorSpec("Sensor_Ball",      "Ball",                   Agent_Layers.BALL,        6, 180f, StandardRayLength),
+            new SensorSpec("Sensor_Opponents", OPPONENT_TAG_PLACEHOLDER, OPPONENT_TAG_PLACEHOLDER, 6, 180f, StandardRayLength),
+            new SensorSpec("Sensor_Walls",     "Wall",                   Agent_Layers.PITCH,       4, 180f, WallRayLength),
         };
 
         /// <summary>
@@ -155,7 +158,7 @@ namespace PoSoccer
             // AddComponent is immediate, so for one frame the GameObject carried
             // both sets - and Agent.OnEnable, which snapshots the sensor list,
             // runs inside that same frame. The agent therefore initialised with
-            // EIGHT ray sensors instead of four.
+            // twice the battery (eight ray sensors, when the battery was four).
             //
             // It only bites on cloned pitches. Sensor_Vision runs at -100, so the
             // authored pitch's agents have already added their four components by
@@ -196,16 +199,18 @@ namespace PoSoccer
                 }
                 return;
             }
-            string opponentTag = soccer != null
-                ? TeamTag(Agent_Soccer.Opponent(soccer.team))
-                : TeamTag(Agent_Soccer.Team.Red);
+            Agent_Soccer.Team opposing = soccer != null
+                ? Agent_Soccer.Opponent(soccer.team)
+                : Agent_Soccer.Team.Red;
+            string opponentTag = TeamTag(opposing);
+            string opponentLayer = Agent_Layers.TeamLayerName(opposing);
 
             for (int i = 0; i < Battery.Length; i++)
             {
                 var component = i < existing.Length && existing[i] != null
                     ? existing[i]
                     : gameObject.AddComponent<RayPerceptionSensorComponent2D>();
-                Configure(component, Battery[i], opponentTag);
+                Configure(component, Battery[i], opponentTag, opponentLayer);
             }
 
             // Surplus can only appear if the battery shrinks in code. DestroyImmediate
@@ -230,7 +235,8 @@ namespace PoSoccer
             return team == Agent_Soccer.Team.Blue ? "TeamBlue" : "TeamRed";
         }
 
-        static void Configure(RayPerceptionSensorComponent2D s, SensorSpec spec, string opponentTag)
+        static void Configure(RayPerceptionSensorComponent2D s, SensorSpec spec,
+                              string opponentTag, string opponentLayer)
         {
             s.SensorName = spec.Name;
             s.RaysPerDirection = spec.RaysPerDirection;
@@ -243,6 +249,11 @@ namespace PoSoccer
             {
                 spec.Tag == OPPONENT_TAG_PLACEHOLDER ? opponentTag : spec.Tag,
             };
+            // Exactly one layer, and never the caster's own: a ray starts at the
+            // agent's centre, inside its own collider, and a mask containing that
+            // collider's layer returns "hit myself at distance 0" for every ray.
+            s.RayLayerMask = Agent_Layers.RayMask(
+                spec.Layer == OPPONENT_TAG_PLACEHOLDER ? opponentLayer : spec.Layer);
         }
     }
 }

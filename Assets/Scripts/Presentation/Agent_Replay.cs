@@ -66,7 +66,7 @@ namespace PoSoccer
         void Start()
         {
             _env = GetComponent<Agent_EnvController>();
-            _hud = FindFirstObjectByType<Agent_HUD>();
+            _hud = FindAnyObjectByType<Agent_HUD>();
             _camera = Camera.main != null ? Camera.main.GetComponent<Agent_CameraFollow>() : null;
 
             if (!_enableReplay || !Agent_Presentation.IsMatchScene(_hud))

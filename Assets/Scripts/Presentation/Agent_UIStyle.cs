@@ -33,9 +33,24 @@ namespace PoSoccer
         public static readonly Color StaminaLow = new(0.9f, 0.3f, 0.2f);
         public static readonly Color StaminaHigh = new(0.3f, 0.9f, 0.4f);
 
-        // Rhythm (reference px)
+        // Rhythm (reference px).
+        //
+        // THESE MIRROR TOKENS IN PoSoccerTheme.uss AND MUST EQUAL THEM:
+        //   Space1..Space4 = --space-1..--space-4, Pad = --space-5,
+        //   RadiusS / RadiusM / RadiusL = --radius-s / --radius-m / --radius-l.
+        // USS custom properties cannot be read from C#, so an inline style that
+        // needs a step of the scale takes it from here. Static styling still
+        // belongs in the stylesheet; these exist for the handful of elements whose
+        // style is assigned in code because their SHAPE is data.
+        public const int Space1 = 4;
+        public const int Space2 = 8;
+        public const int Space3 = 12;
+        public const int Space4 = 16;
         public const int Pad = 24;
-        public const int Radius = 16;
+        public const int RadiusS = 8;
+        public const int RadiusM = 16;
+        public const int RadiusL = 24;
+        public const int Radius = RadiusM;
         // These MUST match --font-xs .. --font-xl in Resources/PoSoccerTheme.uss.
         // Two sources of truth for one scale is how half the UI ends up a size
         // nobody chose. See the USS for the sp arithmetic behind these numbers.
@@ -150,15 +165,54 @@ namespace PoSoccer
             e.style.paddingRight = pad;
         }
 
+        /// <summary>
+        /// Test seam: when set, stands in for <see cref="Screen.safeArea"/>.
+        ///
+        /// Screen.safeArea cannot be faked in the editor - it reports the whole Game
+        /// View - so without this every safe-area code path is only ever exercised
+        /// with a zero inset, which is the one input that cannot expose a mistake.
+        /// Agent_PlayMode_Portrait sets a notch-sized inset, loads each screen and
+        /// measures the resolved layout against it. In SCREEN pixels, y-up, exactly
+        /// like the property it replaces. Null (the default) reads the device.
+        /// </summary>
+        public static Rect? SafeAreaOverride { get; set; }
+
+        /// <summary>The safe rectangle in SCREEN pixels: the device's, or the test seam's.</summary>
+        public static Rect CurrentSafeArea => SafeAreaOverride ?? Screen.safeArea;
+
+        /// <summary>
+        /// Safe-area insets as (top, bottom, left, right), in the same units as the
+        /// inputs. Pure, so the conversion can be tested at aspect ratios the editor
+        /// cannot be put into.
+        ///
+        /// Screen.safeArea is y-UP (yMin is the bottom edge) while UI Toolkit's
+        /// padding is named by edge, which is why top is `height - yMax`.
+        /// </summary>
+        public static Vector4 SafeAreaInsets(Rect safe, float screenWidth, float screenHeight)
+        {
+            return new Vector4(
+                Mathf.Max(0f, screenHeight - safe.yMax),
+                Mathf.Max(0f, safe.yMin),
+                Mathf.Max(0f, safe.xMin),
+                Mathf.Max(0f, screenWidth - safe.xMax));
+        }
+
+        /// <summary>
+        /// The same insets converted to PANEL units for a match-width panel:
+        /// screen pixels divided by (screenWidth / panelWidth). See
+        /// <see cref="PanelScale"/> for why the two spaces differ.
+        /// </summary>
+        public static Vector4 SafeAreaInsetsInPanelUnits(
+            Rect safe, float screenWidth, float screenHeight, float panelWidth)
+        {
+            float scale = panelWidth > 1f && screenWidth > 1f ? screenWidth / panelWidth : 1f;
+            return SafeAreaInsets(safe, screenWidth, screenHeight) / scale;
+        }
+
         /// <summary>Safe-area insets as (top, bottom, left, right) in SCREEN pixels.</summary>
         static Vector4 SafeAreaPadding()
         {
-            Rect safe = Screen.safeArea;
-            return new Vector4(
-                Screen.height - safe.yMax,
-                safe.yMin,
-                safe.xMin,
-                Screen.width - safe.xMax);
+            return SafeAreaInsets(CurrentSafeArea, Screen.width, Screen.height);
         }
 
         /// <summary>
@@ -266,6 +320,23 @@ namespace PoSoccer
             b.AddToClassList("btn");
             return b;
         }
+
+        /// <summary>
+        /// A .btn that shows a setting's CURRENT state and carries the shared
+        /// `is-on` fill while that state is on. Used by the HUD's broadcast toggle,
+        /// the health panel's overlay switches and the settings sheet, so "this is
+        /// switched on" looks the same in all three.
+        /// </summary>
+        public static Button ToggleButton(string text, bool on, System.Action onClick)
+        {
+            var button = new Button(onClick) { text = text };
+            button.AddToClassList("btn");
+            button.EnableInClassList(ON, on);
+            return button;
+        }
+
+        /// <summary>USS class marking a toggle or tab as the selected one.</summary>
+        public const string ON = "is-on";
 
         /// <summary>
         /// The four output-level sliders, bound to <see cref="Agent_Audio"/>'s

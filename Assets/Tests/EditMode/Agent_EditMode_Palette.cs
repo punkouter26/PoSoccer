@@ -147,7 +147,7 @@ namespace PoSoccer.Tests
             }
 
             // The new properties, checked by name so a partial edit is caught.
-            foreach (string property in new[] { "_SpriteRect", "_KitMode", "_KitColor", "_KitScale" })
+            foreach (string property in new[] { "_SpriteRect", "_KitMode", "_KitColor", "_KitScale", "_Fatigue" })
             {
                 Assert.IsTrue(first.Contains(property),
                     $"{property} is missing from the constant buffer.");

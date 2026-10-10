@@ -61,6 +61,9 @@ namespace PoSoccer.Tests
             "Agent_Replay", "Agent_MatchFlow", "Agent_Commentary", "Agent_Crowd", "Agent_Hitstop",
             "Agent_WinProbability", "Agent_Director", "Agent_MatchStats", "Agent_Overtime",
             "Agent_BrainCam", "Agent_Dossier", "Agent_ScreenFX", "Agent_Haptics", "Agent_Quality",
+            // 2026-10-10: one steers the single camera and clock, the other writes one
+            // file per match. Six of either is the same mistake as six directors.
+            "Agent_SpectatorInput", "Agent_MatchLog",
         };
 
         static System.Type Resolve(string typeName)

@@ -82,7 +82,7 @@ namespace PoSoccer
         void Start()
         {
             _env = GetComponent<Agent_EnvController>();
-            _hud = FindFirstObjectByType<Agent_HUD>();
+            _hud = FindAnyObjectByType<Agent_HUD>();
 
             if (!Agent_Presentation.IsMatchScene(_hud))
             {
@@ -104,7 +104,7 @@ namespace PoSoccer
             }
 
             _hud.DeferEndPanel = true;
-            _hud.AddEndPanelSection(BuildManOfTheMatchCard);
+            _hud.AddEndPanelSection(BuildManOfTheMatchCard, Agent_HUD.EndTab.Summary);
 
             _env.EpisodeEnded += OnEpisodeEnded;
             _env.BallTouched += OnBallTouched;
@@ -373,9 +373,9 @@ namespace PoSoccer
             var card = new VisualElement();
             card.style.alignItems = Align.Center;
             card.style.backgroundColor = Agent_UIStyle.PanelBg;
-            card.style.marginBottom = 24;
-            Agent_UIStyle.Round(card);
-            Agent_UIStyle.PadAll(card, Agent_UIStyle.Pad + 8);
+            card.style.marginBottom = Agent_UIStyle.Pad;
+            Agent_UIStyle.Round(card, Agent_UIStyle.RadiusM);
+            Agent_UIStyle.PadAll(card, Agent_UIStyle.Pad + Agent_UIStyle.Space2);
 
             var heading = new Label("MAN OF THE MATCH");
             heading.style.fontSize = Agent_UIStyle.FontS;
@@ -385,14 +385,14 @@ namespace PoSoccer
 
             var badge = new Label(profile.Initial.ToString());
             badge.style.width = 110; badge.style.height = 110;
-            badge.style.marginTop = 12; badge.style.marginBottom = 12;
+            badge.style.marginTop = Agent_UIStyle.Space3; badge.style.marginBottom = Agent_UIStyle.Space3;
             badge.style.backgroundColor = profile.playerColor;
             badge.style.unityTextAlign = TextAnchor.MiddleCenter;
             badge.style.fontSize = Agent_UIStyle.FontL;
             badge.style.unityFontStyleAndWeight = FontStyle.Bold;
             badge.style.color = Color.black;
-            Agent_UIStyle.Round(badge, 16);
-            badge.style.borderBottomWidth = 8;
+            Agent_UIStyle.Round(badge, Agent_UIStyle.RadiusM);
+            badge.style.borderBottomWidth = Agent_UIStyle.Space2;
             badge.style.borderBottomColor = best.Agent.team == Agent_Soccer.Team.Blue
                 ? Agent_UIStyle.BlueTeam : Agent_UIStyle.RedTeam;
             card.Add(badge);
@@ -406,7 +406,7 @@ namespace PoSoccer
             var line = new Label($"{best.Goals} G   ·   {best.Assists} A   ·   {best.Touches} touches");
             line.style.fontSize = Agent_UIStyle.FontS;
             line.style.color = Agent_UIStyle.TextMuted;
-            line.style.marginTop = 6;
+            line.style.marginTop = Agent_UIStyle.Space2;
             card.Add(line);
 
             return card;

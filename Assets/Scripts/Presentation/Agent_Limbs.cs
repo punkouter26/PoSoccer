@@ -76,7 +76,7 @@ namespace PoSoccer
 
         void Start()
         {
-            var hud = FindFirstObjectByType<Agent_HUD>();
+            var hud = FindAnyObjectByType<Agent_HUD>();
             if (!_enableLimbs || !Agent_Presentation.IsVisualScene(hud))
             {
                 enabled = false;
