@@ -22,6 +22,10 @@ Earth gravity, real joint ranges and size-scaled mass). **All twelve were alread
 present in this section verbatim** — the list is reproduced here only so the
 `UNITY_AGENT` name resolves to it. Nothing below changed as a result.
 
+**Added 2026-10-10 — `UU_AGENT` lives in the root `AGENTS.md`.** Read it alongside this
+section. PoSoccer uses `mlagents`, so its own override switches off every MuJoCo / Newton /
+Isaac Lab line there.
+
 - Scene setup goes through **Unity MCP tools only** — never editor scripts for scene construction. (Building things *at runtime* in gameplay code — lights, UI, particles — is fine and used heavily.)
 - Script prefixes `Agent_` / `Sensor_` / `Reward_` (`Agent_` is the blanket project prefix, covering non-agents like `Agent_UIStyle`); scenes `SCN_`; folder depth ≤2 under `Assets/`; agent assets in `<Name>_v<NN>` folders.
 - UI Toolkit only (runtime, code-built, shared `PanelSettings` at ScaleWithScreenSize **1080×1920** (9:16) match-width; style constants in `Agent_UIStyle`). Fixed timestep 0.01s, portrait **locked** (`defaultScreenOrientation: 0`, landscape autorotate off).
