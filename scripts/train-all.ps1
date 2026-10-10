@@ -1,4 +1,4 @@
-﻿# Trains every personality brain in sequence against the scripted bot.
+# Trains every personality brain in sequence against the scripted bot.
 #
 # POSOCCER_PROFILE is read in Agent_EnvController.Awake and swaps both agents
 # onto that profile (and its behavior name) before the brain contract is frozen,
@@ -16,9 +16,9 @@ param(
     [string]$EnvPath = "Builds\PoSoccer\PoSoccer.exe",
     [int]$NumEnvs = 4,
     [Parameter(HelpMessage = "Run-id suffix: soccer_<Tag>_<profile>.")]
-    [string]$Tag = "v3",
+    [string]$Tag = "p30team",
     [Parameter(HelpMessage = "Selects config\TRAIN_<NAME>_<ConfigTag>.yaml.")]
-    [string]$ConfigTag = "v3",
+    [string]$ConfigTag = "p30team",
     [Parameter(HelpMessage = "Leave both teams on the trainer (symmetric self-play) instead of facing the bot.")]
     [switch]$SelfPlay,
     [Parameter(HelpMessage = "Train against a build older than the runtime sources (normally fatal).")]

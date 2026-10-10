@@ -70,6 +70,15 @@ public static class Agent_BuildAabCommand
         string keyAlias = Environment.GetEnvironmentVariable("POSOCCER_KEYALIAS");
         string keyAliasPass = Environment.GetEnvironmentVariable("POSOCCER_KEYALIAS_PASS");
 
+        // One signing source for both AAB entry points. Unset variables fall back to
+        // what the menu builder uses (the release folder outside the repo), so a CLI
+        // build no longer needs four variables the menu build never asked for. The
+        // environment still wins, and nothing here can reach the debug keystore.
+        if (string.IsNullOrEmpty(keystore)) { keystore = Editor_BuildAndroidAAB.KEYSTORE_PATH; }
+        if (string.IsNullOrEmpty(keyAlias)) { keyAlias = Editor_BuildAndroidAAB.KEYALIAS; }
+        if (string.IsNullOrEmpty(keystorePass)) { keystorePass = Editor_BuildAndroidAAB.ResolveKeystorePassword(); }
+        if (string.IsNullOrEmpty(keyAliasPass)) { keyAliasPass = keystorePass; }
+
         if (string.IsNullOrEmpty(keystore) || string.IsNullOrEmpty(keystorePass) ||
             string.IsNullOrEmpty(keyAlias) || string.IsNullOrEmpty(keyAliasPass))
         {

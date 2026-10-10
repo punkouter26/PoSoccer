@@ -7,7 +7,7 @@ Status as of 2026-08-04. Companion to `store-submission.md` (full checklist) and
 
 | Item | State | Notes |
 |---|---|---|
-| Output format | **AAB** | `BuildAabCommand.Build`; Play rejects APK for new apps |
+| Output format | **AAB** | `Agent_BuildAabCommand.Build`; Play rejects APK for new apps |
 | Package name | `com.punkoutersoftware.posoccer` | **Permanent after first upload** |
 | `targetSdkVersion` | 36, pinned | Play's floor is 35 |
 | `minSdkVersion` | 26 | Android 8.0+ |
@@ -45,7 +45,7 @@ mirror it into `LauncherManifest.xml` — those two values are duplicated there.
 ### 1. Upload keystore — hard blocker
 
 Every build so far is signed with Unity's debug keystore, which Play rejects.
-`BuildAabCommand` deliberately refuses to fall back to it.
+`Agent_BuildAabCommand` deliberately refuses to fall back to it.
 
 Creating the keystore means choosing and storing passwords, so it is yours to do:
 
@@ -57,7 +57,7 @@ Store it **outside the repo** (it is not gitignored anywhere useful — do not c
 it). Back up the file and both passwords somewhere durable: lose them and you can
 never update the app under the same listing.
 
-Then set these four environment variables before building — `BuildAabCommand`
+Then set these four environment variables before building — `Agent_BuildAabCommand`
 reads them so no password ever enters tracked config:
 
 ```
@@ -119,7 +119,7 @@ All human-authored, none of it in the repo:
 Once the keystore env vars are set:
 
 ```powershell
-& "C:\Program Files\Unity\Hub\Editor\6000.6.0f1\Editor\Unity.exe" -quit -batchmode -nographics -projectPath . -executeMethod BuildAabCommand.Build -logFile Logs\aab-build.log
+& "C:\Program Files\Unity\Hub\Editor\6000.6.0f1\Editor\Unity.exe" -quit -batchmode -nographics -projectPath . -executeMethod Agent_BuildAabCommand.Build -logFile Logs\aab-build.log
 ```
 
 The editor must be **closed** for a batchmode build. Output lands in `Builds/`.

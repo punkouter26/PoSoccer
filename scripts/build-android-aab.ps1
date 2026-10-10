@@ -110,7 +110,7 @@ $proc = Start-Process -FilePath $UnityExe `
 if ($proc.ExitCode -ne 0) {
     Write-Host "ERROR: Unity exited with code $($proc.ExitCode)" -ForegroundColor Red
     switch ($proc.ExitCode) {
-        2 { Write-Host "       A scene listed in Agent_BuildAabCommand.Scenes is missing." -ForegroundColor Yellow }
+        2 { Write-Host "       A scene listed in Editor_BuildAndroidAAB.SHIP_SCENES is missing." -ForegroundColor Yellow }
         3 { Write-Host "       Signing configuration was rejected inside Unity." -ForegroundColor Yellow }
     }
     Write-Host "       Last 60 lines of ${LogPath}:" -ForegroundColor Yellow

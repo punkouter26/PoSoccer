@@ -1,0 +1,198 @@
+# MATT personality on the p30team recipe: identical to TRAIN_STANDARD_p30team.yaml apart from the
+# behavior name. The personality itself comes from Reward_MATT.asset via POSOCCER_PROFILE.
+#
+# p30 - TEAM TRAINING on the 173-input contract. p29team was staged and never run;
+# this is p29team plus the 2026-10-10 observation and layer changes and one new term.
+#
+# Launch (the -Squad flag is what makes this a team run - the YAML alone cannot):
+#   .\scripts\tensorboard.ps1
+#   .\scripts\train-phase1.ps1 -RunId soccer_p30team_matt -Config TRAIN_MATT_p30team.yaml `
+#       -Squad "1,2" -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
+#
+# REQUIRES A REBUILT PLAYER, built AFTER the editor has been restarted. Everything
+# below is read by code or project settings changed on 2026-10-10; an older build
+# trains a different environment without a warning.
+# First things to check on TensorBoard: PoSoccer/blue_squad must read ~1.5 for "1,2"
+# (1.0 = the squad never reached the player - kill the run), and Reward/turn_churn
+# must be non-zero and negative (exactly 0 = the build predates the term).
+#
+# ============================================================================
+# WHAT CHANGED vs p29team (2026-10-10)
+# ============================================================================
+#  A. MODEL INPUTS 188 -> 173. The goal ray sensor is gone (2 rays/dir, (1+2)*5 = 15
+#     inputs): both goals are already in the vector observation, body frame, at any
+#     range. Ray inputs are now ball 39 + opponents 39 + walls 27 = 105; vector is
+#     unchanged at 34 x 2 = 68. Pinned by Agent_EditMode_ObsContract.
+#  B. PHYSICS LAYERS. Players, ball and pitch geometry left Default for PlayerBlue /
+#     PlayerRed, Ball and Pitch, and each ray sensor casts against exactly one layer
+#     that is never its caster's own (Agent_Layers). No tensor shape changed and the
+#     MEANING of every ray did: before this, a ray started inside the caster's own
+#     collider with that collider in its mask. Run Agent_PlayMode_RayLayers on the
+#     editor before building - it is the measurement that the rays now see the
+#     ball, the opponent and the walls, and it has never been run.
+#  C. turn_churn 0.0002 (new reward term, see environment_parameters).
+# A and B are one observation change and cannot be separated; C is a second lever.
+# The ablation for C is this file with turn_churn: 0.
+#
+# ============================================================================
+# WHY THIS IS NOT A REPEAT OF THE DISPROVEN MA-POCA RUNS (p10, p15, p16)
+# ============================================================================
+# SCN_Training holds one agent per side, so EVERY run in this project's history was
+# 1v1. The teammate block (4 of 29 vector obs) and the second opponent slot (4 more)
+# have been zero on every step any brain has ever seen, while the game the menu
+# launches is 2v2. The POCA runs on the disproven list used a group of ONE - POCA's
+# centralised critic had nobody to assign credit between, so it reduced to PPO with
+# a different value head. They were also all BEFORE the 2026-08-28 body-frame fix,
+# on a policy that could not reach the ball. Credit assignment between teammates has
+# never been tested here.
+#
+# ============================================================================
+# WHAT CHANGES vs p22 (the best graded config, 26.6% at n=350)
+# ============================================================================
+#  1. SQUAD "1,2": half the 16-pitch grid plays 2v2, half stays 1v1. The 1v1 half
+#     keeps the brain on the benchmark it is graded at; the 2v2 half is new.
+#     The brain OBSERVES its role (2026-09-28: +5 vector floats) and the ray battery
+#     changed (2026-10-10, above): 173 inputs, a contract no .onnx has ever been
+#     trained on, so NO earlier checkpoint can warm-start this run: --initialize-from
+#     would hit a shape mismatch on the input layer and ml-agents re-initialises the
+#     whole module. Train from scratch. p22 reached the full-strength lesson from
+#     scratch in 10M, so that is a known-feasible budget.
+#  2. trainer_type poca: goals now pay the scoring side a SHARED group reward (+1 /
+#     -1, Agent_EnvController.OnGoalScored) on top of the individual table, and
+#     POCA's critic assigns it between teammates. Hyperparameters are p22's.
+#  3. team_roles 1: the ball-approach reward is paid toward each player's ROLE
+#     target (Agent_TeamRoles): the presser toward the ball; the goalie (squads of
+#     3+), defenders and support attackers toward their posts, at the same
+#     ballProximityScale. These are the posts the scripted bots hold from
+#     bot_strength 0.5 up, so the learner is shaped toward the shape of the team it
+#     plays. Aimed at the failure every squad policy shows first: everyone chasing
+#     one ball. Budget is redirected, not added; 1v1 pitches are bit-identical.
+#     At -Squad "1,2" the roles are attacker + defender - a goalie needs 3+.
+#  4. team_spacing 0.00005: per-step charge for standing within 4 m of a teammate.
+#     Ceiling = 0.00005 x 9000 steps = -0.45 for a pair glued together all episode,
+#     under half of conceding (-1.0), so it cannot outrank the result. 0 on 1v1.
+#
+# That is FOUR levers (plus A-C above), which breaks this project's single-variable
+# rule on purpose: none of them means anything without (1), and (2) without a
+# teammate is exactly the run already on the disproven list. To attribute the result
+# afterwards, the ablation is this same file with team_roles: 0 and team_spacing: 0.
+#
+# ============================================================================
+# HOW TO JUDGE IT - mean reward is not it (see CLAUDE.md, METHOD)
+# ============================================================================
+#  - The curriculum's `reward` measure reads INDIVIDUAL rewards only; POCA's group
+#    reward is excluded (ml-agents rl_trainer.reward_buffer). In 2v2 the non-scoring
+#    teammate earns assist 0.3 / baseline 0.2 instead of goalScorer 1.2, so the same
+#    win rate produces a LOWER mean than in 1v1 and promotion will be slower than
+#    p22's. Deliberately left at p22's 0.21: a ladder that promotes on noise is the
+#    p5 failure. If the run sits in Lesson0 past ~4M steps, lower it and say so.
+#  - Watch PoSoccer/blue_teammate_gap_m: rising = the pair is spreading out,
+#    stuck near 1-2 m = swarming. Reward/spacing and Reward/proximity show what the
+#    two team terms actually paid; Reward/turn_churn what the churn term charged.
+#  - GRADE TWICE, never mix the numbers:
+#      .\scripts\evaluate.ps1 -RunId <run> -Episodes 350              (1v1 benchmark)
+#      .\scripts\evaluate.ps1 -RunId <run> -Episodes 350 -Squad 2     (2v2, new baseline)
+#    The 1v1 grade is comparable to p22's 26.6%. The 2v2 grade has NO baseline yet,
+#    and no earlier brain can run on the 173-input contract to provide one: grade
+#    bot-vs-bot parity with -Baseline -Squad 2 so the team number has something to beat.
+#  - Run Agent_PlayMode_MovementProbe before believing any of it. PROBE-D's heading
+#    churn (174 deg for p21, 83 for the bot) is the number turn_churn is aimed at;
+#    the reward curve cannot tell you whether it moved.
+behaviors:
+  MATT:
+    trainer_type: poca
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      # p22's width. NOT for warm-starting: no checkpoint on disk matches the
+      # 173-input contract, so this run starts from scratch.
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 10000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+    # p22's value. p28 is the pending throughput A/B for `threaded: true`; not mixed in here.
+    threaded: false
+
+environment_parameters:
+  # Fixed at the evaluation value - no train/eval mismatch.
+  goal_width: 6.0
+
+  # Team shaping. Both are read by Agent_EnvController.ResetPitch and default to 0
+  # (off) when absent, which is why no earlier config is affected.
+  team_roles: 1.0
+  team_spacing: 0.00005
+
+  # Per-decision charge on |change in the raw turn action|: the movement probe measured
+  # 174 deg of heading churn in a 4 s chase vs the bot's 83. Ceiling 0.0002 x 2 x 1125 = -0.45/episode.
+  turn_churn: 0.0002
+
+  # Unchanged from p22. From Lesson2_Half (0.5) up the scripted bots also play
+  # support positions, so the 2v2 opponent starts playing as a team there.
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: MATT
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: MATT
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.35
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: MATT
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: MATT
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.65
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: MATT
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  num_envs: 4
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

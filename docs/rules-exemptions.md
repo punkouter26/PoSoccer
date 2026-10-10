@@ -232,3 +232,29 @@ do-not-break-callers reason, which is the one genuine inconsistency remaining.
 **Cost.** Two naming schemes in one folder, nine files. If the CLI contracts are
 ever revised, rename the whole folder to `Agent_` in the same change and update
 `scripts/*.ps1`, `Tools/play_publish.py` and CLAUDE.md's headless command together.
+
+## Runtime-installed presentation components (AGENTS.md "Scene Construction") — EXEMPT (2026-10-10)
+
+**Rule.** `AGENTS.md` (UU_AGENT): "Generate prefabs/objects via MCP or Unity CLI rather
+than runtime instantiation to enable manual transform adjustments."
+
+**Deviation.** `Agent_Presentation.Install` adds the global spectator components
+(`Agent_Replay`, `Agent_Hitstop`, `Agent_Director`, `Agent_WinProbability`,
+`Agent_MatchStats`, `Agent_Overtime` and their siblings) with `AddComponent` at runtime,
+and the HUD, menu and overlays are built in code.
+
+**Why it stays.** `SCN_Exhibition` hosts two modes and `Agent_Gallery` clones the pitch
+root. Those components own global state - the clock, the camera, the scoreboard, the pitch
+geometry - and the gallery is spared six copies of each only because the gallery installer
+does not add them. Serialize one into the scene and every clone gets it. The same gate
+keeps all of them out of `SCN_Training`, where `Agent_Overtime` alone would inflate the
+benchmark's win rate with nothing in an eval JSON able to show it.
+
+**What does follow the rule.** The nine per-pitch drawing components
+(`Agent_Surfaces` ... `Agent_ShotTracer`) are serialized on the pitch root in
+`SCN_Exhibition` and tunable in the Inspector. Scene objects themselves are still authored
+through MCP only. `Agent_EditMode_SceneComposition` pins which side of the line each
+component is on.
+
+**Cost.** The global components' tuning fields are reachable in the Inspector only while
+a match is running.

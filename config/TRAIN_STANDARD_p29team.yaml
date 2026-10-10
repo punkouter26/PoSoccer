@@ -86,7 +86,8 @@ behaviors:
       num_epoch: 3
     network_settings:
       normalize: true
-      # Kept at 256 so a p22/p25 checkpoint can warm-start the policy.
+      # p22's width. NOT for warm-starting: no checkpoint on disk matches the current
+      # input contract (see item 1 in the header), so every run starts from scratch.
       hidden_units: 256
       num_layers: 2
     reward_signals:

@@ -1,13 +1,13 @@
 # Phase 1 PPO bootstrap training vs the heuristic bot.
 # In-editor:  .\scripts\train-phase1.ps1 -RunId soccer_p1_00      (press Play when prompted)
 # Headless:   .\scripts\train-phase1.ps1 -RunId soccer_p1_00 -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
-# Team (2v2): .\scripts\train-phase1.ps1 -RunId soccer_p29team_standard -Config TRAIN_STANDARD_p29team.yaml -Squad "1,2" -EnvPath ...
+# Team (2v2): .\scripts\train-phase1.ps1 -RunId soccer_p30team_standard -Config TRAIN_STANDARD_p30team.yaml -Squad "1,2" -EnvPath ...
 param(
     [string]$RunId = "soccer_p1_00",
     [string]$EnvPath = "",
     [int]$NumEnvs = 4,
     [int]$BasePort = 5005,
-    [string]$Config = "TRAIN_STANDARD_p22.yaml",
+    [string]$Config = "TRAIN_STANDARD_p30team.yaml",
     [string]$InitFrom = "",
     [switch]$Resume,
     [switch]$Force,
