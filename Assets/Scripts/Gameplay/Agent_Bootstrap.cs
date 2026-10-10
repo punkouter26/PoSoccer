@@ -67,7 +67,13 @@ namespace PoSoccer
             // have to switch scenes to reach is a diagnostic nobody uses. It costs
             // nothing while hidden: no profiler recorders are allocated until the
             // overlay is opened, and Update early-outs.
-            if (GetComponent<Agent_Telemetry>() == null) gameObject.AddComponent<Agent_Telemetry>();
+            // Scene-wide check, not GetComponent: SCN_Menu and SCN_Exhibition each
+            // serialize a "Telemetry" object, and a second instance here meant two
+            // panels answering the same key and stacking on top of each other.
+            if (FindAnyObjectByType<Agent_Telemetry>(FindObjectsInactive.Include) == null)
+            {
+                gameObject.AddComponent<Agent_Telemetry>();
+            }
 
             var hud = FindAnyObjectByType<Agent_HUD>();
             var env = FindAnyObjectByType<Agent_EnvController>();

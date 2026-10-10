@@ -663,6 +663,15 @@ namespace PoSoccer
                 if (drawState == STATE_BAD) problems++;
 
                 _builder.Clear();
+                if (draws <= 0d)
+                {
+                    // A rendered frame always has at least one draw call. Zero means
+                    // the counter did not report (seen in an unfocused editor), and a
+                    // green "0" would read as a measurement.
+                    Set(_drawRow, "not reported this frame", STATE_WARN);
+                }
+                else
+                {
                 _builder.Append(draws.ToString("0"));
                 if (_batchIndex >= 0)
                 {
@@ -671,6 +680,7 @@ namespace PoSoccer
                 }
                 _builder.Append("  (budget ").Append(drawBudget.ToString("0")).Append(')');
                 Set(_drawRow, _builder.ToString(), drawState);
+                }
             }
 
             // The CSV's breach counter keeps its original meaning: a refresh in
