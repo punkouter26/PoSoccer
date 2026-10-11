@@ -517,7 +517,10 @@ namespace PoSoccer
                 _roleScratch[slot] = agent;
             }
 
-            int defenders = Mathf.Min(Agent_TeamRoles.DefenderCount(size), others);
+            // Possession is "we touched it last": it only flips on a touch, so a pair does
+            // not flicker between shapes while the ball is merely near one of them.
+            bool inPossession = _lastToucher != null && _lastToucher.team == team;
+            int defenders = Mathf.Min(Agent_TeamRoles.DefenderCount(size, inPossession), others);
 
             // The deepest players are the defenders, but WHICH defender post each takes
             // goes by where they already stand across the goal-ball line. Numbering them by
@@ -759,12 +762,94 @@ namespace PoSoccer
 
         public void NotifyBallTouch(Agent_Soccer toucher)
         {
+            Vector2 ballPos = ball != null ? ball.position : (Vector2)transform.position;
             if (_lastToucher != toucher)
             {
+                ScorePass(_lastToucher, toucher, ballPos);
                 _previousToucher = _lastToucher;
                 _lastToucher = toucher;
                 BallTouched?.Invoke(toucher);
             }
+            // Every touch, not only a change of toucher: a pass is measured from where
+            // the passer LAST played the ball, not from where it first collected it.
+            _lastTouchBallPos = ballPos;
+        }
+
+        // ── Passing (2026-10-11) ────────────────────────────────────────────
+        // A completed pass is the ball going from one player to a TEAMMATE, with no
+        // opponent touching it in between, over at least PASS_MIN_DISTANCE. It is counted
+        // always (TensorBoard, eval JSON) and paid only when a trainer config names
+        // `pass_reward`, and then only for the ground it gains toward goal beyond what the
+        // possession had already reached - see Agent_TeamRoles.PassProgress.
+
+        /// <summary>Per-pass reward at full progress, from the `pass_reward` environment parameter. 0 = off.</summary>
+        public float CurrentPassReward { get; private set; }
+
+        /// <summary>Most one side can be paid for passing in a single episode, as a multiple of the per-pass reward.</summary>
+        internal const float PASS_REWARD_EPISODE_CAP = 4f;
+
+        Vector2 _lastTouchBallPos;
+        readonly float[] _passFrontier = new float[2];
+        readonly int[] _passCount = new int[2];
+        readonly float[] _passProgress = new float[2];
+        readonly float[] _passPaid = new float[2];
+
+        /// <summary>Completed passes by <paramref name="team"/> so far this episode.</summary>
+        public int PassesThisEpisode(Agent_Soccer.Team team) => _passCount[(int)team];
+
+        /// <summary>Metres gained toward goal by <paramref name="team"/>'s passes this episode.</summary>
+        public float PassProgressThisEpisode(Agent_Soccer.Team team) => _passProgress[(int)team];
+
+        /// <summary>True when the last two touches were two different players of <paramref name="team"/>: a goal now would be an assisted one.</summary>
+        public bool LastTouchWasFromTeammate(Agent_Soccer.Team team) =>
+            _lastToucher != null && _previousToucher != null && _lastToucher != _previousToucher
+            && _lastToucher.team == team && _previousToucher.team == team;
+
+        void ScorePass(Agent_Soccer from, Agent_Soccer to, Vector2 ballPos)
+        {
+            if (to == null) return;
+            int side = (int)to.team;
+            float goalDist = (GetGoalPosition(Agent_Soccer.Opponent(to.team)) - ballPos).magnitude;
+
+            // First touch of a possession (kickoff, or won off the other side): this is
+            // where the possession starts, so this is the ground it has to beat.
+            if (from == null || from.team != to.team)
+            {
+                _passFrontier[side] = goalDist;
+                return;
+            }
+
+            if ((ballPos - _lastTouchBallPos).magnitude < Agent_TeamRoles.PASS_MIN_DISTANCE) return;
+            _passCount[side]++;
+
+            float fromGoalDist = (GetGoalPosition(Agent_Soccer.Opponent(to.team)) - _lastTouchBallPos).magnitude;
+            float progress = Agent_TeamRoles.PassProgress(fromGoalDist, goalDist, _passFrontier[side]);
+            if (progress <= 0f) return;
+
+            _passFrontier[side] = goalDist;
+            _passProgress[side] += progress;
+
+            if (CurrentPassReward <= 0f) return;
+            float room = CurrentPassReward * PASS_REWARD_EPISODE_CAP - _passPaid[side];
+            float pay = Mathf.Min(room,
+                CurrentPassReward * Mathf.Clamp01(progress / Agent_TeamRoles.PASS_FULL_PROGRESS));
+            if (pay <= 0f) return;
+            _passPaid[side] += pay;
+            // Passer and receiver alike: a pass nobody runs onto is not a pass.
+            from.AddReward(pay);
+            to.AddReward(pay);
+        }
+
+        void ResetPassTracking()
+        {
+            for (int side = 0; side < 2; side++)
+            {
+                _passFrontier[side] = 0f;
+                _passCount[side] = 0;
+                _passProgress[side] = 0f;
+                _passPaid[side] = 0f;
+            }
+            _lastTouchBallPos = ball != null ? ball.position : (Vector2)transform.position;
         }
 
         /// <summary>Called by Reward_GoalTrigger when the ball fully enters a net.</summary>
@@ -1001,6 +1086,16 @@ namespace PoSoccer
             // A "1,2" pattern should read ~1.5 here.
             stats.Add("PoSoccer/blue_squad", TeamSize(Agent_Soccer.Team.Blue));
 
+            // Team play, 2v2 pitches only (a lone player has nobody to pass to, and
+            // mixing its zeros in would halve every figure on a "1,2" run).
+            if (TeamSize(Agent_Soccer.Team.Blue) > 1)
+            {
+                int blue = (int)Agent_Soccer.Team.Blue;
+                stats.Add("PoSoccer/blue_passes", _passCount[blue]);
+                stats.Add("PoSoccer/blue_pass_progress_m", _passProgress[blue]);
+                stats.Add("Reward/pass", _passPaid[blue]);
+            }
+
             for (int i = 0; i < agents.Count; i++)
             {
                 var agent = agents[i];
@@ -1049,6 +1144,13 @@ namespace PoSoccer
             stats.Add("PoSoccer/goal_speed_bonus", speedBonus);
             stats.Add("PoSoccer/goal_step", StepCount);
             stats.Add("PoSoccer/stalemate", 0f);
+            // Share of BLUE goals set up by a blue teammate. Only meaningful on 2v2 pitches.
+            if (!ownGoal && _lastToucher != null && _lastToucher.team == Agent_Soccer.Team.Blue
+                && TeamSize(Agent_Soccer.Team.Blue) > 1)
+            {
+                stats.Add("PoSoccer/blue_assisted_goal_rate",
+                    LastTouchWasFromTeammate(Agent_Soccer.Team.Blue) ? 1f : 0f);
+            }
             RecordEpisodeStats();
         }
 
@@ -1059,6 +1161,7 @@ namespace PoSoccer
             StepCount = 0;
             _lastToucher = null;
             _previousToucher = null;
+            ResetPassTracking();
             // Disarm the stuck-ball watchdog: it re-anchors on the next tick from
             // wherever the ball actually spawned. Without this a reset would carry the
             // old anchor and could re-trip almost immediately.
@@ -1098,6 +1201,9 @@ namespace PoSoccer
             // turnChurnScale in charge (0 on every shipped profile, i.e. off).
             TurnChurnOverride = Academy.Instance.EnvironmentParameters
                 .GetWithDefault("turn_churn", -1f);
+            // Pass reward (2026-10-11). Off unless a config names it, like the rest.
+            CurrentPassReward = Mathf.Max(0f, Academy.Instance.EnvironmentParameters
+                .GetWithDefault("pass_reward", 0f));
             for (int botIndex = 0; botIndex < _bots.Count; botIndex++)
             {
                 if (_bots[botIndex] != null) _bots[botIndex].SetStrength(CurrentBotStrength);

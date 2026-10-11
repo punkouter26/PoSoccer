@@ -1,0 +1,96 @@
+# p32pass / STANDARD - TEAM PLAY AND PASSING (2026-10-11).
+#
+# Launch:
+#   .\scripts\tensorboard.ps1
+#   .\scripts\train-phase1.ps1 -RunId soccer_p32pass_standard -Config TRAIN_STANDARD_p32pass.yaml `
+#       -InitFrom soccer_p31_standard -Squad "1,2,2,2" -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
+#
+# Warm-started from soccer_p31_standard (30.3% at 1v1, the best graded brain), same PPO
+# hyperparameters and network, so the policy starts out able to reach and strike the ball.
+# p30team tried team play from scratch with POCA and its curriculum never advanced.
+#
+# What is new against p31: three of four pitches play 2v2; the approach reward follows the
+# role target; a spacing charge; and pass_reward. In code since p31: a pair's spare player
+# supports ahead of the ball when its side has possession, and the scripted bots pass.
+#
+# Judge it on the 2v2 eval JSON, which now carries bluePasses / bluePassProgressM /
+# blueAssistedGoals. Before this run, at 2v2 over 350 episodes: p31 brain 11 passes and 0
+# assisted goals, 21.7% wins; bot vs bot about 170 passes a side, 12% of goals assisted.
+# TensorBoard: PoSoccer/blue_passes, blue_pass_progress_m, blue_assisted_goal_rate, Reward/pass.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 10000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+
+environment_parameters:
+  goal_width: 6.0
+
+  # Team shaping. All three are off unless named (Agent_EnvController.ResetPitch).
+  team_roles: 1.0
+  team_spacing: 0.00005
+  # Paid to passer AND receiver for a completed pass (teammate to teammate, 3 m or more,
+  # no opponent touch between), scaled by the ground it gains toward goal: full value at
+  # 8 m, nothing for a square or backward pass, nothing for ground the possession had
+  # already covered. Capped at 4x per side per episode (0.8), under a goal (1.2).
+  pass_reward: 0.2
+
+  # Starts at 0.5: below that the scripted bots neither hold a shape nor pass, and this
+  # run is warm-started from a brain that already cleared the weaker lessons at 1v1.
+  bot_strength:
+    curriculum:
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.15
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.15
+        value: 0.65
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.15
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  num_envs: 4
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

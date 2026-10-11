@@ -1,4 +1,4 @@
-﻿# Evaluation harness (v1 spec): runs the headless player in eval mode and judges
+# Evaluation harness (v1 spec): runs the headless player in eval mode and judges
 # the result against the acceptance bar (>=80% blue wins, <=10% stalemates).
 #   Baseline (harness validation, ~50% expected):  .\scripts\evaluate.ps1 -Baseline -Episodes 40
 #   Model eval:                                    .\scripts\evaluate.ps1 -RunId soccer_p1_00 -Episodes 100
@@ -234,7 +234,9 @@ if ($r.invalid) { Write-Error "Run marked INVALID (no model at eval time)."; exi
 
 # Stamp the measured rating onto the profile so the menu can show it next to the
 # step count. Baseline runs grade the bot, not a brain, so they never write.
-if (-not $Baseline) {
+# Nor does a -Squad grade: the stamped rating is the 1v1 BENCHMARK figure, and a 2v2
+# grade is a different measurement that twice overwrote it (2026-10-10, 2026-10-11).
+if (-not $Baseline -and -not $Squad) {
     . "$PSScriptRoot\lib-profile.ps1"
     $profileAsset = Join-Path $root "Assets\Agents\$($folders[$Profile])\Reward_$Profile.asset"
     Set-ProfileField $profileAsset 'evalWinRate' ("{0:0.####}" -f $winRate)

@@ -77,6 +77,36 @@ namespace PoSoccer
         }
 
         /// <summary>
+        /// Defender count once possession is known. Only a squad of TWO changes: with the
+        /// ball its spare player moves up as a support attacker instead of sitting on the
+        /// goal-ball line behind the play. Without that a pair can never pass forward -
+        /// the only teammate is always behind the ball - and "attacker + defender" is two
+        /// players who never combine. Larger squads already field a support attacker.
+        /// </summary>
+        public static int DefenderCount(int squadSize, bool inPossession) =>
+            squadSize == 2 && inPossession ? 0 : DefenderCount(squadSize);
+
+        /// <summary>Ball travel (m) between two teammates' touches below which it is a scramble, not a pass.</summary>
+        internal const float PASS_MIN_DISTANCE = 3f;
+        /// <summary>Ground gained toward goal (m) that earns the full pass reward.</summary>
+        internal const float PASS_FULL_PROGRESS = 8f;
+
+        /// <summary>
+        /// How much a completed pass improved the team's scoring position, in metres toward
+        /// the goal it attacks: the ground this pass itself gained, but never more than the
+        /// ground gained beyond the best spot (<paramref name="frontierGoalDist"/>) the
+        /// possession had already reached. The second bound is what makes passing the ball
+        /// back and forth worthless: only the first pass over any stretch of pitch counts.
+        /// Zero for a square or backward pass.
+        /// </summary>
+        public static float PassProgress(float fromGoalDist, float toGoalDist, float frontierGoalDist)
+        {
+            float gained = fromGoalDist - toGoalDist;
+            float beyondFrontier = frontierGoalDist - toGoalDist;
+            return Mathf.Max(0f, Mathf.Min(gained, beyondFrontier));
+        }
+
+        /// <summary>
         /// The goalie's post: <see cref="GOALIE_DEPTH"/> off its own goal on the line to
         /// the ball, so it narrows the shooting angle, and never wider than the goal mouth.
         /// </summary>

@@ -170,12 +170,24 @@ namespace PoSoccer
                 }
             }
 
+            // Where the ball should go. Normally the goal; a teammate instead when the lane
+            // to goal is blocked and that teammate is open and better placed (2026-10-11).
+            // Everything below that used to aim at the goal aims here, so a pass is struck
+            // exactly the way a shot is. Same strength gate as the roles: a weak bot
+            // neither holds a shape nor passes. Never in 1v1 - there is no teammate.
+            Vector2 aim = opponentGoal != null ? (Vector2)opponentGoal.position : ball.position;
+            if (_strength >= 0.5f && role != Agent_TeamRoles.Role.None && opponentGoal != null
+                && ShouldPass(ball.position, aim, teammate, nearestOpponent, out Vector2 passTarget))
+            {
+                aim = passTarget;
+            }
+
             // Boost-shot: already behind the ball on the ball->goal axis and facing
             // it - burst through the contact so body speed becomes shot speed.
             // v2: requires full strength - weak bot can't execute the timing.
             if (opponentGoal != null && toBall.magnitude < 1.1f && _strength >= 0.8f)
             {
-                Vector2 goalDir = ((Vector2)opponentGoal.position - ball.position).normalized;
+                Vector2 goalDir = (aim - ball.position).normalized;
                 bool behindBall = Vector2.Dot(toBall.normalized, goalDir) > 0.75f;
                 float facingErr = Vector2.SignedAngle(self.transform.up, toBall);
                 if (behindBall && Mathf.Abs(facingErr) < 20f)
@@ -199,7 +211,7 @@ namespace PoSoccer
             // ball->goal line so pushes travel goalward instead of poking around.
             if (opponentGoal != null && toBall.magnitude < controlDistance)
             {
-                Vector2 goalDir = ((Vector2)opponentGoal.position - ball.position).normalized;
+                Vector2 goalDir = (aim - ball.position).normalized;
                 target = ball.position - goalDir * 0.6f;
             }
 
@@ -219,6 +231,63 @@ namespace PoSoccer
             if (Time.time < _flankUntil) target = _flankPoint;
 
             return Steer(self, target, opponentGoal, allowBoost: true);
+        }
+
+        /// <summary>Teammate nearer than this (m) is not worth a pass - just keep going.</summary>
+        internal const float PASS_MIN_RANGE = 4f;
+        /// <summary>Teammate farther than this (m) is out of reach: the ball dies on the way.</summary>
+        internal const float PASS_MAX_RANGE = 14f;
+        /// <summary>The teammate must be this much (m) nearer the goal than the ball is.</summary>
+        internal const float PASS_ADVANTAGE = 1.5f;
+        /// <summary>Inside this range (m) of goal, shoot instead.</summary>
+        internal const float PASS_SHOOT_RANGE = 7f;
+        /// <summary>An opponent this close (m) and in the way counts as blocking the lane to goal.</summary>
+        internal const float PASS_PRESSURE_RANGE = 5f;
+
+        /// <summary>
+        /// Pass or carry on? Pass only when all of it holds: we are not already in shooting
+        /// range, an opponent stands in the lane to goal, the teammate is in range and
+        /// clearly better placed, and that same opponent is not also sitting on the line
+        /// to the teammate. The target leads the teammate by 0.4 s of its own movement.
+        /// Static and pure so the rule can be pinned without a scene.
+        /// </summary>
+        internal static bool ShouldPass(Vector2 ballPos, Vector2 goal, Rigidbody2D teammate,
+            Rigidbody2D nearestOpponent, out Vector2 passTarget)
+        {
+            passTarget = goal;
+            if (teammate == null || nearestOpponent == null) return false;
+            return ShouldPass(ballPos, goal, teammate.position, teammate.linearVelocity,
+                nearestOpponent.position, out passTarget);
+        }
+
+        public static bool ShouldPass(Vector2 ballPos, Vector2 goal, Vector2 matePos,
+            Vector2 mateVelocity, Vector2 foePos, out Vector2 passTarget)
+        {
+            passTarget = goal;
+
+            Vector2 toGoal = goal - ballPos;
+            float goalDist = toGoal.magnitude;
+            if (goalDist < PASS_SHOOT_RANGE) return false;
+
+            Vector2 toMate = matePos - ballPos;
+            float mateDist = toMate.magnitude;
+            if (mateDist < PASS_MIN_RANGE || mateDist > PASS_MAX_RANGE) return false;
+            if ((goal - matePos).magnitude > goalDist - PASS_ADVANTAGE) return false;
+
+            Vector2 toFoe = foePos - ballPos;
+            float foeDist = toFoe.magnitude;
+            if (foeDist < 0.001f) return false;
+            Vector2 foeDir = toFoe / foeDist;
+
+            bool laneBlocked = foeDist < PASS_PRESSURE_RANGE
+                && Vector2.Dot(foeDir, toGoal / goalDist) > 0.8f;
+            if (!laneBlocked) return false;
+
+            bool passBlocked = foeDist < mateDist && Vector2.Dot(foeDir, toMate / mateDist) > 0.9f;
+            if (passBlocked) return false;
+
+            passTarget = matePos + mateVelocity * 0.4f;
+            return true;
         }
 
         /// <summary>

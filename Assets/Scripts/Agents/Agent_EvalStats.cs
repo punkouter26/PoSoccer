@@ -22,6 +22,8 @@ namespace PoSoccer
         static Agent_EvalStats _primary;
         static int _target, _episodes, _blueWins, _redWins, _stalemates;
         static float _stepSum, _blueRewardSum;
+        static int _bluePasses, _redPasses, _blueAssistedGoals, _redAssistedGoals;
+        static float _bluePassProgress, _redPassProgress;
         static bool _finished, _invalid;
 
         Agent_EnvController _env;
@@ -80,6 +82,16 @@ namespace PoSoccer
                 else if (winner == Agent_Soccer.Team.Red) _redWins++;
                 else _stalemates++;
 
+                // Team play. Read here because EpisodeEnded fires before the reset.
+                _bluePasses += _env.PassesThisEpisode(Agent_Soccer.Team.Blue);
+                _redPasses += _env.PassesThisEpisode(Agent_Soccer.Team.Red);
+                _bluePassProgress += _env.PassProgressThisEpisode(Agent_Soccer.Team.Blue);
+                _redPassProgress += _env.PassProgressThisEpisode(Agent_Soccer.Team.Red);
+                if (winner == Agent_Soccer.Team.Blue
+                    && _env.LastTouchWasFromTeammate(Agent_Soccer.Team.Blue)) _blueAssistedGoals++;
+                if (winner == Agent_Soccer.Team.Red
+                    && _env.LastTouchWasFromTeammate(Agent_Soccer.Team.Red)) _redAssistedGoals++;
+
                 if (_episodes % 10 == 0)
                     Debug.Log($"[EvalStats] {_episodes}/{_target} blue={_blueWins} red={_redWins} stale={_stalemates}");
 
@@ -102,6 +114,12 @@ namespace PoSoccer
                 stalemates = _stalemates,
                 meanEpisodeSteps = _episodes > 0 ? _stepSum / _episodes : 0f,
                 meanBlueReward = _episodes > 0 ? _blueRewardSum / _episodes : 0f,
+                bluePasses = _bluePasses,
+                redPasses = _redPasses,
+                bluePassProgressM = _bluePassProgress,
+                redPassProgressM = _redPassProgress,
+                blueAssistedGoals = _blueAssistedGoals,
+                redAssistedGoals = _redAssistedGoals,
                 // Resolved from the brain the agents are ACTUALLY running, not a literal.
                 // This field used to be the hardcoded string "SoccerAgent_v01.onnx" and was
                 // written into every eval JSON regardless of what was graded - a filename
@@ -161,6 +179,15 @@ namespace PoSoccer
             public int stalemates;
             public float meanEpisodeSteps;
             public float meanBlueReward;
+            // Completed passes (teammate to teammate, 3 m or more, no opponent touch
+            // between), the ground they gained toward goal, and goals whose last two
+            // touches were two players of the scoring side. All zero at 1v1.
+            public int bluePasses;
+            public int redPasses;
+            public float bluePassProgressM;
+            public float redPassProgressM;
+            public int blueAssistedGoals;
+            public int redAssistedGoals;
             public string modelFile;
             public bool baseline;
             public string squad;
