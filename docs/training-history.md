@@ -345,3 +345,35 @@ What it does not settle. All four are far under the 80% bar and every grade carr
 does in the blue seat (31.1%) but loses more (136 against 86). `Agent_PlayMode_MovementProbe`
 was NOT run on these brains - the PlayMode runner wedged on three attempts - so whether
 they reach the ball is unmeasured. No 2v2 grade was taken.
+
+## p32pass and p33team (2026-10-11) - team play and passing. BEST 1v1 GRADE SO FAR.
+
+Both PPO, 10M steps, `-Squad "1,2,2,2"`, warm-started (p32pass from `soccer_p31_standard`,
+p33team from `soccer_p32pass_standard`), `team_roles` 1, `team_spacing` 0.00005.
+New in code before p32pass: a completed-pass detector and `pass_reward`; the scripted bot
+passes; a pair's spare player supports ahead of the ball when its side has possession.
+
+- **p32pass:** `pass_reward` 0.2. Curriculum 0.5 -> 1.0, reached the full-strength lesson.
+- **p33team:** `pass_reward` 0.3, and in `Reward_STANDARD.asset` assist 0.3 -> 1.0 and
+  teamBaselineVictory 0.2 -> 0.8 (goalScorer stays 1.2). Curriculum 0.8 -> 1.0.
+
+| Blue side (n=350 each) | 2v2 wins | 2v2 passes | 2v2 pass progress | 2v2 assisted goals | 1v1 wins |
+|---|---|---|---|---|---|
+| p31 (trained 1v1 only) | 76 (21.7%) | 11 | 82 m | 0 | 106 (30.3%) |
+| p32pass | 105 (30.0%) | 81 | 358 m | 5 | 102 (29.1%) |
+| p33team | 104 (29.7%) | 100 | 582 m | 10 | **130 (37.1%)** |
+| bot vs bot | 90 (25.7%) | 182 | 1,190 m | 8 | - |
+
+A pass is teammate to teammate over 3 m or more with no opponent touch between; an
+assisted goal is one whose last two touches were two players of the scoring side.
+
+p33team at 1v1 is 130 wins to 110 losses with 110 stalemates: the first graded brain to
+beat the bot more often than it loses to it, and the best 1v1 figure recorded. It is still
+far under the 80% bar and has 31% stalemates against a 10% ceiling.
+
+What is not settled. p33team changed the reward split AND had 10M more steps than p32pass,
+so the 1v1 gain is not attributable to either. The pass counts say passes happen more often,
+not that each was a better choice than shooting. The training curves for the two runs are
+not like for like (different starting bot strength); `blue_passes` sat in the same 0.2-0.3
+band in both while the graded count rose. `Agent_PlayMode_MovementProbe` was not run.
+Report with the TensorBoard charts: `docs/reports/team-play-2026-10-11.html`.
