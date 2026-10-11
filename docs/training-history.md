@@ -285,3 +285,35 @@ Verified by running it: `soccer_p16_poca1v1` (720k steps) moved `Environment/Gro
 
 ---
 
+
+## p30team (2026-10-10) - first team run, first run on the 173-input contract. FAILED.
+
+`soccer_p30team_standard`: MA-POCA vs the bot, `-Squad "1,2"`, 10M steps from scratch in
+6,022 s (602 s per million at `-NumEnvs 4`). Config `TRAIN_STANDARD_p30team.yaml`.
+Changed against p22 all at once: goal rays removed (188 -> 173 inputs), per-layer ray
+masks, squads of 1 and 2, `team_roles`, `team_spacing`, `turn_churn` 0.0002, POCA.
+
+| Measurement (n=350 each) | Blue wins | Red wins | Stalemates | Win rate |
+|---|---|---|---|---|
+| p30team brain, 1v1 | 37 | 202 | 111 | **10.6%** |
+| p30team brain, 2v2 | 45 | 202 | 103 | 12.9% |
+| bot vs bot, 1v1 | 109 | 86 | 155 | 31.1% |
+| bot vs bot, 2v2 | 96 | 77 | 177 | 27.4% |
+
+Probe (10.44 m chase, 4 s): trained blue covered 5.24 m (50%), never arrived, max
+2.73 m/s, heading churn 132 deg. Scripted bot: 13.03 m, arrived at 2.90 s, 4.74 m/s,
+54 deg. The p21 brain covered 80% with 174 deg of churn, so this brain turns less and
+travels less.
+
+**The curriculum never advanced.** `bot_strength` stayed in `Lesson0_Feeble` (0.2) for all
+10M steps; mean reward ended near -0.9 against a 0.21 threshold. The brain was graded
+against a full-strength bot it never met in training.
+
+What this does and does not show. It is one run with seven levers changed, so no lever is
+attributable. It does not show that removing the goal rays or the layer masks hurt: the
+ablation is this config at `-Squad ""` with `team_roles`, `team_spacing` and `turn_churn`
+at 0 and `trainer_type: ppo`, which isolates the contract change against p22's 26.6%.
+Run that before any other team experiment.
+
+Also new here: the bot-vs-bot baseline at n=350 is 31.1% wins with 44% stalemates. The
+42.5% figure quoted elsewhere came from 40-episode runs.
