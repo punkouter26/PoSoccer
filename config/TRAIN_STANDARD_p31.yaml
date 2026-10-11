@@ -1,0 +1,93 @@
+# p31 / STANDARD - CONTRACT ABLATION on the 173-input contract (2026-10-10).
+#
+# Body is p22's recipe unchanged: PPO, 1v1, no team terms, no turn_churn (absent, so the
+# profile's own 0 applies). p22 is the best graded recipe this project has (26.6% at
+# n=350 on the 188-input contract), and p30team - which changed seven things at once -
+# graded 10.6%. This run changes exactly one thing against p22: the observation contract
+# (goal rays removed, per-layer ray masks). A grade near p22's says the contract is fine
+# and the team levers hurt; a grade near p30team's says the contract change hurt.
+#
+# Launch (all four profiles in parallel):  .\scripts\train-parallel.ps1 -Tag p31
+# Grade:  .\scripts\evaluate.ps1 -RunId soccer_p31_standard -Profile STANDARD -Episodes 350
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 10000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+
+environment_parameters:
+  goal_width: 6.0
+
+  bot_strength:
+    curriculum:
+      - name: Lesson0_Feeble
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.2
+      - name: Lesson1_Weak
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.35
+      - name: Lesson2_Half
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.5
+      - name: Lesson3_Capable
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.65
+      - name: Lesson4_Strong
+        completion_criteria:
+          measure: reward
+          behavior: STANDARD
+          signal_smoothing: true
+          min_lesson_length: 1000
+          threshold: 0.21
+        value: 0.8
+      - name: Lesson5_Full
+        value: 1.0
+
+env_settings:
+  num_envs: 4
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

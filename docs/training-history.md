@@ -317,3 +317,31 @@ Run that before any other team experiment.
 
 Also new here: the bot-vs-bot baseline at n=350 is 31.1% wins with 44% stalemates. The
 42.5% figure quoted elsewhere came from 40-episode runs.
+
+## p31 (2026-10-11) - contract ablation, all four profiles. BEST GRADED RECIPE SO FAR.
+
+`soccer_p31_{standard,matt,kim,nick}`: p22's recipe unchanged (PPO, 1v1, no team terms,
+no `turn_churn`) on the 173-input contract. 10M steps each, from scratch, all four run at
+the same time with `scripts/train-parallel.ps1` (about 3 h wall-clock for the four,
+roughly 1,000 s per million each, against about 600 s for one run alone).
+
+| Profile (1v1, n=350) | Blue wins | Red wins | Stalemates | Win rate | Last lesson reached |
+|---|---|---|---|---|---|
+| STANDARD | 106 | 136 | 108 | **30.3%** | Lesson4_Strong |
+| NICK | 94 | 134 | 122 | 26.9% | Lesson4_Strong |
+| KIM | 78 | 152 | 120 | 22.3% | Lesson5_Full |
+| MATT | 72 | 151 | 127 | 20.6% | Lesson3_Capable |
+| bot vs bot | 109 | 86 | 155 | 31.1% | - |
+
+What this settles. The one thing changed against p22 (26.6%) was the observation
+contract - goal rays removed, per-layer ray masks - and STANDARD graded 30.3%. At n=350
+the standard deviation is about 2.4 points, so this is "not worse, possibly a little
+better", not a proven gain. It does clear the contract change of blame for p30team's
+10.6%: the regression there came from the team levers (squads, POCA, role and spacing
+shaping, turn churn), in a run whose curriculum never advanced.
+
+What it does not settle. All four are far under the 80% bar and every grade carries
+31-36% stalemates against a 10% ceiling. STANDARD wins about as often as the scripted bot
+does in the blue seat (31.1%) but loses more (136 against 86). `Agent_PlayMode_MovementProbe`
+was NOT run on these brains - the PlayMode runner wedged on three attempts - so whether
+they reach the ball is unmeasured. No 2v2 grade was taken.
