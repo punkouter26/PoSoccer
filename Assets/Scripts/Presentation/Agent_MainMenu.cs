@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
@@ -137,8 +137,18 @@ namespace PoSoccer
                 return;
             }
 
-            // BOT sits last so the four personalities keep their familiar order.
-            _roster = Compact(standard, matt, kim, nick, ruleBot);
+            // SELECTABLE = RL-TRAINED (2026-10-11, user request). The pickers list only
+            // profiles carrying a brain this runtime can actually run; the hand-coded
+            // bot is not offered, and neither is a personality that would silently fall
+            // back to it. The bot is still in the project - it is the opponent every
+            // brain trains and is graded against - it is just not a player you can pick.
+            //
+            // The one exception is a project with NO usable brain at all (a fresh clone
+            // before LFS, or the day the observation contract changes): then the full
+            // list, bot included, comes back so the game can still be started, under
+            // the "no trained brains installed" line that already says why.
+            _roster = TrainedOnly(Compact(standard, matt, kim, nick));
+            if (_roster.Length == 0) _roster = Compact(standard, matt, kim, nick, ruleBot);
             if (_roster.Length == 0)
             {
                 Debug.LogWarning("Agent_MainMenu: no roster profiles wired; menu disabled.");
@@ -454,8 +464,16 @@ namespace PoSoccer
             return list.ToArray();
         }
 
-        /// <summary>The benchmark bot when it is wired, else the last roster entry.</summary>
-        Reward_Settings Bot() => ruleBot != null ? ruleBot : _roster[_roster.Length - 1];
+        /// <summary>The entries of <paramref name="entries"/> whose brain this runtime can run.</summary>
+        static Reward_Settings[] TrainedOnly(Reward_Settings[] entries)
+        {
+            var list = new List<Reward_Settings>(entries.Length);
+            for (int entryIndex = 0; entryIndex < entries.Length; entryIndex++)
+            {
+                if (IsUsable(entries[entryIndex])) list.Add(entries[entryIndex]);
+            }
+            return list.ToArray();
+        }
 
         /// <summary>A wired profile, or the first roster entry when it is missing.</summary>
         Reward_Settings Or(Reward_Settings profile) => profile != null ? profile : _roster[0];
@@ -463,9 +481,9 @@ namespace PoSoccer
         // ── Presets ─────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Blue fields personalities (cycling the roster order, skipping the bot),
-        /// red fields the benchmark bot. That is the matchup the benchmark grades,
-        /// so the presets and the eval harness agree on what "NvN vs bot" means.
+        /// Both sides field trained brains, cycling the selectable roster. The benchmark
+        /// matchup (a brain against the scripted bot) is what evaluate.ps1 grades; it
+        /// is no longer something the menu fields.
         /// </summary>
         /// <summary>
         /// Applies the entrance offset now and clears it after a delay, letting
@@ -486,11 +504,13 @@ namespace PoSoccer
             _blue.Clear();
             _red.Clear();
 
-            var picks = Compact(standard, matt, kim, nick);
+            // Both sides field from the selectable roster. Red starts where blue's picks
+            // end, so a 2v2 on a four-brain roster is four different brains rather than
+            // a side playing its own mirror image.
             for (int i = 0; i < perSide; i++)
             {
-                _blue.Add(picks.Length > 0 ? picks[i % picks.Length] : Or(null));
-                _red.Add(Bot());
+                _blue.Add(_roster[i % _roster.Length]);
+                _red.Add(_roster[(i + perSide) % _roster.Length]);
             }
             RefreshAll();
         }
@@ -554,9 +574,9 @@ namespace PoSoccer
             // Floor is 0, not 1: a side may be emptied while building a lineup.
             // PLAY is gated in RefreshAll instead, so an empty side can never launch.
             size = Mathf.Clamp(size, 0, Agent_MatchSetup.MAX_SQUAD);
-            // New slots default to the benchmark bot - the common case is "my brain
-            // against N bots", and it keeps a 10-a-side setup to two taps.
-            while (squad.Count < size) squad.Add(Bot());
+            // New slots cycle the selectable roster, so growing a side to ten is still
+            // two taps and every slot is a trained brain.
+            while (squad.Count < size) squad.Add(_roster[squad.Count % _roster.Length]);
             while (squad.Count > size) squad.RemoveAt(squad.Count - 1);
             RefreshAll();
         }

@@ -377,3 +377,8 @@ not that each was a better choice than shooting. The training curves for the two
 not like for like (different starting bot strength); `blue_passes` sat in the same 0.2-0.3
 band in both while the graded count rose. `Agent_PlayMode_MovementProbe` was not run.
 Report with the TensorBoard charts: `docs/reports/team-play-2026-10-11.html`.
+
+Probe on `soccer_p33team_standard` (2026-10-11, 10.44 m chase, 4 s): covered 9.11 m (87%),
+did not arrive inside 4 s, max 3.29 m/s, heading churn 214 deg. Scripted bot in the same
+run: 13.16 m, arrived at 2.86 s, 4.74 m/s, 53 deg. The brain reaches the ball far better
+than p30team (50%) but is still slower than the bot and turns four times as much.

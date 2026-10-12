@@ -61,7 +61,9 @@ that page is a real defect.
 - **Agent colours.** The heuristic bot is always RED. The reference RL brain is always GREEN
   and untextured. Custom brains get user-supplied textures; never auto-assign one.
 - **Roster shape.** One heuristic bot, one reference RL brain, and 0..n custom brains. The
-  bot is the benchmark opponent and is never removed.
+  bot is the benchmark opponent and is never removed. Since 2026-10-11 it is not SELECTABLE:
+  the menu lists only RL-trained brains (exemption recorded); the bot remains the training
+  and grading opponent.
 - **Creatures move realistically**: Earth gravity, real joint ranges, mass scaled to size,
   drive force scaled to mass. The top-down plane is the one standing exemption; gravity
   enters through the `mu * m * g` traction budget.

@@ -258,3 +258,24 @@ component is on.
 
 **Cost.** The global components' tuning fields are reachable in the Inspector only while
 a match is running.
+
+## The scripted bot is not selectable in the menu (Rule: roster shape) — EXEMPT (2026-10-11)
+
+**Rule.** "Every RL learning app fields: one heuristic scripted bot (red), one reference RL
+brain (green, untextured), and 0..n custom brains. The heuristic bot is the benchmark
+opponent and is never removed."
+
+**Deviation.** `Agent_MainMenu` lists only profiles carrying a brain the runtime can run,
+on both sides, and the presets field trained brains against trained brains. `Reward_BOT`
+is no longer offered as a player. Requested by the project owner on 2026-10-11: every
+selectable agent is to be an RL-trained one.
+
+**What still holds.** The bot is not removed. `Agent_HeuristicBot` is the opponent in every
+training run and every `evaluate.ps1` grade, `Reward_BOT.asset` is unchanged, and
+`Agent_EditMode_BotProfile` still pins it. The checkpoint gallery still plays each brain
+against it. A project with no usable brain at all (a fresh clone before `git lfs pull`, or
+the day the observation contract changes) falls back to the full list, bot included, so the
+game can still be started.
+
+**Cost.** The benchmark matchup - a brain against the scripted bot - can no longer be
+watched as an ordinary match from the menu. Use the gallery, or `evaluate.ps1`.
