@@ -58,7 +58,7 @@ starting them from row 1 (`train-phase1.ps1 -InitFrom soccer_p30team_standard` w
   which still targets the old contract and needs porting before it can run.
 - Superseded configs are in `config/archive/` and train the old 178-input contract.
 
-## Staged 2026-10-11: p34league (not yet run)
+## p34league: staged 2026-10-11, run and graded 2026-10-13 (52.3%, fails the bar)
 
 | Brain | Config | Algorithm | Steps | Starts from | Opponent pool | Squad |
 |---|---|---|---|---|---|---|
@@ -76,3 +76,6 @@ starting them from row 1 (`train-phase1.ps1 -InitFrom soccer_p30team_standard` w
   with p33team's 37.1%.
 - The run ends by deploying its brain over `STANDARD.onnx` (`update-model.ps1`), as every
   run does. p33team's export stays in `results/soccer_p33team_standard/`.
+- Result: 183 wins, 71 losses, 96 stalemates at n=350 (52.3%), against p33team's 37.1%.
+  Details and the missing control are in `docs/training-history.md`. Nothing is staged
+  after this run.

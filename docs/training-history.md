@@ -434,3 +434,33 @@ always read 0, and the intent overlay's arc cannot close. This is arithmetic on 
 serialized values, not a measurement from a match. It was not changed: `_moveForce`,
 `_boostMultiplier` and `_tractionMu` are the "keeps the tensor shape, changes the meaning"
 kind of edit, and every trained brain learned on these numbers.
+
+## p34league (2026-10-13) - league self-play from p33team. BEST 1v1 GRADE SO FAR.
+
+`TRAIN_STANDARD_p34league.yaml`, PPO with a `self_play` block, `-League`, warm-started from
+`soccer_p33team_standard`, 1v1, 10,000,166 steps in 9,232 s (923 s per million at
+`-NumEnvs 4`). `PoSoccer/league_bot_pitch` read 0.43 to 0.51 from the first summary to the
+last, so half the pitches seated the bot throughout. `Self-play/ELO` rose from 1199 to
+1340, nearly all of it after 4M steps.
+
+Grade against bot v1, 1v1, n=350, player rebuilt after the deploy:
+
+| Run | Wins | Losses | Stalemates | Win rate |
+|---|---|---|---|---|
+| `soccer_p33team_standard` | 130 | 110 | 110 | 37.1% |
+| **`soccer_p34league_standard`** | **183** | 71 | 96 | **52.3%** |
+
++15.2 points on a standard deviation of about 3.7 for the difference, roughly 4 SD. It is
+the first brain to win more than half its episodes, and it wins 2.6 times as often as it
+loses. It still fails the bar on both counts: 52.3% against 80%, and 27.4% stalemates
+against 10%.
+
+Probe (blue trained side, 10.44 m chase, 4 s): covered 103%, arrived at 3.70 s, max
+3.69 m/s, heading churn 159 deg. p33team did not arrive inside 4 s and churned 214 deg.
+Scripted bot in the same run: arrived at 2.93 s, 4.67 m/s, 53 deg. The brain now reaches
+the ball but is still slower than the bot and turns three times as much.
+
+One run, one seed, and the change from p33team is two things at once: 10M more steps and
+the league opponent pool. There is no control that continues p33team for 10M steps against
+the bot alone, so this does not yet show that the self-play pitches are what helped. Not
+graded against bot v2 or at 2v2.
