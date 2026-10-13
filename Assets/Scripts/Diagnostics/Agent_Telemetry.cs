@@ -184,6 +184,7 @@ namespace PoSoccer
         readonly Row[] _playerRows = new Row[MAX_PLAYER_ROWS];
         Row _morePlayersRow;
         Button _intentButton, _visionButton, _tracerButton, _brainButton;
+        Button _threatButton, _skidsButton;
         readonly Button[] _speedButtons = new Button[Speeds.Length];
 
         int _drawIndex = -1, _batchIndex = -1;
@@ -463,6 +464,15 @@ namespace PoSoccer
             overlays.Add(_brainButton);
             _panel.Add(overlays);
 
+            // A second row rather than six buttons on one: at --touch-min a portrait
+            // panel fits four across.
+            var groundOverlays = ButtonRow();
+            _threatButton = PanelButton("XG FIELD", ToggleThreatField);
+            _skidsButton = PanelButton("SKIDS", ToggleSkids);
+            groundOverlays.Add(_threatButton);
+            groundOverlays.Add(_skidsButton);
+            _panel.Add(groundOverlays);
+
             _panel.Add(Section("PLAYBACK SPEED"));
             var speeds = ButtonRow();
             for (int i = 0; i < Speeds.Length; i++)
@@ -547,6 +557,11 @@ namespace PoSoccer
 
         static void ToggleTracer() => Agent_ShotTracer.Visible = !Agent_ShotTracer.Visible;
 
+        static void ToggleThreatField() =>
+            Agent_ExpectedGoals.FieldVisible = !Agent_ExpectedGoals.FieldVisible;
+
+        static void ToggleSkids() => Agent_Skids.Visible = !Agent_Skids.Visible;
+
         static void CycleVision()
         {
             Agent_VisionView.CurrentMode = Agent_VisionView.CurrentMode == Agent_VisionView.Mode.All
@@ -567,6 +582,8 @@ namespace PoSoccer
         {
             _intentButton.EnableInClassList(Agent_UIStyle.ON, Agent_Intent.Visible);
             _tracerButton.EnableInClassList(Agent_UIStyle.ON, Agent_ShotTracer.Visible);
+            _threatButton.EnableInClassList(Agent_UIStyle.ON, Agent_ExpectedGoals.FieldVisible);
+            _skidsButton.EnableInClassList(Agent_UIStyle.ON, Agent_Skids.Visible);
 
             int vision = Mathf.Clamp((int)Agent_VisionView.CurrentMode, 0, VisionText.Length - 1);
             if (vision != _shownVision)

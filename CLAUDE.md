@@ -85,6 +85,9 @@ that page is a real defect.
     [-Config <yaml in config/>] [-Squad "1,2"] [-InitFrom <run>] [-Resume]
 .\scripts\evaluate.ps1 -RunId <run> -Episodes 350 [-Squad 2]   # exit 0 pass / 1 fail / 2-3 setup
 .\scripts\evaluate.ps1 -Baseline -Episodes 350                 # bot vs bot sanity
+.\scripts\evaluate.ps1 -Baseline -BlueBotVersion 2 -Episodes 350   # bot v2 against the benchmark bot
+.\scripts	rain-phase1.ps1 -RunId <run> -Config TRAIN_STANDARD_p34league.yaml -League `
+    -InitFrom <run> -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4   # self-play + bot pitches
 .\scripts\update-model.ps1 -RunId <run> [-Profile STANDARD|MATT|KIM|NICK]
 .\scripts\cleanup-training.ps1                 # kill orphaned trainers and env players
 ```
@@ -172,6 +175,16 @@ under `IsBoundedEpisode` (training and eval).
 `Agent_TeamRoles` assigns goalie / defender / attacker; brains observe their role. Shaping
 terms `team_roles`, `team_spacing` and `turn_churn` are off unless a config names them.
 
+**Bot versions**: `Agent_HeuristicBot.version` 1 is the benchmark bot and the default
+everywhere. Version 2 (lead pursuit, bank shots) is opt-in through `POSOCCER_BOT_VERSION`
+(`evaluate.ps1 -BotVersion 2`, `train-phase1.ps1 -BotVersion 2`). The 80% bar is defined
+against version 1 only; an eval JSON stamps `botVersion` and a v2 grade never stamps a
+profile.
+
+**League training**: `POSOCCER_OPPONENT=league` (`train-phase1.ps1 -League`) cycles the
+pitch grid through self-play, bot as red, self-play, bot as blue
+(`Agent_EnvController.LeagueSeatFor`). Check `PoSoccer/league_bot_pitch` reads about 0.5.
+
 **Run configuration**: every `POSOCCER_*` variable is named and read in `Agent_RunConfig`
 (live reads, no caching). Eval mode is env-var driven and aggregated by `Agent_EvalStats`.
 
@@ -211,7 +224,18 @@ switches and speed buttons. Settings live in one bottom sheet (`Agent_SettingsSh
 Touch targets use `--touch-min` (124 declared, 120 asserted; do not lower the assertion).
 
 Keys in a match: **Tab** health panel, **I** intent, **V** vision, **T** shot tracer,
-**B** brain cam, **[ ]** speed, tap a player to focus, pinch or scroll to zoom.
+**B** brain cam, **X** xG field, **G** skid marks, **[ ]** speed, tap a player to focus, pinch or scroll to zoom.
+
+**Match overlays (2026-10-11)**: `Agent_ExpectedGoals` (xG per shot, per-side totals, the
+threat field on **X**) is a hand-set model and says MODEL wherever it shows; it scores
+itself with a Brier figure and appends every shot to `xg_shots.csv` for a later fit.
+`Agent_Skids` (**G**) draws streaks from `Agent_Soccer.LateralSlipSpeed` and a measured g
+from `GroundForce`. Both are code-installed, match only.
+
+**Community brains**: `Agent_BrainHub` loads `.sentis` files from
+`persistentDataPath/brains` into the menu roster and can fetch them from a Hugging Face
+repo. The network client is compiled out of Android builds because the privacy policy
+promises no network access. See `docs/brain-hub.md`.
 
 **Diagnostics**: `Agent_ErrorSink` records every error with scene and clock;
 `Agent_MatchLog` writes one CSV row per decision per player to `persistentDataPath`;
@@ -250,6 +274,12 @@ ignore list to it.
 - **The training bottleneck is the single trainer thread**, not Unity physics or the GPU.
   Raising `time_scale` or env count buys nothing; the observation payload is a throughput
   term (`docs/ml-audit-2026-09-13.md`).
+- **`TractionSaturation` cannot pass 0.59 on the shipped bodies** (519 N boosted drive
+  against an 883 N budget), so "at the limit of grip" never fires: the AT THE LIMIT stat
+  should read 0 and the intent overlay's arc should never close. Derived from the
+  serialized values on 2026-10-11 (236 N x 2.2 over 1.2 x 75 x 9.81), not yet measured in
+  a match and not fixed.
+  Use `LateralSlipSpeed` or `GroundForce` for anything that should react to a hard cut.
 - The scripted side skips its ray battery (`Agent_Soccer.IsSensorlessScriptedSide`); the
   three exclusions in that predicate are the whole contract.
 - Headless players still play audio unless `Agent_Audio` bails out under batchmode.

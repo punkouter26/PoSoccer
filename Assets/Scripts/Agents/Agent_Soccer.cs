@@ -465,6 +465,21 @@ namespace PoSoccer
         {
             // Eval owns policy assignment; it forces the opponent to heuristic itself.
             if (Agent_EvalStats.EvalMode) return;
+
+            // League run: the pitch decides, and the scripted side can be either colour.
+            // Agent_EnvController.Awake (-50) has already seated this pitch.
+            if (Agent_EnvController.LeagueRun)
+            {
+                var pitch = GetComponentInParent<Agent_EnvController>();
+                if (pitch == null || pitch.LeagueScriptedSide != team) return;
+
+                _behavior.BehaviorType = BehaviorType.HeuristicOnly;
+                var leagueBot = GetComponent<Agent_HeuristicBot>();
+                if (leagueBot != null) leagueBot.enabled = true;
+                Debug.Log($"[Agent_Soccer] {name}: scripted {team} side (POSOCCER_OPPONENT=league).");
+                return;
+            }
+
             if (team != Team.Red) return;
 
             if (!Agent_RunConfig.Is(Agent_RunConfig.OPPONENT, OPPONENT_BOT)) return;
@@ -884,6 +899,18 @@ namespace PoSoccer
         public Vector2 AppliedFootForce { get; private set; }
 
         /// <summary>
+        /// Everything the ground did to this body last tick: drive, active braking and
+        /// the sideways drag that arrests a slide, in newtons. Divide by weight for g.
+        /// </summary>
+        public Vector2 GroundForce { get; private set; }
+
+        /// <summary>
+        /// Signed speed (m/s) across the direction the body faces. Non-zero while the
+        /// body is sliding sideways, which is what Agent_Skids draws.
+        /// </summary>
+        public float LateralSlipSpeed { get; private set; }
+
+        /// <summary>
         /// Fraction of the friction circle (mu * m * g) the feet are using, 0..1.
         /// At 1 the player is at the limit of grip and any further demand costs
         /// speed instead of buying it. Drives the scuff FX and the traction ring.
@@ -990,16 +1017,24 @@ namespace PoSoccer
             const float BrakeStopSeconds = 0.5f;
             Vector2 velocity = Body.linearVelocity;
             float intentMag = intent.magnitude;
+            Vector2 brake = Vector2.zero;
             if (intentMag < BrakeIntentMag && velocity.sqrMagnitude > 0.0001f)
             {
                 float spare = Mathf.Max(0f, tractionBudget - applied.magnitude);
                 float stopping = velocity.magnitude * Body.mass / BrakeStopSeconds;
-                Body.AddForce(-velocity.normalized * Mathf.Min(spare, stopping));
+                brake = -velocity.normalized * Mathf.Min(spare, stopping);
+                Body.AddForce(brake);
             }
 
             // Anisotropic drag: a body skids far less sideways than it rolls forward.
             float lateralSpeed = Vector2.Dot(velocity, rightAxis);
-            Body.AddForce(-rightAxis * (lateralSpeed * _lateralDrag * Body.mass));
+            Vector2 lateralDrag = -rightAxis * (lateralSpeed * _lateralDrag * Body.mass);
+            Body.AddForce(lateralDrag);
+
+            // Spectator tap, same rule as the two above: one store. The forces are the
+            // ones just applied, so nothing about the motion changes.
+            GroundForce = applied + brake + lateralDrag;
+            LateralSlipSpeed = lateralSpeed;
 
             // Turning authority falls off with speed - free pivot at rest, almost
             // none at full sprint.

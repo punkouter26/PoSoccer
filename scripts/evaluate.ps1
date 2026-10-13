@@ -30,7 +30,16 @@ param(
     # 1v1, which is the benchmark every historical grade was taken at. A 2v2 grade is a
     # DIFFERENT measurement, so it gets its own JSON (suffix _squad2) rather than
     # overwriting the 1v1 one, and the player stamps `squad` into the report.
-    [string]$Squad = ""
+    [string]$Squad = "",
+    # Scripted-bot version on red. 1 is the benchmark bot every historical grade faced.
+    # 2 (lead pursuit, bank shots) is a DIFFERENT opponent, so like -Squad it gets its own
+    # JSON (suffix _botv2), the player stamps `botVersion`, and the profile is not stamped.
+    [ValidateRange(1, 2)]
+    [int]$BotVersion = 1,
+    # Bot version on blue. Only read in a -Baseline run, where blue is a bot too:
+    # `-Baseline -BlueBotVersion 2` is bot v2 against the benchmark bot.
+    [ValidateRange(1, 2)]
+    [int]$BlueBotVersion = 1
 )
 
 $ErrorActionPreference = "Stop"
@@ -89,6 +98,8 @@ if ($Squad) {
     }
     $tag = "${tag}_squad" + (($Squad -replace '\s', '') -replace ',', '-')
 }
+if ($BotVersion -ne 1) { $tag = "${tag}_botv$BotVersion" }
+if ($Baseline -and $BlueBotVersion -ne 1) { $tag = "${tag}_bluebotv$BlueBotVersion" }
 $out = Join-Path $root "results\eval\$tag.json"
 New-Item -ItemType Directory -Force (Split-Path $out) | Out-Null
 if (Test-Path $out) { Remove-Item $out -Force -Confirm:$false }
@@ -99,6 +110,8 @@ $env:POSOCCER_EPISODES = "$Episodes"
 $env:POSOCCER_RUNID = $tag
 $env:POSOCCER_OUT = $out
 $env:POSOCCER_SQUAD = $Squad
+$env:POSOCCER_BOT_VERSION = "$BotVersion"
+$env:POSOCCER_BOT_VERSION_BLUE = "$BlueBotVersion"
 
 try {
     $p = Start-Process -FilePath $exe -ArgumentList "-batchmode", "-nographics", `
@@ -165,6 +178,7 @@ finally {
     $env:POSOCCER_EVAL = ""; $env:POSOCCER_BASELINE = ""
     $env:POSOCCER_EPISODES = ""; $env:POSOCCER_RUNID = ""; $env:POSOCCER_OUT = ""
     $env:POSOCCER_SQUAD = ""
+    $env:POSOCCER_BOT_VERSION = ""; $env:POSOCCER_BOT_VERSION_BLUE = ""
 }
 
 if (-not (Test-Path $out)) {
@@ -236,7 +250,8 @@ if ($r.invalid) { Write-Error "Run marked INVALID (no model at eval time)."; exi
 # step count. Baseline runs grade the bot, not a brain, so they never write.
 # Nor does a -Squad grade: the stamped rating is the 1v1 BENCHMARK figure, and a 2v2
 # grade is a different measurement that twice overwrote it (2026-10-10, 2026-10-11).
-if (-not $Baseline -and -not $Squad) {
+# Nor a grade against bot v2, for the same reason.
+if (-not $Baseline -and -not $Squad -and $BotVersion -eq 1) {
     . "$PSScriptRoot\lib-profile.ps1"
     $profileAsset = Join-Path $root "Assets\Agents\$($folders[$Profile])\Reward_$Profile.asset"
     Set-ProfileField $profileAsset 'evalWinRate' ("{0:0.####}" -f $winRate)
@@ -246,6 +261,11 @@ if (-not $Baseline -and -not $Squad) {
 
 if ($Baseline) {
     Write-Host "Baseline run (no bar applied) - expect roughly 50/50 between mirrored heuristic bots."
+    exit 0
+}
+
+if ($BotVersion -ne 1) {
+    Write-Host "Graded against bot v$BotVersion (no bar applied) - the 80% benchmark is defined against bot v1 only."
     exit 0
 }
 

@@ -64,6 +64,9 @@ namespace PoSoccer.Tests
             // 2026-10-10: one steers the single camera and clock, the other writes one
             // file per match. Six of either is the same mistake as six directors.
             "Agent_SpectatorInput", "Agent_MatchLog",
+            // 2026-10-11: one writes the ticker and an end-panel card; the other is a
+            // match-only overlay the installer adds on the same side.
+            "Agent_ExpectedGoals", "Agent_Skids",
         };
 
         static System.Type Resolve(string typeName)

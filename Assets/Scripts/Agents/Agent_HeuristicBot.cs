@@ -30,6 +30,15 @@ namespace PoSoccer
                  "measured against - leave it at 0 unless you are deliberately running " +
                  "a fair-information experiment. Seeded from POSOCCER_BOT_VISION.")]
         public float perceptionRadius = 0f;
+        [Tooltip("1 = the benchmark bot every grade in docs/training-history.md was taken " +
+                 "against. 2 adds lead pursuit (run to where the ball will be) and bank shots " +
+                 "off the side walls. A grade against 2 is a DIFFERENT measurement and is never " +
+                 "comparable with one against 1. Seeded from POSOCCER_BOT_VERSION (red) or " +
+                 "POSOCCER_BOT_VERSION_BLUE (blue).")]
+        [Range(1, 2)] public int version = BENCHMARK_VERSION;
+
+        /// <summary>The version the 80% benchmark bar is defined against. Do not change.</summary>
+        public const int BENCHMARK_VERSION = 1;
 
         float _jamSince = float.PositiveInfinity;
         float _flankUntil;
@@ -73,6 +82,24 @@ namespace PoSoccer
             // Default 0 (unlimited) keeps every historical result comparable.
             if (Agent_RunConfig.TryGetFloat(Agent_RunConfig.BOT_VISION, out float radius))
                 perceptionRadius = Mathf.Max(0f, radius);
+
+            // Bot v2 (2026-10-11). Per side, so a bot-vs-bot run can field v2 against v1
+            // and measure what the new skills are worth. Unset = the benchmark bot.
+            var owner = GetComponent<Agent_Soccer>();
+            if (owner != null) version = VersionFor(owner.team, version);
+        }
+
+        /// <summary>
+        /// The bot version the launcher asked for on <paramref name="team"/>'s side, or
+        /// <paramref name="fallback"/> when the variable is unset or out of range. Static
+        /// so Agent_EvalStats stamps the same answer the bots acted on.
+        /// </summary>
+        public static int VersionFor(Agent_Soccer.Team team, int fallback = BENCHMARK_VERSION)
+        {
+            string variable = team == Agent_Soccer.Team.Blue
+                ? Agent_RunConfig.BOT_VERSION_BLUE : Agent_RunConfig.BOT_VERSION;
+            if (!Agent_RunConfig.TryGetInt(variable, out int parsed)) return fallback;
+            return parsed >= 1 && parsed <= 2 ? parsed : fallback;
         }
 
         [Tooltip("How close (m) to its post a goalie, defender or support attacker has to be " +
@@ -181,6 +208,19 @@ namespace PoSoccer
             {
                 aim = passTarget;
             }
+            // v2: no pass on, and an opponent in the lane to goal - go round it off a side
+            // wall. Full strength only, like the boost-shot that has to strike it.
+            else if (version >= 2 && _strength >= 0.8f && opponentGoal != null
+                && nearestOpponent != null)
+            {
+                Vector2 pitchCentre = opponentGoal.parent != null
+                    ? (Vector2)opponentGoal.parent.position : Vector2.zero;
+                if (TryBankAim(ball.position, aim, nearestOpponent.position, pitchCentre,
+                        BallWallHalfExtents, Agent_PitchGuard.SideBounciness, out Vector2 bankAim))
+                {
+                    aim = bankAim;
+                }
+            }
 
             // Boost-shot: already behind the ball on the ball->goal axis and facing
             // it - burst through the contact so body speed becomes shot speed.
@@ -207,6 +247,19 @@ namespace PoSoccer
                     return new Vector4(1f, 0f, Mathf.Clamp(chargeErr / 45f, -1f, 1f), 0.8f);
             }
 
+            // v2 lead pursuit: a moving ball is chased to where it will be, walls
+            // included, not to where it is. Only the long chase - close control below
+            // still works off the ball itself.
+            if (version >= 2 && _strength >= 0.8f && toBall.magnitude >= controlDistance
+                && ball.linearVelocity.sqrMagnitude > LEAD_MIN_BALL_SPEED * LEAD_MIN_BALL_SPEED)
+            {
+                Vector2 pitchCentre = opponentGoal != null && opponentGoal.parent != null
+                    ? (Vector2)opponentGoal.parent.position : Vector2.zero;
+                target = InterceptPoint(self.position, LEAD_CHASE_SPEED, ball.position,
+                    ball.linearVelocity, ball.linearDamping, pitchCentre, BallWallHalfExtents,
+                    Agent_PitchGuard.SideBounciness);
+            }
+
             // When close to the ball, aim for the point behind the ball on the
             // ball->goal line so pushes travel goalward instead of poking around.
             if (opponentGoal != null && toBall.magnitude < controlDistance)
@@ -231,6 +284,123 @@ namespace PoSoccer
             if (Time.time < _flankUntil) target = _flankPoint;
 
             return Steer(self, target, opponentGoal, allowBoost: true);
+        }
+
+        // ── v2 skills ───────────────────────────────────────────────────────
+
+        /// <summary>Ball speed (m/s) under which leading it is not worth the arithmetic.</summary>
+        internal const float LEAD_MIN_BALL_SPEED = 2f;
+        /// <summary>Speed (m/s) the bot is assumed to chase at. Its measured top speed is 4.74.</summary>
+        internal const float LEAD_CHASE_SPEED = 4.5f;
+        /// <summary>Seconds of ball flight the intercept search looks ahead.</summary>
+        internal const float LEAD_HORIZON = 2f;
+        /// <summary>A bank shot is tried only from this far out (m) ...</summary>
+        internal const float BANK_MIN_RANGE = 6f;
+        /// <summary>... and no farther than this: beyond it the ball dies on the second leg.</summary>
+        internal const float BANK_MAX_RANGE = 22f;
+        /// <summary>The bounce must land this far (m) from a corner; the corner arcs are not flat walls.</summary>
+        internal const float BANK_CORNER_MARGIN = 3f;
+        const float BALL_RADIUS = 0.11f;
+
+        /// <summary>
+        /// Half extents of the box the BALL'S CENTRE bounces inside. interiorHalfExtents is
+        /// the pitch pulled in by 1 m for steering (Agent_EnvController.ApplyBotBounds).
+        /// </summary>
+        Vector2 BallWallHalfExtents =>
+            interiorHalfExtents + new Vector2(1f - BALL_RADIUS, 1f - BALL_RADIUS);
+
+        /// <summary>
+        /// Where a chaser moving at <paramref name="chaseSpeed"/> first meets the ball: the
+        /// ball is stepped forward under its own damping and reflected off the four walls
+        /// (the same terms Agent_ShotTracer integrates), and the first point the chaser can
+        /// reach in time is the answer. Past the horizon it returns the ball's last
+        /// projected position. Static and pure so it can be pinned without a scene.
+        /// </summary>
+        public static Vector2 InterceptPoint(Vector2 self, float chaseSpeed, Vector2 ballPos,
+            Vector2 ballVelocity, float ballDamping, Vector2 pitchCentre, Vector2 wallHalfExtents,
+            float bounce, float horizon = LEAD_HORIZON)
+        {
+            const float step = 0.05f;
+            Vector2 position = ballPos;
+            Vector2 velocity = ballVelocity;
+
+            for (float elapsed = step; elapsed <= horizon + 0.0001f; elapsed += step)
+            {
+                velocity /= 1f + ballDamping * step;
+                Vector2 local = position + velocity * step - pitchCentre;
+                if (Mathf.Abs(local.x) > wallHalfExtents.x)
+                {
+                    local.x = Mathf.Sign(local.x) * wallHalfExtents.x;
+                    velocity.x = -velocity.x * bounce;
+                }
+                if (Mathf.Abs(local.y) > wallHalfExtents.y)
+                {
+                    local.y = Mathf.Sign(local.y) * wallHalfExtents.y;
+                    velocity.y = -velocity.y * bounce;
+                }
+                position = pitchCentre + local;
+
+                if ((position - self).magnitude <= chaseSpeed * elapsed) return position;
+            }
+            return position;
+        }
+
+        /// <summary>
+        /// A shot off a side wall, for when an opponent stands in the direct lane.
+        ///
+        /// The walls keep the ball's speed along the wall and return
+        /// <paramref name="bounce"/> of its speed into it (Agent_PitchGuard), so the angle
+        /// out is steeper than the angle in and the textbook mirror image is wrong. The
+        /// ball lands on the goal when it is struck at the goal's reflection pushed
+        /// 1/bounce times farther behind the wall; that point is <paramref name="aim"/>.
+        /// False when the direct lane is open, the range is wrong, the bounce would land in
+        /// a corner arc, or the opponent also covers the way to both walls.
+        /// </summary>
+        public static bool TryBankAim(Vector2 ballPos, Vector2 goal, Vector2 foePos,
+            Vector2 pitchCentre, Vector2 wallHalfExtents, float bounce, out Vector2 aim)
+        {
+            aim = goal;
+            if (bounce <= 0.01f) return false;
+
+            Vector2 toGoal = goal - ballPos;
+            float goalDist = toGoal.magnitude;
+            if (goalDist < BANK_MIN_RANGE || goalDist > BANK_MAX_RANGE) return false;
+
+            Vector2 toFoe = foePos - ballPos;
+            float foeDist = toFoe.magnitude;
+            if (foeDist < 0.001f) return false;
+            Vector2 foeDir = toFoe / foeDist;
+            bool laneBlocked = foeDist < PASS_PRESSURE_RANGE
+                && Vector2.Dot(foeDir, toGoal / goalDist) > 0.8f;
+            if (!laneBlocked) return false;
+
+            bool found = false;
+            float bestPath = float.PositiveInfinity;
+            for (int side = -1; side <= 1; side += 2)
+            {
+                float wallX = pitchCentre.x + side * wallHalfExtents.x;
+                float toWall = Mathf.Abs(wallX - ballPos.x);
+                float wallToGoal = Mathf.Abs(wallX - goal.x) / bounce;
+                if (toWall < 0.5f) continue;   // already on this wall: nothing to bank off
+
+                float hitY = ballPos.y + (goal.y - ballPos.y) * toWall / (toWall + wallToGoal);
+                if (Mathf.Abs(hitY - pitchCentre.y) > wallHalfExtents.y - BANK_CORNER_MARGIN) continue;
+
+                Vector2 hit = new(wallX, hitY);
+                Vector2 firstLeg = hit - ballPos;
+                float firstLegLength = firstLeg.magnitude;
+                if (foeDist < firstLegLength && Vector2.Dot(foeDir, firstLeg / firstLegLength) > 0.8f)
+                {
+                    continue;   // the opponent covers this wall too
+                }
+
+                float path = firstLegLength + (goal - hit).magnitude;
+                if (path >= bestPath) continue;
+                bestPath = path;
+                aim = new Vector2(wallX + side * wallToGoal, goal.y);
+                found = true;
+            }
+            return found;
         }
 
         /// <summary>Teammate nearer than this (m) is not worth a pass - just keep going.</summary>

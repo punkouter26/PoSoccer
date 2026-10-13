@@ -57,3 +57,22 @@ starting them from row 1 (`train-phase1.ps1 -InitFrom soccer_p30team_standard` w
 - `threaded: false`. The `threaded: true` throughput A/B is `TRAIN_STANDARD_p28.yaml`,
   which still targets the old contract and needs porting before it can run.
 - Superseded configs are in `config/archive/` and train the old 178-input contract.
+
+## Staged 2026-10-11: p34league (not yet run)
+
+| Brain | Config | Algorithm | Steps | Starts from | Opponent pool | Squad |
+|---|---|---|---|---|---|---|
+| STANDARD | `TRAIN_STANDARD_p34league.yaml` | PPO with `self_play` | 10M | `soccer_p33team_standard` | `-League`: past snapshots on half the pitches, bot v1 on the other half | 1v1 |
+
+```powershell
+# Rebuild the player first: the league seating is new code.
+.\scripts\train-phase1.ps1 -RunId soccer_p34league_standard -Config TRAIN_STANDARD_p34league.yaml `
+    -League -InitFrom soccer_p33team_standard -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
+```
+
+- `PoSoccer/league_bot_pitch` reads about 0.5. A flat 0 means plain self-play: stop the run.
+- `Self-play/ELO` is a liveness signal only here; the config header says why.
+- Gate as for every brain: the probe, then 350 episodes at 1v1 against bot v1, compared
+  with p33team's 37.1%.
+- The run ends by deploying its brain over `STANDARD.onnx` (`update-model.ps1`), as every
+  run does. p33team's export stays in `results/soccer_p33team_standard/`.

@@ -1,0 +1,12 @@
+<linker>
+  <!--
+    Agent_BrainHub builds a ModelAsset from a .sentis file at runtime by setting these
+    types' fields through reflection. Managed stripping cannot see that use, so the
+    types are preserved here. Agent_EditMode_BrainHub pins the field names.
+  -->
+  <assembly fullname="Unity.InferenceEngine">
+    <type fullname="Unity.InferenceEngine.ModelAsset" preserve="all"/>
+    <type fullname="Unity.InferenceEngine.ModelAssetData" preserve="all"/>
+    <type fullname="Unity.InferenceEngine.ModelAssetWeightsData" preserve="all"/>
+  </assembly>
+</linker>

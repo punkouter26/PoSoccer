@@ -382,3 +382,55 @@ Probe on `soccer_p33team_standard` (2026-10-11, 10.44 m chase, 4 s): covered 9.1
 did not arrive inside 4 s, max 3.29 m/s, heading churn 214 deg. Scripted bot in the same
 run: 13.16 m, arrived at 2.86 s, 4.74 m/s, 53 deg. The brain reaches the ball far better
 than p30team (50%) but is still slower than the bot and turns four times as much.
+
+## Bot v2, league seating, p34league staged (2026-10-11)
+
+### Bot v2: lead pursuit and bank shots. Modestly stronger than the benchmark bot.
+
+`Agent_HeuristicBot.version` 2 chases a moving ball to its projected meeting point (walls
+included) and, when an opponent stands in the lane to goal and no pass is on, aims off a
+side wall. Version 1 is unchanged and is still what an unset `POSOCCER_BOT_VERSION` means,
+so every earlier grade stands. The eval JSON now stamps `botVersion` / `blueBotVersion`.
+
+Bot against bot, 1v1, same player build, 1,000 episodes each:
+
+| Blue | Red | Blue wins | Red wins | Stalemates |
+|---|---|---|---|---|
+| v1 | v1 (control) | 274 | 305 | 421 |
+| **v2** | v1 | **345** | 271 | 384 |
+| v1 | **v2** | 287 | **322** | 391 |
+
+Pooled over both seats v2 won 667 of 2,000 (33.4%) where v1 in the same seats won 579
+(29.0%): +4.4 points on a standard deviation of about 1.5, roughly 3 SD. Stalemates fell
+from 42.1% to 38.8%. The gain is lopsided: +7.1 points in the blue seat (3.4 SD) and +1.7
+in the red seat (0.8 SD, noise). Nothing here explains the difference between seats, and
+the two skills were not measured separately.
+
+`soccer_p33team_standard` against bot v2 (n=350): 122 wins, 105 losses, 123 stalemates,
+34.9%. Against bot v1 it graded 37.1%. The 2.2-point gap is inside noise at that sample.
+
+The control also updates the bot-vs-bot baseline: at n=1,000 on today's build blue wins
+27.4% and red 30.5%, with 42.1% stalemates. The 31.1% quoted above came from n=350.
+
+### League seating. Plumbing verified by a pilot; no trained result.
+
+`POSOCCER_OPPONENT=league` (`train-phase1.ps1 -League`) cycles the pitch grid through
+self-play, bot as red, self-play, bot as blue. `TRAIN_STANDARD_p34league.yaml` is p33team's
+PPO recipe plus a `self_play` block, 1v1, warm-started from `soccer_p33team_standard`.
+
+A 400k-step pilot (380 s, about 950 s per million at `-NumEnvs 4`) confirmed: both team
+ids connected, the p33team checkpoint loaded, each env player logged 8 scripted agents out
+of 32 (4 red, 4 blue across 16 pitches), and `Self-play/ELO` was published (1199 to 1196,
+flat, which means nothing over 400k steps). The pilot's output was deleted. The 10M run
+has not been started; expect roughly 2.6 h.
+
+### Found while building the skid marks: the traction clamp cannot bind.
+
+`TractionSaturation` is drive force over `mu * m * g`. On the serialized bodies the drive
+tops out at 236 N x 2.2 boost = 519 N against 1.2 x 75 x 9.81 = 883 N, and both scale with
+mass, so the ratio cannot pass 0.59 on any profile. The friction circle therefore never
+limits anything a policy does, `Agent_MatchStats`' AT THE LIMIT line (threshold 0.9) should
+always read 0, and the intent overlay's arc cannot close. This is arithmetic on the
+serialized values, not a measurement from a match. It was not changed: `_moveForce`,
+`_boostMultiplier` and `_tractionMu` are the "keeps the tensor shape, changes the meaning"
+kind of edit, and every trained brain learned on these numbers.

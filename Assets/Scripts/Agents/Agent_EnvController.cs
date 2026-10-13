@@ -207,6 +207,7 @@ namespace PoSoccer
             // Squad first, so the players it clones are on the pitch when the profile
             // override below walks the children.
             ApplyTrainingSquad();
+            ApplyLeagueSeat();
             ApplyProfileOverride();
             // Ball and pitch colliders onto their physics layers before any sensor
             // casts. Players stamp their own (team-dependent) layer in their Awake.
@@ -236,7 +237,68 @@ namespace PoSoccer
         // Player builds keep statics for the process lifetime anyway; this is for the
         // editor, where play sessions share a domain whenever reload is skipped.
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        static void ResetPitchOrdinal() => s_pitchOrdinal = 0;
+        static void ResetPitchOrdinal()
+        {
+            s_pitchOrdinal = 0;
+            s_leagueOrdinal = 0;
+        }
+
+        // ── League training (2026-10-11) ────────────────────────────────────
+        //
+        // POSOCCER_OPPONENT=league mixes two kinds of pitch in one run: self-play, where
+        // both sides are on the trainer and the opponent is a past snapshot of the
+        // learner, and bot pitches, where one side is Agent_HeuristicBot. The bot stays in
+        // the pool because it is what evaluate.ps1 grades against, and the symmetric
+        // self-play runs on record (v2, v3, p3) scored 15-19% against it.
+        //
+        // The bot takes RED on one bot pitch and BLUE on the next. The ghost trainer
+        // swaps which team is learning; with the bot on one colour only, the other
+        // colour's learning phase would never meet it.
+
+        static int s_leagueOrdinal;
+
+        /// <summary>Value of POSOCCER_OPPONENT that turns league seating on.</summary>
+        public const string OPPONENT_LEAGUE = "league";
+
+        /// <summary>
+        /// The side the scripted bot plays on THIS pitch in a league run, or null when
+        /// both sides are on the trainer. Always null outside a league run.
+        /// </summary>
+        public Agent_Soccer.Team? LeagueScriptedSide { get; private set; }
+
+        /// <summary>True when this process was launched as a league run.</summary>
+        public static bool LeagueRun =>
+            !Agent_EvalStats.EvalMode
+            && Agent_RunConfig.Is(Agent_RunConfig.OPPONENT, OPPONENT_LEAGUE);
+
+        void ApplyLeagueSeat()
+        {
+            if (!LeagueRun) return;
+            // A match scene's lineup belongs to the menu, as for the squad variable.
+            if (GetComponent<Agent_MatchLoader>() != null) return;
+
+            int ordinal = s_leagueOrdinal++;
+            LeagueScriptedSide = LeagueSeatFor(ordinal);
+            if (ordinal == 0)
+            {
+                Debug.Log("[Env] POSOCCER_OPPONENT=league -> pitches cycle self-play, bot as red, " +
+                          "self-play, bot as blue.");
+            }
+        }
+
+        /// <summary>
+        /// League seating for the pitch at <paramref name="ordinal"/>, period four:
+        /// self-play, bot as red, self-play, bot as blue.
+        /// </summary>
+        internal static Agent_Soccer.Team? LeagueSeatFor(int ordinal)
+        {
+            switch (Mathf.Abs(ordinal) % 4)
+            {
+                case 1: return Agent_Soccer.Team.Red;
+                case 3: return Agent_Soccer.Team.Blue;
+                default: return null;
+            }
+        }
 
         void ApplyTrainingSquad()
         {
@@ -1085,6 +1147,13 @@ namespace PoSoccer
             // failure shape this project has hit with POSOCCER_OPPONENT and stale builds.
             // A "1,2" pattern should read ~1.5 here.
             stats.Add("PoSoccer/blue_squad", TeamSize(Agent_Soccer.Team.Blue));
+
+            // Same check for a league run: half the pitches seat a scripted bot, so this
+            // reads about 0.5. A flat 0 means the run is plain self-play.
+            if (LeagueRun)
+            {
+                stats.Add("PoSoccer/league_bot_pitch", LeagueScriptedSide.HasValue ? 1f : 0f);
+            }
 
             // Team play, 2v2 pitches only (a lone player has nobody to pass to, and
             // mixing its zeros in would halve every figure on a "1,2" run).

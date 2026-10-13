@@ -131,6 +131,14 @@ namespace PoSoccer
             if (go.GetComponent<Agent_SpectatorInput>() == null) go.AddComponent<Agent_SpectatorInput>();
             if (go.GetComponent<Agent_MatchLog>() == null) go.AddComponent<Agent_MatchLog>();
 
+            // Match-only overlays (2026-10-11). Agent_ExpectedGoals writes the ticker and
+            // an end-panel card, so it is scoreboard-side. Agent_Skids draws only its own
+            // pitch and could be a per-pitch visual; it is here because the gallery's six
+            // small pitches are too small to read a skid on. Both before Agent_MatchStats
+            // would also work - the ticker line reads the skids lazily.
+            if (go.GetComponent<Agent_ExpectedGoals>() == null) go.AddComponent<Agent_ExpectedGoals>();
+            if (go.GetComponent<Agent_Skids>() == null) go.AddComponent<Agent_Skids>();
+
             // Screen-space and device-wide owners. All three are singular by
             // nature - one framebuffer, one vibrator, one frame budget - so they
             // belong here rather than in InstallVisuals, whatever the gallery

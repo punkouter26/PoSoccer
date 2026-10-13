@@ -135,6 +135,11 @@ namespace PoSoccer
                 // same brain are different measurements; without this field the JSON
                 // could not tell them apart. Empty POSOCCER_SQUAD = the authored 1v1.
                 squad = Agent_RunConfig.GetString(Agent_RunConfig.SQUAD, "1"),
+                // The opponent the grade was taken against. 1 is the benchmark bot; a
+                // grade against 2 is a different measurement, like a different squad.
+                botVersion = Agent_HeuristicBot.VersionFor(Agent_Soccer.Team.Red),
+                blueBotVersion = BaselineMode
+                    ? Agent_HeuristicBot.VersionFor(Agent_Soccer.Team.Blue) : 0,
                 invalid = _invalid,
                 timestampUtc = DateTime.UtcNow.ToString("o"),
             };
@@ -191,6 +196,9 @@ namespace PoSoccer
             public string modelFile;
             public bool baseline;
             public string squad;
+            // Scripted-bot version on red, and on blue in a bot-vs-bot run (0 = blue ran a brain).
+            public int botVersion;
+            public int blueBotVersion;
             public bool invalid;
             public string timestampUtc;
         }

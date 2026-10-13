@@ -13,6 +13,11 @@ param(
     [switch]$Force,
     [Parameter(HelpMessage = "Leave both teams on the trainer (symmetric self-play) instead of facing the bot.")]
     [switch]$SelfPlay,
+    [Parameter(HelpMessage = "League: the pitch grid mixes self-play pitches with pitches where one side is the scripted bot. Needs a config with a self_play block.")]
+    [switch]$League,
+    [Parameter(HelpMessage = "Scripted-bot version the learner faces (1 = benchmark bot, 2 = lead pursuit and bank shots).")]
+    [ValidateRange(1, 2)]
+    [int]$BotVersion = 1,
     [Parameter(HelpMessage = "Players per side on each training pitch, cycled over the grid: '2' = all 2v2, '1,2' = alternate. Empty = the authored 1v1.")]
     [string]$Squad = ""
 )
@@ -39,7 +44,12 @@ try {
 # executes - which is what silently happened to every run before 2026-08-04.
 # Agent_Soccer.ApplyTrainingOpponent reads this and forces Red to HeuristicOnly.
 # Env players are spawned as children of mlagents-learn, so they inherit it.
-$env:POSOCCER_OPPONENT = if ($SelfPlay) { "" } else { "bot" }
+if ($SelfPlay -and $League) { throw "-SelfPlay and -League are different opponent pools; pass one." }
+$env:POSOCCER_OPPONENT = if ($League) { "league" } elseif ($SelfPlay) { "" } else { "bot" }
+# In a league run the bot sits on either colour, so both sides get the same version.
+# Confirm the seating reached the player on TensorBoard: PoSoccer/league_bot_pitch (about 0.5).
+$env:POSOCCER_BOT_VERSION = "$BotVersion"
+$env:POSOCCER_BOT_VERSION_BLUE = "$BotVersion"
 
 # Squad size per pitch (Agent_EnvController.ApplyTrainingSquad). Validated here so a
 # typo fails before a multi-hour run rather than as one LogError in a player log.
@@ -72,6 +82,8 @@ try {
 finally {
     $env:POSOCCER_OPPONENT = ""
     $env:POSOCCER_SQUAD = ""
+    $env:POSOCCER_BOT_VERSION = ""
+    $env:POSOCCER_BOT_VERSION_BLUE = ""
     # Lifecycle guardrail: no orphaned trainer/env processes after a run.
     & "$root\scripts\cleanup-training.ps1"
     # Auto-assign the freshest checkpoint into the agent prefab slot (GUID preserved).

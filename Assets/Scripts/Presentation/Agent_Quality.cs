@@ -65,6 +65,7 @@ namespace PoSoccer
 
         Agent_ScreenFX _screenFX;
         Agent_Wear _wear;
+        Agent_Skids _skids;
         Agent_Stadium _stadium;
 
         /// <summary>
@@ -101,6 +102,7 @@ namespace PoSoccer
                 : _budgetMs;
             _screenFX = FindAnyObjectByType<Agent_ScreenFX>();
             _wear = FindAnyObjectByType<Agent_Wear>();
+            _skids = FindAnyObjectByType<Agent_Skids>();
             _stadium = Agent_Stadium.Instance;
 
             // A scene entered at a degraded tier from a previous match would be
@@ -211,6 +213,9 @@ namespace PoSoccer
             // are paid for half a second at the one moment the whole match is
             // building towards. So they go last.
             if (_wear != null) _wear.Visible = Tier < 1;
+            // The skid streaks are the same kind of cost as the wear: ground detail,
+            // redrawn continuously. They go together.
+            if (_skids != null) _skids.Allowed = Tier < 1;
             if (_stadium != null) _stadium.SetBloomEnabled(Tier < 2);
             // The follow spot is a continuous light, so it goes with the bloom.
             if (_stadium != null) _stadium.FollowSpotEnabled = Tier < 2;

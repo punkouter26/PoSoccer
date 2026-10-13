@@ -94,7 +94,9 @@ namespace PoSoccer
         float _nextLineAt;
 
         /// <summary>Number of distinct ticker lines. Kept next to the switch that renders them.</summary>
-        const int LineCount = 6;
+        const int LineCount = 7;
+
+        Agent_Skids _skids;
 
         /// <summary>Match record for one player. False before the first physics tick.</summary>
         public bool TryGet(Agent_Soccer agent, out Stat stat) => _stats.TryGetValue(agent, out stat);
@@ -254,6 +256,15 @@ namespace PoSoccer
                     var leader = Leader(s => s.AtLimitShare, out float value);
                     return leader == null
                         ? null : $"AT THE LIMIT · {Name(leader)} {value * 100f:0}% of the match";
+                }
+                case 5:
+                {
+                    // Measured ground force over body weight (Agent_Skids). Looked up
+                    // here, not in Start: the installer adds it after this component.
+                    if (_skids == null) _skids = GetComponent<Agent_Skids>();
+                    if (_skids == null) return null;
+                    var leader = _skids.PeakLeader(out float value);
+                    return leader == null ? null : $"PEAK G · {Name(leader)} {value:0.00} g";
                 }
                 default:
                     return $"FASTEST BALL · {_ballTopSpeed:0.0} m/s";

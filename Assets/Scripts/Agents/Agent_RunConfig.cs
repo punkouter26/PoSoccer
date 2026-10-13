@@ -35,7 +35,11 @@ namespace PoSoccer
         public const string OUT = "POSOCCER_OUT";
 
         // ── Training (scripts/train-phase1.ps1, train-all.ps1) ──────────────
-        /// <summary>"bot" = RED is the scripted opponent. Unset = self-play.</summary>
+        /// <summary>
+        /// "bot" = RED is the scripted opponent. "league" = the pitch grid mixes self-play
+        /// pitches with pitches where one side is the scripted bot
+        /// (Agent_EnvController.LeagueSeatFor). Unset = self-play on every pitch.
+        /// </summary>
         public const string OPPONENT = "POSOCCER_OPPONENT";
         /// <summary>Players per side, cycled over the pitch grid ("2", "1,2").</summary>
         public const string SQUAD = "POSOCCER_SQUAD";
@@ -45,6 +49,10 @@ namespace PoSoccer
         public const string BOT_STRENGTH = "POSOCCER_BOT_STRENGTH";
         /// <summary>Scripted-bot opponent perception radius (0 = unlimited).</summary>
         public const string BOT_VISION = "POSOCCER_BOT_VISION";
+        /// <summary>Scripted-bot version on RED: 1 = the benchmark bot (default), 2 = lead pursuit and bank shots.</summary>
+        public const string BOT_VERSION = "POSOCCER_BOT_VERSION";
+        /// <summary>Scripted-bot version on BLUE, for bot-vs-bot runs. Default 1.</summary>
+        public const string BOT_VERSION_BLUE = "POSOCCER_BOT_VERSION_BLUE";
 
         // ── Demonstration recording ─────────────────────────────────────────
         /// <summary>Anything but empty / "0" = record the scripted bot to a .demo.</summary>

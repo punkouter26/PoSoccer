@@ -147,7 +147,7 @@ namespace PoSoccer
             // before LFS, or the day the observation contract changes): then the full
             // list, bot included, comes back so the game can still be started, under
             // the "no trained brains installed" line that already says why.
-            _roster = TrainedOnly(Compact(standard, matt, kim, nick));
+            _roster = WithCommunityBrains(TrainedOnly(Compact(standard, matt, kim, nick)));
             if (_roster.Length == 0) _roster = Compact(standard, matt, kim, nick, ruleBot);
             if (_roster.Length == 0)
             {
@@ -404,6 +404,7 @@ namespace PoSoccer
             // reached from inside a match.
             options.Add(CardsButton());
             options.Add(GalleryButton());
+            options.Add(BrainsButton());
             _soundButton = Agent_UIStyle.SoundToggleButton();
             options.Add(_soundButton);
             options.Add(SettingsButton());
@@ -452,6 +453,32 @@ namespace PoSoccer
         void OnSettingsChanged()
         {
             if (_soundButton != null) _soundButton.text = Agent_Audio.Muted ? "SND OFF" : "SND ON";
+        }
+
+        /// <summary>
+        /// The shipped roster followed by every usable brain in the brains folder
+        /// (Agent_BrainHub). A community brain can never take a shipped player's name,
+        /// the bot's included: the names are reserved before the folder is read.
+        /// </summary>
+        Reward_Settings[] WithCommunityBrains(Reward_Settings[] shipped)
+        {
+            var template = standard != null ? standard : (shipped.Length > 0 ? shipped[0] : null);
+            if (template == null) return shipped;
+
+            var reserved = new List<string>(5);
+            var builtIn = Compact(standard, matt, kim, nick, ruleBot);
+            for (int builtInIndex = 0; builtInIndex < builtIn.Length; builtInIndex++)
+            {
+                reserved.Add(builtIn[builtInIndex].playerName);
+            }
+
+            var community = Agent_BrainHub.LoadInstalled(template, reserved);
+            if (community.Count == 0) return shipped;
+
+            var roster = new List<Reward_Settings>(shipped.Length + community.Count);
+            roster.AddRange(shipped);
+            roster.AddRange(community);
+            return roster.ToArray();
         }
 
         static Reward_Settings[] Compact(params Reward_Settings[] entries)
@@ -869,6 +896,255 @@ namespace PoSoccer
             RefreshAll();
         }
 
+        // ── Community brains ────────────────────────────────────────────────
+
+        VisualElement _brainsOverlay, _brainsList;
+        Label _brainsStatus;
+        Agent_BrainHub.Index _hubIndex;
+
+        Button BrainsButton()
+        {
+            var b = new Button(OpenBrains) { text = "HUB", name = "open-brains" };
+            b.AddToClassList("btn");
+            return b;
+        }
+
+        /// <summary>
+        /// The community-brain screen: what is installed, and - where the build has a
+        /// hub client at all - what the hub offers. A modal layer like the cards, for
+        /// the same reason: the menu underneath is already a full portrait screen.
+        /// </summary>
+        void OpenBrains()
+        {
+            if (_root == null) return;
+            if (_brainsOverlay != null) CloseBrains();
+
+            _brainsOverlay = new VisualElement();
+            _brainsOverlay.AddToClassList("panel--scrim");
+            _brainsOverlay.RegisterCallback<PointerDownEvent>(evt =>
+            {
+                if (ReferenceEquals(evt.target, _brainsOverlay)) CloseBrains();
+            });
+
+            var card = new VisualElement();
+            card.AddToClassList("card");
+            card.style.width = 980;
+            _brainsOverlay.Add(card);
+
+            var heading = new Label("COMMUNITY BRAINS");
+            heading.AddToClassList("card__heading");
+            card.Add(heading);
+
+            _brainsStatus = new Label();
+            _brainsStatus.AddToClassList("card__note");
+            card.Add(_brainsStatus);
+
+            var scroll = new ScrollView(ScrollViewMode.Vertical);
+            scroll.style.maxHeight = 900;
+            card.Add(scroll);
+            _brainsList = scroll.contentContainer;
+
+            var actions = new VisualElement();
+            actions.AddToClassList("card-add");
+            var fetch = new Button(FetchHub) { text = "FETCH FROM HUB", name = "brains-fetch" };
+            fetch.AddToClassList("btn");
+            fetch.AddToClassList("card-add__btn");
+            fetch.SetEnabled(Agent_BrainHub.NetworkCompiled);
+            actions.Add(fetch);
+            var close = new Button(CloseBrains) { text = "CLOSE", name = "brains-close" };
+            close.AddToClassList("btn");
+            close.AddToClassList("card-add__btn");
+            actions.Add(close);
+            _brainsOverlay.Add(actions);
+
+            _root.Add(_brainsOverlay);
+            Agent_UIStyle.PlayEntrance(_brainsOverlay);
+
+            SetBrainsStatus(Agent_BrainHub.NetworkCompiled
+                ? $"Hub: {Agent_BrainHub.DEFAULT_REPO}. Win rates shown are the uploader's own claim."
+                : "This build has no network access. Brains copied into the app's brains folder still load.");
+            FillBrains();
+        }
+
+        void CloseBrains()
+        {
+            if (_brainsOverlay == null) return;
+            if (_root != null && _brainsOverlay.parent == _root) _root.Remove(_brainsOverlay);
+            _brainsOverlay = null;
+            _brainsList = null;
+            _brainsStatus = null;
+        }
+
+        void SetBrainsStatus(string text)
+        {
+            if (_brainsStatus != null) _brainsStatus.text = text;
+        }
+
+        /// <summary>Installed brains first, then whatever the last fetch returned.</summary>
+        void FillBrains()
+        {
+            if (_brainsList == null) return;
+            _brainsList.Clear();
+
+            int installed = 0;
+            for (int rosterIndex = 0; rosterIndex < _roster.Length; rosterIndex++)
+            {
+                var profile = _roster[rosterIndex];
+                if (!Agent_BrainHub.IsCommunity(profile)) continue;
+                installed++;
+                _brainsList.Add(BrainRow(profile.playerName, ProvenanceLine(profile.trainingRunId,
+                    profile.evalWinRate, profile.evalEpisodes), "REMOVE", () => RemoveBrain(profile)));
+            }
+
+            if (_hubIndex != null)
+            {
+                for (int brainIndex = 0; brainIndex < _hubIndex.brains.Length; brainIndex++)
+                {
+                    var entry = _hubIndex.brains[brainIndex];
+                    if (entry == null || !Agent_BrainHub.IsSafeFileName(entry.file)) continue;
+                    if (FindProfile(Agent_BrainHub.RosterName(entry.name)) != null) continue;
+                    string by = string.IsNullOrEmpty(entry.author) ? string.Empty : entry.author + " · ";
+                    _brainsList.Add(BrainRow(Agent_BrainHub.RosterName(entry.name),
+                        by + ProvenanceLine(entry.runId, entry.evalWinRate, entry.evalEpisodes),
+                        "INSTALL", () => InstallBrain(entry)));
+                }
+            }
+
+            if (_brainsList.childCount == 0)
+            {
+                var empty = new Label(installed == 0 && _hubIndex == null
+                    ? "No community brains installed."
+                    : "Nothing new on the hub.");
+                empty.AddToClassList("card__tile-caption");
+                _brainsList.Add(empty);
+            }
+        }
+
+        static string ProvenanceLine(string runId, float winRate, int episodes)
+        {
+            string run = string.IsNullOrEmpty(runId) ? "unknown run" : runId;
+            return winRate >= 0f
+                ? $"{run} · claims {winRate * 100f:0.0}% over {episodes}"
+                : $"{run} · ungraded";
+        }
+
+        static VisualElement BrainRow(string title, string detail, string action, System.Action onClick)
+        {
+            var row = new VisualElement();
+            row.style.flexDirection = FlexDirection.Row;
+            row.style.alignItems = Align.Center;
+            row.style.marginTop = Agent_UIStyle.Space4;
+
+            var text = new VisualElement();
+            text.style.flexGrow = 1;
+            text.style.flexShrink = 1;
+            var name = new Label(title);
+            name.AddToClassList("card__prov");
+            name.style.color = Agent_UIStyle.TextPrimary;
+            text.Add(name);
+            var note = new Label(detail);
+            note.AddToClassList("card__tile-caption");
+            note.style.whiteSpace = WhiteSpace.Normal;
+            text.Add(note);
+            row.Add(text);
+
+            var button = new Button(onClick) { text = action };
+            button.AddToClassList("btn");
+            row.Add(button);
+            return row;
+        }
+
+        void FetchHub()
+        {
+            SetBrainsStatus("Contacting the hub...");
+            Agent_BrainHub.FetchIndex(Agent_BrainHub.DEFAULT_REPO, (index, error) =>
+            {
+                // The screen may have been closed, or the scene left, while this was out.
+                if (this == null || _brainsOverlay == null) return;
+                _hubIndex = index;
+                SetBrainsStatus(index != null
+                    ? $"{index.brains.Length} brains on the hub. Win rates are the uploader's own claim."
+                    : "Hub unavailable: " + error);
+                FillBrains();
+            });
+        }
+
+        void InstallBrain(Agent_BrainHub.Entry entry)
+        {
+            SetBrainsStatus($"Downloading {entry.name}...");
+            Agent_BrainHub.Download(Agent_BrainHub.DEFAULT_REPO, entry, (bytes, error) =>
+            {
+                if (this == null) return;
+                if (bytes == null)
+                {
+                    SetBrainsStatus("Download failed: " + error);
+                    return;
+                }
+                var template = standard != null ? standard : _roster[0];
+                if (!Agent_BrainHub.Install(entry, bytes, template, out string reason))
+                {
+                    SetBrainsStatus($"{entry.name} refused: {reason}.");
+                    return;
+                }
+                ReloadRoster($"{Agent_BrainHub.RosterName(entry.name)} installed.");
+            });
+        }
+
+        void RemoveBrain(Reward_Settings profile)
+        {
+            string removed = profile.playerName;
+            if (!Agent_BrainHub.Uninstall(profile))
+            {
+                SetBrainsStatus("Could not remove that brain's files.");
+                return;
+            }
+            ReloadRoster($"{removed} removed.");
+        }
+
+        /// <summary>
+        /// Re-reads the roster after an install or a removal and rebuilds the screen.
+        /// A squad slot holding a brain that is gone is dropped, not left pointing at it.
+        /// </summary>
+        void ReloadRoster(string status)
+        {
+            bool reopen = _brainsOverlay != null;
+            CloseBrains();
+
+            var roster = WithCommunityBrains(TrainedOnly(Compact(standard, matt, kim, nick)));
+            if (roster.Length == 0) roster = Compact(standard, matt, kim, nick, ruleBot);
+            _roster = roster;
+            _anyUsableBrain = AnyUsableBrain();
+
+            Prune(_blue);
+            Prune(_red);
+            if (_blue.Count == 0 || _red.Count == 0) ApplyPresetQuietly(2);
+
+            Build();
+            if (!reopen) return;
+            OpenBrains();
+            SetBrainsStatus(status);
+        }
+
+        void Prune(List<Reward_Settings> squad)
+        {
+            for (int slot = squad.Count - 1; slot >= 0; slot--)
+            {
+                if (System.Array.IndexOf(_roster, squad[slot]) < 0) squad.RemoveAt(slot);
+            }
+        }
+
+        /// <summary>ApplyPreset without the refresh, for use before the tree is rebuilt.</summary>
+        void ApplyPresetQuietly(int perSide)
+        {
+            _blue.Clear();
+            _red.Clear();
+            for (int i = 0; i < perSide; i++)
+            {
+                _blue.Add(_roster[i % _roster.Length]);
+                _red.Add(_roster[(i + perSide) % _roster.Length]);
+            }
+        }
+
         Label _backHint;
         float _backArmedUntil;
 
@@ -895,6 +1171,12 @@ namespace PoSoccer
             if (_cardOverlay != null)
             {
                 CloseCards();
+                return;
+            }
+
+            if (_brainsOverlay != null)
+            {
+                CloseBrains();
                 return;
             }
 
