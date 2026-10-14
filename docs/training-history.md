@@ -513,3 +513,36 @@ Probe (blue trained side): covered 98%, arrived at 3.79 s, max 3.64 m/s, heading
 
 Consequence: p35league's +8.8 points over p34league is most likely more steps as well,
 and the next run (p36bot) continues p35league against the bot only.
+
+## p36bot (2026-10-14) - bot-only 10M from p35league. FIRST BRAIN OVER THE 80% WIN BAR.
+
+`TRAIN_STANDARD_p36bot.yaml` is the p34control recipe (PPO, 1v1, bot v1 on every pitch, no
+team terms, no self-play), warm-started from `soccer_p35league_standard`. 10,000,030
+steps in 5,421 s (542 s per million).
+
+Grade against bot v1, 1v1, player rebuilt after the deploy:
+
+| Run | n | Wins | Losses | Stalemates | Win rate | Stalemate rate |
+|---|---|---|---|---|---|---|
+| `soccer_p35league_standard` | 350 | 214 | 48 | 88 | 61.1% | 25.1% |
+| `soccer_p36bot_standard` | 350 | 291 | 15 | 44 | 83.1% | 12.6% |
+| **`soccer_p36bot_standard`** | **1000** | **811** | **62** | **127** | **81.1%** | **12.7%** |
+
+The 350-episode result was large enough (+22 points) to recheck at n=1000 before
+believing it; the larger sample agrees. Win standard deviation at n=1000 is about 1.2
+points and stalemate about 1.1. **Wins pass the bar (81.1% against 80%). Stalemates do
+not (12.7% against 10%, about 2.5 SD over).** The benchmark is not yet passed.
+`Reward_STANDARD.asset` carries the n=1000 figure. The n=350 JSON is kept as
+`results/eval/soccer_p36bot_standard_n350.json`.
+
+This run halved the stalemates (25.1% to 12.7%), cut losses from 13.7% to 6.2%, and
+shortened the mean episode from 4,919 to 3,620 steps. Nothing in the recipe targets
+stalemates; it is the same recipe as the control, applied to a stronger start.
+
+Probe (blue trained side): covered 105%, arrived at 3.62 s, max 3.92 m/s, heading churn
+191 deg. Bot in the same run: 2.94 s, 4.66 m/s, 53 deg. The chase did not improve; the
+gain is in match play, not in getting to the ball.
+
+Step count on this line: p33team (its own lineage) + 10M league + 10M league + 10M
+bot-only. Neither the league runs nor the step count alone is shown to be the cause;
+p34control showed the league pool adds nothing over bot-only from the same start.

@@ -105,7 +105,7 @@ p33team's 37.1% and p34league's 52.3%.
 - Result: 192 wins, 68 losses, 90 stalemates (54.9%). The league pool added nothing over
   bot-only training from the same start.
 
-## p36bot: started 2026-10-14
+## p36bot: run and graded 2026-10-14 (81.1% wins, 12.7% stalemates at n=1000)
 
 | Brain | Config | Algorithm | Steps | Starts from | Opponent pool | Squad |
 |---|---|---|---|---|---|---|
@@ -118,3 +118,15 @@ p33team's 37.1% and p34league's 52.3%.
 
 - Gate: the probe, then 350 episodes against bot v1, compared with p35league's 61.1% wins
   and 25.1% stalemates.
+- Result at n=1000: 811 wins, 62 losses, 127 stalemates. Wins pass the bar; stalemates
+  fail it by 2.7 points.
+
+## p37bot: started 2026-10-14
+
+`TRAIN_STANDARD_p37bot.yaml`: the same bot-only recipe, warm-started from
+`soccer_p36bot_standard`, 10M steps. Grade at n=1000 against p36bot's 81.1% / 12.7%.
+
+```powershell
+.\scripts\train-phase1.ps1 -RunId soccer_p37bot_standard -Config TRAIN_STANDARD_p37bot.yaml `
+    -InitFrom soccer_p36bot_standard -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
+```
