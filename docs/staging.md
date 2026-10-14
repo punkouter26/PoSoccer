@@ -79,3 +79,26 @@ starting them from row 1 (`train-phase1.ps1 -InitFrom soccer_p30team_standard` w
 - Result: 183 wins, 71 losses, 96 stalemates at n=350 (52.3%), against p33team's 37.1%.
   Details and the missing control are in `docs/training-history.md`. Nothing is staged
   after this run.
+
+## p35league: run 2026-10-13, graded 2026-10-14 (61.1%, fails the bar)
+
+| Brain | Config | Algorithm | Steps | Starts from | Opponent pool | Squad |
+|---|---|---|---|---|---|---|
+| STANDARD | `TRAIN_STANDARD_p35league.yaml` | PPO with `self_play` | 10M | `soccer_p34league_standard` | `-League`, as p34league | 1v1 |
+
+```powershell
+.\scripts\train-phase1.ps1 -RunId soccer_p35league_standard -Config TRAIN_STANDARD_p35league.yaml `
+    -League -InitFrom soccer_p34league_standard -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
+```
+
+- The config is p34league's with a new starting brain and nothing else changed.
+- Gate: the probe, then 350 episodes at 1v1 against bot v1, compared with p34league's
+  52.3% wins and 27.4% stalemates.
+- Result: 214 wins, 48 losses, 88 stalemates at n=350 (61.1%).
+
+## p34control: started 2026-10-14
+
+`TRAIN_STANDARD_p34control.yaml`: p34league's config without the `self_play` block, bot
+on every pitch, warm-started from `soccer_p33team_standard`, 10M steps. It separates the
+league pool from the extra steps in p34league's gain. Graded like every brain, against
+p33team's 37.1% and p34league's 52.3%.

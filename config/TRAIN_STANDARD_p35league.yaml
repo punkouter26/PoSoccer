@@ -1,0 +1,73 @@
+# p35league / STANDARD - LEAGUE, second 10M (2026-10-13).
+# Continues soccer_p34league_standard (52.3% against bot v1, n=350).
+#
+# Launch (no rebuild needed: no code changed since the p34league grading build):
+#   .\scripts\train-phase1.ps1 -RunId soccer_p35league_standard -Config TRAIN_STANDARD_p35league.yaml `
+#       -League -InitFrom soccer_p34league_standard -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
+#
+# ONE VARIABLE AGAINST p34league: the starting brain. Everything below `behaviors:` is
+# TRAIN_STANDARD_p34league.yaml unchanged; read that file's header for the opponent pool
+# and for why Self-play/ELO is a liveness signal only.
+#
+# WHY. Self-play/ELO was still rising when p34league stopped (1199 to 1340, most of it
+# after 4M steps). The question is whether the graded win rate keeps rising with it.
+#
+# WHAT RESTARTS. A warm start carries the weights only. The linear learning-rate schedule
+# begins again at 3.0e-4, ELO begins again at 1200, and the snapshot pool begins empty, so
+# the first opponents are copies of the p34league brain.
+#
+# HOW TO READ IT. PoSoccer/league_bot_pitch about 0.5. The grade is evaluate.ps1 at 350
+# episodes against bot v1, compared with p34league's 52.3%, plus the movement probe.
+# Watch stalemates as closely as wins: p34league drew 27.4% against a 10% limit.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 10000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+    self_play:
+      # A snapshot of the learner joins the pool every 50k steps and the pool holds the
+      # last 10, so the oldest opponent is 500k steps behind.
+      save_steps: 50000
+      window: 10
+      # Half the self-play episodes face the current policy, half a pooled snapshot.
+      play_against_latest_model_ratio: 0.5
+      # The learning team changes every 200k steps and the opponent snapshot is redrawn
+      # every 10k, about twenty opponents per learning phase.
+      team_change: 200000
+      swap_steps: 10000
+      initial_elo: 1200.0
+
+environment_parameters:
+  goal_width: 6.0
+  # The bot on the league's bot pitches plays at full strength throughout: the brain this
+  # starts from finished p33team on the full-strength lesson.
+  bot_strength: 1.0
+
+env_settings:
+  num_envs: 4
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

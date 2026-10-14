@@ -464,3 +464,26 @@ One run, one seed, and the change from p33team is two things at once: 10M more s
 the league opponent pool. There is no control that continues p33team for 10M steps against
 the bot alone, so this does not yet show that the self-play pitches are what helped. Not
 graded against bot v2 or at 2v2.
+
+## p35league (2026-10-14) - second 10M of league self-play. BEST 1v1 GRADE SO FAR.
+
+`TRAIN_STANDARD_p35league.yaml` is p34league's config unchanged, warm-started from
+`soccer_p34league_standard`. 10,000,382 steps in 8,745 s (875 s per million).
+`PoSoccer/league_bot_pitch` held at 0.45 to 0.55. `Self-play/ELO` restarted at 1200 and
+climbed to 1581, steadily over the whole run.
+
+Grade against bot v1, 1v1, n=350, player rebuilt after the deploy:
+
+| Run | Wins | Losses | Stalemates | Win rate |
+|---|---|---|---|---|
+| `soccer_p33team_standard` | 130 | 110 | 110 | 37.1% |
+| `soccer_p34league_standard` | 183 | 71 | 96 | 52.3% |
+| **`soccer_p35league_standard`** | **214** | **48** | 88 | **61.1%** |
+
++8.8 points on p34league, about 2.4 SD for the difference at n=350. Losses fell from 71 to
+48. Stalemates barely moved (27.4% to 25.1%) and are now the larger distance to the bar:
+61.1% against 80% on wins, 25.1% against 10% on stalemates.
+
+Probe (blue trained side, 10.44 m chase, 4 s): covered 104%, arrived at 3.69 s, max
+3.83 m/s, heading churn 171 deg. Unchanged from p34league within what one chase can show.
+Scripted bot in the same run: 2.96 s, 4.69 m/s, 53 deg. The gain is not in the chase.

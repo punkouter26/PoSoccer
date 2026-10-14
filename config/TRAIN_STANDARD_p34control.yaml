@@ -1,0 +1,60 @@
+# p34control / STANDARD - the control p34league never had (2026-10-13).
+# Continues soccer_p33team_standard for 10M steps against the scripted bot ONLY.
+#
+# Launch (no -League: the scripts then set POSOCCER_OPPONENT=bot on every pitch):
+#   .\scripts\train-phase1.ps1 -RunId soccer_p34control_standard -Config TRAIN_STANDARD_p34control.yaml `
+#       -InitFrom soccer_p33team_standard -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
+#
+# WHY. p34league went from 37.1% to 52.3% but changed two things against p33team: 10M more
+# steps and the league opponent pool. This run changes the steps only. Same start, same PPO
+# hyperparameters, same reward assets, 1v1, bot at full strength, no team terms; the one
+# difference from TRAIN_STANDARD_p34league.yaml is that the self_play block is gone.
+#
+# HOW TO READ IT. 350 episodes against bot v1, plus the movement probe.
+#  - Near 37%: the league pool earned p34league's gain.
+#  - Near 52%: the gain was more steps at 1v1 without the team terms, not self-play.
+# A 350-episode grade has a standard deviation of about 2.7 points; do not read a few
+# points either way.
+#
+# Reward/turn_churn reads 0 (the term is not named here). PoSoccer/league_bot_pitch should
+# be absent or 0: every pitch is a bot pitch by POSOCCER_OPPONENT, not by league seating.
+behaviors:
+  STANDARD:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 2048
+      buffer_size: 20480
+      learning_rate: 3.0e-4
+      learning_rate_schedule: linear
+      beta: 8.0e-3
+      epsilon: 0.2
+      lambd: 0.95
+      num_epoch: 3
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 2
+    reward_signals:
+      extrinsic:
+        gamma: 0.99
+        strength: 1.0
+    max_steps: 10000000
+    time_horizon: 1024
+    summary_freq: 50000
+    keep_checkpoints: 20
+    checkpoint_interval: 1000000
+
+environment_parameters:
+  goal_width: 6.0
+  # The bot plays at full strength throughout: the brain this
+  # starts from finished p33team on the full-strength lesson.
+  bot_strength: 1.0
+
+env_settings:
+  num_envs: 4
+
+engine_settings:
+  time_scale: 20
+  target_frame_rate: -1
+  capture_frame_rate: 60
+  no_graphics: true

@@ -1,5 +1,5 @@
 # p34league / STANDARD - LEAGUE: past selves plus the scripted bot (2026-10-11).
-# Continues soccer_p33team_standard. STAGED, NOT YET RUN OR GRADED.
+# Continues soccer_p33team_standard. RUN 2026-10-13: 52.3% at n=350 (docs/training-history.md).
 #
 # Launch (rebuild the player first - the league seating is new code):
 #   .\scripts\train-phase1.ps1 -RunId soccer_p34league_standard -Config TRAIN_STANDARD_p34league.yaml `
