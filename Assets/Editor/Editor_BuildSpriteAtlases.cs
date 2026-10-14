@@ -31,7 +31,7 @@ namespace PoSoccer.EditorTools
     ///    page, which is the same optimisation by a different mechanism because
     ///    they have no source PNG to pack.
     ///
-    /// Assets/Sprites/Icons is deliberately EXCLUDED. Those are Android launcher
+    /// Assets/Icons is deliberately EXCLUDED. Those are Android launcher
     /// icons consumed by the manifest, never rendered by the game; packing them
     /// would put megabytes of art nothing draws into a runtime atlas.
     /// </summary>

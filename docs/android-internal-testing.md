@@ -84,8 +84,9 @@ ships Unity's default icon. Supply:
 | Legacy/round icon | 512×512 PNG | Fallback for older launchers |
 | Store icon | 512×512 PNG, 32-bit, no alpha | Play Console listing — **not** shipped in the build |
 
-Drop the first three in `Assets/Sprites/Icons/` and assign under
-**Player Settings → Icon → Adaptive**. The store icon is uploaded to Play Console
+The first three live in `Assets/Icons/` as `AppIcon_Adaptive_Foreground.png`,
+`AppIcon_Adaptive_Background.png` and `AppIcon_Legacy.png`; `Editor_ConfigureAndroidRelease`
+assigns them under **Player Settings → Icon → Adaptive**. The store icon is uploaded to Play Console
 directly and does not belong in the project.
 
 Note `.gitattributes` routes `*.png` through Git LFS — commit them normally, but a
