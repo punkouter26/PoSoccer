@@ -487,3 +487,29 @@ Grade against bot v1, 1v1, n=350, player rebuilt after the deploy:
 Probe (blue trained side, 10.44 m chase, 4 s): covered 104%, arrived at 3.69 s, max
 3.83 m/s, heading churn 171 deg. Unchanged from p34league within what one chase can show.
 Scripted bot in the same run: 2.96 s, 4.69 m/s, 53 deg. The gain is not in the chase.
+
+## p34control (2026-10-14) - the control for p34league. THE LEAGUE POOL DID NOT EARN THE GAIN.
+
+`TRAIN_STANDARD_p34control.yaml` is p34league's config without the `self_play` block:
+warm-started from `soccer_p33team_standard`, 1v1, the bot on every pitch
+(`POSOCCER_OPPONENT=bot`), 10,000,037 steps in 5,418 s (542 s per million, against the
+league's 875 to 923).
+
+| Run (all from p33team, n=350 against bot v1) | Wins | Losses | Stalemates | Win rate |
+|---|---|---|---|---|
+| p33team itself | 130 | 110 | 110 | 37.1% |
+| p34league (+10M, half the pitches self-play) | 183 | 71 | 96 | 52.3% |
+| **p34control (+10M, bot only)** | **192** | 68 | 90 | **54.9%** |
+
+The control is level with p34league (+2.6 points, under 1 SD of the difference). The +15
+points p34league gained over p33team came from what the two runs share: 10M more steps, on
+1v1 pitches only, without the team terms (`team_roles`, `team_spacing`, `pass_reward`)
+that p33team trained with. Self-play added nothing measurable, and it cost 60% more wall
+clock per step. Which of the shared changes mattered (more steps, or dropping the 2v2
+pitches and team terms) is not separated.
+
+Probe (blue trained side): covered 98%, arrived at 3.79 s, max 3.64 m/s, heading churn
+139 deg. Same class as p34league and p35league.
+
+Consequence: p35league's +8.8 points over p34league is most likely more steps as well,
+and the next run (p36bot) continues p35league against the bot only.
