@@ -9,11 +9,13 @@ re-running an experiment this project has already paid for.
 "train it longer" (p4 vs p5, 4.3× the steps, zero gain), gamma 0.999 (p19, worse),
 MA-POCA group credit (p15/p16, ELO fell), curiosity (p13/p14), imitation
 (p26, **half** the win rate), and the train/eval opponent mismatch (p22 trained to
-full bot strength and graded the same).
+full bot strength and graded the same). The "train it longer" finding predates the
+173-input contract; p34 to p37 contradict it there (see the end of this file).
 
-The standing headline: the benchmark bar is **≥80% wins with ≤10% stalemates**, and the
-best graded brain sits at **26.6%** (`soccer_p22gain_standard`, n=350). The current
-`STANDARD.onnx` is from `soccer_p25episode_standard` and is **ungraded**.
+The standing headline: the benchmark bar is **≥80% wins with ≤10% stalemates**. It was
+first met on 2026-10-14 by `soccer_p37bot_standard`: 91.0% wins and 6.0% stalemates over
+2,000 episodes against bot v1 (see the p37bot section at the end). Which brain is deployed
+now is recorded in `Reward_STANDARD.asset`, not here.
 
 Every landmine and method rule that still governs day-to-day work stayed in `CLAUDE.md`.
 
@@ -546,3 +548,43 @@ gain is in match play, not in getting to the ball.
 Step count on this line: p33team (its own lineage) + 10M league + 10M league + 10M
 bot-only. Neither the league runs nor the step count alone is shown to be the cause;
 p34control showed the league pool adds nothing over bot-only from the same start.
+
+## p37bot (2026-10-14) - bot-only 10M from p36bot. PASSES THE BENCHMARK.
+
+`TRAIN_STANDARD_p37bot.yaml`, the same bot-only recipe as p36bot, warm-started from
+`soccer_p36bot_standard`. 10,000,115 steps in 5,434 s.
+
+Grade against bot v1, 1v1, player rebuilt after the deploy. Two independent 1,000-episode
+evals on the same build:
+
+| Run | n | Wins | Losses | Stalemates | Win rate | Stalemate rate |
+|---|---|---|---|---|---|---|
+| `soccer_p36bot_standard` | 1000 | 811 | 62 | 127 | 81.1% | 12.7% |
+| `soccer_p37bot_standard` (eval A) | 1000 | 906 | 28 | 66 | 90.6% | 6.6% |
+| `soccer_p37bot_standard` (eval B) | 1000 | 913 | 33 | 54 | 91.3% | 5.4% |
+| **p37bot pooled** | **2000** | **1819** | **61** | **120** | **91.0%** | **6.0%** |
+
+**Both bars are met in both evals:** at least 80% wins and at most 10% stalemates. On the
+pooled 2,000 episodes wins sit about 18 SD above 80% and stalemates about 7.5 SD below 10%.
+The JSONs are kept as `results/eval/soccer_p37bot_standard_n1000_a.json` and `_b.json`;
+`Reward_STANDARD.asset` carries eval B's 91.3%.
+
+Against bot v2 (n=350, no bar applies): 313 wins, 11 losses, 26 stalemates, 89.4%.
+
+Probe (blue trained side): covered 106%, arrived at 3.63 s, max 3.89 m/s, heading churn
+133 deg. Bot in the same run: 2.94 s, 4.66 m/s, 52 deg. The brain still reaches the ball
+more slowly than the bot and turns more than twice as much; it beats the bot on what it
+does once there.
+
+### What got the line from 37.1% to 91%
+
+From `soccer_p33team_standard` (37.1%): p34league +10M, p35league +10M, p36bot +10M,
+p37bot +10M, all PPO at 1v1 with no team terms, the same hyperparameters, and bot v1 at
+full strength. Grades along the line: 52.3%, 61.1%, 81.1%, 91.0%. Stalemates: 27.4%,
+25.1%, 12.7%, 6.0%. The mean episode shortened from 5,212 steps to about 2,900.
+
+What is shown: p34control proved the league pool adds nothing over bot-only training from
+the same start. What is not shown: whether p35league's league steps would have done as well
+bot-only, and whether the gain is steps alone or the switch to 1v1 without the team terms.
+"Train it longer" was recorded as disproven (p4 vs p5); on the 173-input contract with this
+recipe it was not, and the old finding should not be read as a general rule.

@@ -121,7 +121,7 @@ p33team's 37.1% and p34league's 52.3%.
 - Result at n=1000: 811 wins, 62 losses, 127 stalemates. Wins pass the bar; stalemates
   fail it by 2.7 points.
 
-## p37bot: started 2026-10-14
+## p37bot: run and graded 2026-10-14. PASSES THE BENCHMARK.
 
 `TRAIN_STANDARD_p37bot.yaml`: the same bot-only recipe, warm-started from
 `soccer_p36bot_standard`, 10M steps. Grade at n=1000 against p36bot's 81.1% / 12.7%.
@@ -130,3 +130,5 @@ p33team's 37.1% and p34league's 52.3%.
 .\scripts\train-phase1.ps1 -RunId soccer_p37bot_standard -Config TRAIN_STANDARD_p37bot.yaml `
     -InitFrom soccer_p36bot_standard -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
 ```
+- Result over two 1,000-episode evals: 1,819 wins, 61 losses, 120 stalemates (91.0% wins,
+  6.0% stalemates). Both bars met. Deployed as `STANDARD.onnx`. Nothing is staged after it.
