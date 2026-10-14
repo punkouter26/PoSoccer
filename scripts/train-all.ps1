@@ -18,7 +18,7 @@ param(
     [Parameter(HelpMessage = "Run-id suffix: soccer_<Tag>_<profile>.")]
     [string]$Tag = "p30team",
     [Parameter(HelpMessage = "Selects config\TRAIN_<NAME>_<ConfigTag>.yaml.")]
-    [string]$ConfigTag = "p30team",
+    [string]$ConfigTag = "p31",
     [Parameter(HelpMessage = "Leave both teams on the trainer (symmetric self-play) instead of facing the bot.")]
     [switch]$SelfPlay,
     [Parameter(HelpMessage = "Train against a build older than the runtime sources (normally fatal).")]
@@ -145,6 +145,7 @@ try {
     foreach ($name in $Profiles) {
         $runId = "soccer_${Tag}_$($name.ToLower())"
         $config = Join-Path $root "config\TRAIN_${name}_${ConfigTag}.yaml"
+        if (-not (Test-Path $config)) { $config = Join-Path $root "config\archive\TRAIN_${name}_${ConfigTag}.yaml" }
         if (-not (Test-Path $config)) { throw "Missing config $config" }
 
         Write-Host ""

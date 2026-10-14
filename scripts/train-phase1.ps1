@@ -7,7 +7,7 @@ param(
     [string]$EnvPath = "",
     [int]$NumEnvs = 4,
     [int]$BasePort = 5005,
-    [string]$Config = "TRAIN_STANDARD_p30team.yaml",
+    [string]$Config = "TRAIN_STANDARD_p37bot.yaml",
     [string]$InitFrom = "",
     [switch]$Resume,
     [switch]$Force,
@@ -64,6 +64,8 @@ $env:POSOCCER_SQUAD = $Squad
 # could not start a run. Resolve and verify before handing the path to the trainer,
 # so a missing config fails here, naming the file, rather than inside mlagents-learn.
 $configPath = Join-Path "$root\config" $Config
+# Superseded recipes live in config\archive and stay runnable by name.
+if (-not (Test-Path $configPath)) { $configPath = Join-Path "$root\config\archive" $Config }
 if (-not (Test-Path $configPath)) {
     $available = (Get-ChildItem "$root\config\*.yaml" | ForEach-Object { $_.Name }) -join ", "
     throw "Config not found: $configPath`nAvailable in config\: $available"

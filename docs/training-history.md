@@ -194,7 +194,7 @@ Read the second row carefully, because it retires the thesis this section has ar
 
 NICK was paid up to 4.5× more for holding the ball than for scoring with it. These are maxima — real duty cycles are lower — but a reachable ceiling means the table does not guarantee the ordering of outcomes. **The method was already here and simply never generalised:** `stepPenalty`'s own comment does this exact arithmetic ("9000 steps, −0.9, near-identical to `goalConceded`"). Validated against an independent figure — CLAUDE.md's own `5784 × 0.00005 = 0.289` reproduces exactly.
 
-Fixed: every per-step term ÷10 with trait ratios preserved, `facingAlignmentScale` and `crossbarProximity` retired as redundant (bearing to the ball has been an *observation* since the body-frame fix). Code defaults and all five assets moved together — a changed initializer never reaches an existing asset. `Agent_EditMode_RewardBudget` pins the **ordering property**, not a specific table, and fails if a `maxEnvironmentSteps` increase re-breaks it (the ceiling is linear in the cap). Full write-up: `docs/ml-audit-2026-09-07.md`.
+Fixed: every per-step term ÷10 with trait ratios preserved, `facingAlignmentScale` and `crossbarProximity` retired as redundant (bearing to the ball has been an *observation* since the body-frame fix). Code defaults and all five assets moved together — a changed initializer never reaches an existing asset. `Agent_EditMode_RewardBudget` pins the **ordering property**, not a specific table, and fails if a `maxEnvironmentSteps` increase re-breaks it (the ceiling is linear in the cap). Full write-up: `docs/archive/ml-audit-2026-09-07.md`.
 
 **RESULT 2026-09-07 — p24 (potential-based shaping) is a WASH and p26 (imitation) is significantly WORSE.**
 
@@ -206,7 +206,7 @@ Fixed: every per-step term ÷10 with trait ratios preserved, `facingAlignmentSca
 
 p26 is −14.0 pp on a combined SD of ~3.0 — about **4.7 SD**. Imitation did not fail to help, it **halved the win rate**. Likely causes, all unmeasured hypotheses: covariate shift (demos are bot-vs-bot; the learner faces bot-vs-itself *while losing*, drifting into states the demonstrator never visited — the failure DAgger exists for), GAIL rewarding resemblance to a state distribution the agent cannot reach, and BC anchoring the policy RL then spends budget undoing. Separating them needs an ablation, not another combined run.
 
-Full record, including the reward-budget audit and the sensor-geometry measurements: `docs/ml-audit-2026-09-07.md`.
+Full record, including the reward-budget audit and the sensor-geometry measurements: `docs/archive/ml-audit-2026-09-07.md`.
 
 **Measured 2026-08-04** (multi-run means, rebuilt player per model — `results/eval/*.json`):
 
@@ -272,7 +272,7 @@ It creeps and spins at ~6% of the chassis' ability. Every "it can't finish / can
 
 Net **12× swing against moving** on STANDARD, **50× on KIM**. Standing still was the local optimum and 20M steps found it. Fixed in all five profiles 2026-08-04 and pinned by `RewardProfiles_MatchCodeDefaultsOnMechanics` (EditMode) — that test is the guard, keep it green. Personality lives in terminal rewards, trait scales and physique; the locomotion mechanics must match code.
 
-- **Every eval graded the p9 brain**, whatever the filename said. The three phase-10 results (16.4 / 19.0 / 17.8 over 1000 ep) are three repeat samples of one unchanged model — mean 17.7%, spread 2.6 pp against SD ≈ 1.2. The published "3M POCA = 19.0%, first run to break the plateau, +2.6 pp real" compared two samples of the same thing. Retracted in `docs/eval-p10-poca.md`.
+- **Every eval graded the p9 brain**, whatever the filename said. The three phase-10 results (16.4 / 19.0 / 17.8 over 1000 ep) are three repeat samples of one unchanged model — mean 17.7%, spread 2.6 pp against SD ≈ 1.2. The published "3M POCA = 19.0%, first run to break the plateau, +2.6 pp real" compared two samples of the same thing. Retracted in `docs/archive/eval-p10-poca.md`.
 - **Every training run used the same stale env** (`env_path` in all three `configuration.yaml`), so the 4-sensor split and terminal-reward shaping that phase 10 exists to test **never executed once**. They are untested, not disproven.
 - **Regraded 2026-08-12**: a player built from the 118-obs code the brain was actually trained on (`43e3385`) puts the real 3M POCA brain at **18.5%** (185/1000, 64.9% red, 16.6% stalemate) vs the p9 brain's 17.7% — **+0.8 pp on a combined SD of ~1.7. POCA did not break the plateau.**
 - **ELO said so all along.** Per UNITY_RULES, judge self-play on ELO, not mean reward: `Self-play/ELO` was **1200.5 flat** from initial 1200.0 through 9.28M steps (and absent entirely from the 3M run), with `Mean Group Reward` identically 0.000 — MA-POCA's group-credit channel carried no signal. Mean reward climbed to 0.86 while the rating never moved.

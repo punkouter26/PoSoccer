@@ -46,7 +46,9 @@ if ($WorkerProfile) {
     $env:POSOCCER_SQUAD = $Squad
     $env:POSOCCER_PROFILE = $name
 
-    $mlArgs = @((Join-Path $root "config\TRAIN_${name}_${ConfigTag}.yaml"),
+    $config = Join-Path $root "config\TRAIN_${name}_${ConfigTag}.yaml"
+    if (-not (Test-Path $config)) { $config = Join-Path $root "config\archive\TRAIN_${name}_${ConfigTag}.yaml" }
+    $mlArgs = @($config,
                 "--run-id=$runId", "--base-port=$WorkerPort", "--results-dir=$root\results",
                 "--env=$root\$EnvPath", "--no-graphics", "--num-envs=$NumEnvs")
     if ($Force) { $mlArgs += "--force" }
@@ -64,6 +66,7 @@ if ($WorkerProfile) {
 if (-not (Test-Path (Join-Path $root $EnvPath))) { throw "No player at $EnvPath - build it first." }
 foreach ($name in $Profiles) {
     $config = Join-Path $root "config\TRAIN_${name}_${ConfigTag}.yaml"
+    if (-not (Test-Path $config)) { $config = Join-Path $root "config\archive\TRAIN_${name}_${ConfigTag}.yaml" }
     if (-not (Test-Path $config)) { throw "Config not found: $config" }
 }
 try {

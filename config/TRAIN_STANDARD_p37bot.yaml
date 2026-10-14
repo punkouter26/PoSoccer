@@ -7,7 +7,7 @@
 #       -InitFrom soccer_p36bot_standard -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
 #
 # ONE VARIABLE AGAINST p36bot: the starting brain. Everything below `behaviors:` is
-# TRAIN_STANDARD_p34control.yaml unchanged.
+# config/archive/TRAIN_STANDARD_p34control.yaml unchanged.
 #
 # WHY. p36bot cut stalemates from 25.1% to 12.7% and lifted wins from 61.1% to 81.1% in one
 # 10M bot-only run. This asks whether another 10M closes the last 2.7 points of stalemates.

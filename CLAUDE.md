@@ -86,7 +86,7 @@ that page is a real defect.
 .\scripts\evaluate.ps1 -RunId <run> -Episodes 350 [-Squad 2]   # exit 0 pass / 1 fail / 2-3 setup
 .\scripts\evaluate.ps1 -Baseline -Episodes 350                 # bot vs bot sanity
 .\scripts\evaluate.ps1 -Baseline -BlueBotVersion 2 -Episodes 350   # bot v2 against the benchmark bot
-.\scripts	rain-phase1.ps1 -RunId <run> -Config TRAIN_STANDARD_p34league.yaml -League `
+.\scripts\train-phase1.ps1 -RunId <run> -Config TRAIN_STANDARD_p34league.yaml -League `
     -InitFrom <run> -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4   # self-play + bot pitches
 .\scripts\update-model.ps1 -RunId <run> [-Profile STANDARD|MATT|KIM|NICK]
 .\scripts\cleanup-training.ps1                 # kill orphaned trainers and env players
