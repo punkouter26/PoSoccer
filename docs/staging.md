@@ -112,7 +112,7 @@ p33team's 37.1% and p34league's 52.3%.
 | STANDARD | `TRAIN_STANDARD_p36bot.yaml` | PPO | 10M | `soccer_p35league_standard` | bot v1 on every pitch | 1v1 |
 
 ```powershell
-.\scripts	rain-phase1.ps1 -RunId soccer_p36bot_standard -Config TRAIN_STANDARD_p36bot.yaml `
+.\scripts\train-phase1.ps1 -RunId soccer_p36bot_standard -Config TRAIN_STANDARD_p36bot.yaml `
     -InitFrom soccer_p35league_standard -EnvPath Builds\PoSoccer\PoSoccer.exe -NumEnvs 4
 ```
 
