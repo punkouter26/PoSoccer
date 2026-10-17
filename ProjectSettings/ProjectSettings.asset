@@ -275,8 +275,8 @@ PlayerSettings:
   AndroidTargetArchitectures: 2
   AndroidSplashScreenScale: 0
   androidSplashScreen: {fileID: 0}
-  AndroidKeystoreName: C:/Users/punko/Downloads/PoSoccer-Release/posoccer-upload.jks
-  AndroidKeyaliasName: posoccer
+  AndroidKeystoreName: C:/Users/punko/OneDrive/VAULT/_CODE/posoccer-upload.jks
+  AndroidKeyaliasName: posoccer-upload
   AndroidEnableArmv9SecurityFeatures: 0
   AndroidEnableArm64MTE: 0
   AndroidBuildApkPerCpuArchitecture: 0

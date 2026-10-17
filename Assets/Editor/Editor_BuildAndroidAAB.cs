@@ -14,8 +14,8 @@ namespace PoSoccer.EditorTools
     ///
     /// The upload keystore and its password live OUTSIDE the repo so neither can
     /// be committed:
-    ///     C:/Users/punko/Downloads/PoSoccer-Release/posoccer-upload.jks
-    ///     C:/Users/punko/Downloads/PoSoccer-Release/posoccer-upload.pass   (password, one line)
+    ///     C:/Users/punko/OneDrive/VAULT/_CODE/posoccer-upload.jks
+    ///     C:/Users/punko/OneDrive/VAULT/_CODE/posoccer-upload.pass   (password, one line)
     ///
     /// Unity deliberately does not serialize keystore passwords into
     /// ProjectSettings.asset, so they must be supplied at build time — that is what
@@ -36,10 +36,12 @@ namespace PoSoccer.EditorTools
 
         // internal, not private: the APK builder signs with the same upload key, so
         // an APK installed over a Play build does not hit a signature mismatch.
-        internal const string KEYSTORE_PATH = "C:/Users/punko/Downloads/PoSoccer-Release/posoccer-upload.jks";
-        // The original Aug 2026 upload keystore (the one Play's upload key is pinned
-        // to, SHA1 60:35:B5:23...) uses alias "posoccer", not "posoccer-upload".
-        internal const string KEYALIAS = "posoccer";
+        //
+        // MOVED 2026-10-17: the original Aug 2026 key (alias "posoccer", SHA1 60:35:B5:23...)
+        // was lost. This is its replacement; Play accepts it only after an upload-key reset
+        // (Play Console > Test and release > App integrity), submitting posoccer-upload.pem.
+        internal const string KEYSTORE_PATH = "C:/Users/punko/OneDrive/VAULT/_CODE/posoccer-upload.jks";
+        internal const string KEYALIAS = "posoccer-upload";
         internal const string PASS_ENV_VAR = "POSOCCER_KEYSTORE_PASS";
 
         // Google Play requires new apps and updates to target API 36 from 2026-08-31.
